@@ -6,7 +6,12 @@ A prospecting tool for **Turbine Energy**, a UK commercial solar installer. It v
 
 This is a sibling project to `mcs-map` (Amco Renewables' installer map/CRM at `C:\Users\GregRoy\mcs-map`) — it reuses the same architecture philosophy (static HTML, Supabase backend, GitHub Pages hosting, no build tool) but is a **separate client, separate repo, separate Supabase project**.
 
-**Status: v1 pilot build.** Data pipeline and map frontend are built; the map has not yet been populated with real data (see Section 7 — the EPC download step requires a human to register a GOV.UK One Login account). **No CRM/contact-logging layer and no authentication** — this build ships the prospect map only, unlike mcs-map's full map+CRM+dashboard.
+**Repo:** https://github.com/CatchSit/turbine-solar-prospects (created, initial scaffold pushed to `main`)
+**Supabase project:** `turbine-solar-prospects` (created — confirm migrations have been run before assuming the schema exists, see Section 4)
+**GitHub Pages:** not yet enabled
+**Local folder:** as of this writing, still `C:\Users\GregRoy\Projects\commercial-map` on this machine — cosmetic only, nothing in the code depends on the local path. Safe to rename to `turbine-solar-prospects` once closed in your editor.
+
+**Status: v1 pilot build, scaffold only.** Data pipeline code and map frontend are built and pushed; **no real data has been ingested yet** — the map will show "Failed to load prospect data" until `prospects.json` exists (see Section 4 to run the pipeline). The EPC download step requires a human to register a GOV.UK One Login account (Section 7, risk 1). **No CRM/contact-logging layer and no authentication** — this build ships the prospect map only, unlike mcs-map's full map+CRM+dashboard.
 
 ---
 
@@ -66,9 +71,9 @@ Unlike mcs-map, **the browser never talks to Supabase directly** — there's no 
 Every step is idempotent (upserts on `epc_lmk_key`, `solar-enrichment` only touches `pending` rows), so re-running is always safe.
 
 ### Step 0 — one-time setup
-1. Create a new Supabase project. Run `supabase/migrations/001_prospects_schema.sql` then `002_prospects_rls.sql` in the SQL editor.
+1. Supabase project `turbine-solar-prospects` is already created. Confirm `supabase/migrations/001_prospects_schema.sql` then `002_prospects_rls.sql` have been run in its SQL editor — run them if not (check with `SELECT * FROM prospects LIMIT 1;`; a "relation does not exist" error means they haven't been run yet).
 2. Register a GOV.UK One Login account (needed to download EPC bulk data — see Section 7).
-3. Get a Google Cloud API key with the Solar API enabled.
+3. Get a Google Cloud API key with the Solar API enabled, and set it as the `GOOGLE_SOLAR_API_KEY` secret on the Supabase project (`supabase secrets set GOOGLE_SOLAR_API_KEY=...`).
 4. `npm install` in the repo root.
 
 ### Step 1 — download EPC data (manual, human-gated)
@@ -98,7 +103,7 @@ Requires the `GOOGLE_SOLAR_API_KEY` secret set on the Supabase project. Watch th
 
 ### Step 5 — export to the map
 ```
-SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... GITHUB_PAT=... GITHUB_REPO=owner/repo npm run export
+SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... GITHUB_PAT=... GITHUB_REPO=CatchSit/turbine-solar-prospects npm run export
 ```
 Re-exports the **full current** `prospects` table (not incremental) to `prospects.json` and pushes it via the GitHub Git Data API, same blob/tree/commit/ref-update flow as mcs-map's `mcs-scraper`. Only rows with a resolved `lat`/`lng` are included.
 
@@ -168,9 +173,14 @@ No radius circle (no obvious Turbine Energy depot location yet — ask the clien
 
 ## 9. How to Continue Development
 
+**Already done:** repo created and scaffold pushed to `main` (https://github.com/CatchSit/turbine-solar-prospects), Supabase project `turbine-solar-prospects` created.
+
+**Next steps:**
 1. `npm install`.
-2. Set up a Supabase project and run both migrations (Section 4, Step 0).
+2. Confirm the two migrations have been run against the Supabase project (Section 4, Step 0) — run them if not.
 3. Register GOV.UK One Login, download the non-domestic EPC bulk CSV, and **check its header row against `scripts/ingest-epc.mjs`'s column mapping before trusting a run**.
-4. Run the pipeline (Section 4, Steps 2–5) for a small sample first — spot-check ~15–20 known buildings (some with visible rooftop solar, some without) before trusting the funnel at scale.
-5. Serve `index.html` locally (`npx serve .`) and exercise every filter against the real `prospects.json`.
-6. Create the GitHub repo, push, enable GitHub Pages.
+4. Get a Google Cloud API key with the Solar API enabled and set `GOOGLE_SOLAR_API_KEY` as a Supabase secret.
+5. Run the pipeline (Section 4, Steps 2–5) for a small sample first — spot-check ~15–20 known buildings (some with visible rooftop solar, some without) before trusting the funnel at scale. Step 5 pushes `prospects.json` straight to the live repo, so this is a real, visible update once run.
+6. Serve `index.html` locally (`npx serve .`) and exercise every filter against the real `prospects.json`.
+7. Enable GitHub Pages on the repo (Settings → Pages → deploy from `main`) once there's real data worth publishing.
+8. Optionally rename the local folder from `commercial-map` to `turbine-solar-prospects` (close it in your editor first — see Section 1).
