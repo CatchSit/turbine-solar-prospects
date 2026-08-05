@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Turbine Energy — Solar Prospects</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+  <style>
+    /* ── Daylight tokens (placeholder branding, reused from mcs-map) ─── */
+    :root {
+      --bg:        #fafaf7;
+      --surface:   #ffffff;
+      --surface2:  #f4f4ee;
+      --border:    #e6e4d9;
+      --borderH:   #d8d5c5;
+      --text:      #1f2117;
+      --text2:     #535649;
+      --text3:     #8e9080;
+      --accent:    #5d8a64;
+      --accentDim: #dde9da;
+      --accentDk:  #2f5a3d;
+      --warn:      #c08438;
+      --warnSoft:  #f3e3cb;
+      --alert:     #b85544;
+      --alertSoft: #f0d3ce;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg); color: var(--text);
+      font-size: 14px; line-height: 1.45;
+    }
+    #main-wrap { flex: 1; display: flex; overflow: hidden; min-height: 0; }
+    button { font-family: inherit; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    *::-webkit-scrollbar { width: 6px; height: 6px; }
+    *::-webkit-scrollbar-thumb { background: rgba(0,0,0,.12); border-radius: 3px; }
+    *::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,.2); }
+    *::-webkit-scrollbar-track { background: transparent; }
+
+    /* ── Top nav ─────────────────────────────────────────────── */
+    #top-nav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      height: 52px;
+      display: flex; align-items: center; padding: 0 24px; gap: 10px;
+      flex-shrink: 0; z-index: 1003;
+    }
+    .brand-mark {
+      width: 26px; height: 26px; border-radius: 7px;
+      background: var(--accent);
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .brand-mark::after { content: ''; width: 10px; height: 10px; border-radius: 50%; background: #fff; }
+    .nav-brand-name { font-size: 14.5px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); }
+    .nav-brand-sub { font-size: 11.5px; color: var(--text3); margin-left: 4px; }
+
+    /* ── Mobile toggle ───────────────────────────────────── */
+    #menu-btn {
+      display: none;
+      position: fixed; top: 64px; left: 12px; z-index: 1002;
+      background: var(--surface); color: var(--text);
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 10px 14px; font-size: 18px; line-height: 1; cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,.08);
+    }
+    #sidebar-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(31,33,23,0.32); z-index: 1000;
+    }
+    #sidebar-overlay.open { display: block; }
+    @media (max-width: 768px) {
+      #menu-btn { display: block; }
+      #sidebar {
+        position: fixed; top: 52px; left: -340px; height: calc(100% - 52px);
+        width: 320px; min-width: unset;
+        transition: left 0.25s ease; z-index: 1001;
+        box-shadow: 6px 0 24px rgba(0,0,0,.12);
+      }
+      #sidebar.open { left: 0; }
+      #map { width: 100%; }
+    }
+
+    /* ── Sidebar ─────────────────────────────────────────── */
+    #sidebar {
+      width: 320px; min-width: 320px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      overflow-y: auto; z-index: 1000;
+    }
+    #count-bar { padding: 18px 22px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .count-eyebrow { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .08em; }
+    .count-main { font-size: 22px; font-weight: 600; letter-spacing: -0.015em; margin-top: 4px; }
+    .count-main .count-secondary { color: var(--text3); font-weight: 400; }
+    .count-label { font-size: 12px; color: var(--text2); margin-top: 2px; }
+
+    .section { padding: 16px 22px; border-bottom: 1px solid var(--border); }
+    .section h3 {
+      font-size: 11px; color: var(--text3);
+      text-transform: uppercase; letter-spacing: .08em;
+      margin-bottom: 10px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .section h3 .clear { color: var(--accent); cursor: pointer; font-weight: 500; text-transform: none; letter-spacing: 0; font-size: 11.5px; }
+
+    #search {
+      width: 100%; padding: 10px 12px;
+      border: 1px solid var(--border); border-radius: 10px;
+      background: var(--surface2); color: var(--text);
+      font-size: 13px; outline: none; font-family: inherit;
+      transition: border-color .12s, background .12s;
+    }
+    #search::placeholder { color: var(--text3); }
+    #search:focus { border-color: var(--accent); background: var(--surface); }
+
+    .range-row { display: flex; align-items: center; gap: 8px; }
+    .range-row input[type="number"] {
+      width: 100%; padding: 9px 10px;
+      border: 1px solid var(--border); border-radius: 8px;
+      background: var(--surface2); color: var(--text);
+      font-size: 12.5px; outline: none; font-family: inherit;
+    }
+    .range-row input:focus { border-color: var(--accent); background: var(--surface); }
+    .range-row span { font-size: 11.5px; color: var(--text3); flex-shrink: 0; }
+    .range-hint { font-size: 11px; color: var(--text3); margin-top: 6px; }
+
+    /* Chips (building type / EPC rating / solar status) */
+    .chip-list { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 5px 11px 5px 8px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      font-size: 11.5px; color: var(--text2);
+      cursor: pointer; user-select: none;
+      transition: all .12s;
+    }
+    .chip:hover { border-color: var(--borderH); color: var(--text); }
+    .chip.on { background: var(--accentDim); border-color: var(--accent); color: var(--accentDk); font-weight: 500; }
+    .chip .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+    .chip .chip-n { font-size: 10.5px; color: var(--text3); margin-left: 2px; font-variant-numeric: tabular-nums; }
+    .chip.on .chip-n { color: var(--accentDk); }
+    .chip input { display: none; }
+
+    #reset {
+      margin: 16px 22px; padding: 9px;
+      background: transparent; color: var(--text2);
+      border: 1px solid var(--border); border-radius: 8px;
+      font-size: 12.5px; cursor: pointer;
+      transition: background .12s, color .12s;
+    }
+    #reset:hover { background: var(--surface2); color: var(--text); }
+
+    #footer {
+      margin-top: auto;
+      padding: 16px 22px;
+      font-size: 11.5px; color: var(--text3); line-height: 1.55;
+      border-top: 1px solid var(--border);
+    }
+    #footer .accent { color: var(--accent); }
+    #footer .caveat {
+      margin-top: 10px; padding: 10px 12px;
+      background: var(--surface2); border-radius: 8px;
+      font-size: 11px; line-height: 1.5;
+    }
+
+    /* ── Map ──────────────────────────────────────────────── */
+    #map { flex: 1; background: #eef0eb; }
+    .leaflet-container { font-family: 'Inter', sans-serif !important; }
+    .leaflet-tile-pane { filter: saturate(0.35) brightness(1.04) contrast(0.96); }
+    .leaflet-control-zoom a {
+      background: var(--surface) !important; color: var(--text2) !important;
+      border: 1px solid var(--border) !important; border-radius: 8px !important;
+      width: 32px !important; height: 32px !important; line-height: 30px !important;
+      font-size: 16px !important; box-shadow: 0 2px 6px rgba(0,0,0,.04) !important; margin-bottom: 4px !important;
+    }
+    .leaflet-control-zoom a:hover { background: var(--surface2) !important; color: var(--text) !important; }
+    .leaflet-control-attribution {
+      background: rgba(255,255,255,.7) !important; backdrop-filter: blur(6px) !important;
+      font-size: 10px !important; padding: 2px 6px !important; color: var(--text3) !important;
+    }
+    .leaflet-control-attribution a { color: var(--text2) !important; }
+
+    .day-marker { transition: transform .12s; cursor: pointer; }
+    .day-marker:hover { transform: scale(1.25); }
+    .day-cluster {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: var(--surface); border: 2px solid var(--accent); color: var(--text);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 600; letter-spacing: -0.01em;
+      box-shadow: 0 2px 8px rgba(0,0,0,.12); font-family: 'Inter', sans-serif;
+    }
+    .day-tooltip.leaflet-tooltip {
+      background: rgba(31,33,23,.94) !important; color: #fff !important; border: 0 !important;
+      border-radius: 6px !important; padding: 6px 10px !important; box-shadow: 0 4px 12px rgba(0,0,0,.18) !important;
+      font-family: 'Inter', sans-serif !important; font-size: 12px !important; line-height: 1.4 !important; font-weight: 500;
+    }
+    .day-tooltip.leaflet-tooltip::before { display: none !important; }
+
+    /* ── Popup ────────────────────────────────────────────── */
+    .leaflet-popup-content-wrapper {
+      border-radius: 14px !important; background: var(--surface) !important;
+      box-shadow: 0 12px 32px rgba(0,0,0,.12), 0 0 0 1px var(--border) !important; padding: 0 !important;
+    }
+    .leaflet-popup-content { margin: 0 !important; width: 320px !important; }
+    .leaflet-popup-tip { background: var(--surface) !important; box-shadow: 0 0 0 1px var(--border) !important; }
+    .leaflet-popup-close-button { color: var(--text3) !important; padding: 8px 10px !important; font-size: 18px !important; }
+    .leaflet-popup-close-button:hover { color: var(--text) !important; background: transparent !important; }
+
+    .popup { font-family: 'Inter', sans-serif; color: var(--text); }
+    .popup-header { padding: 18px 20px 14px; }
+    .popup-eyebrow { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .08em; }
+    .popup-name { font-size: 17px; font-weight: 600; letter-spacing: -0.015em; margin-top: 4px; }
+    .popup-meta { font-size: 12.5px; color: var(--text2); margin-top: 4px; }
+    .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 12px; }
+    .tag { display: inline-flex; align-items: center; gap: 6px; background: var(--surface2); color: var(--text2); font-size: 11.5px; padding: 4px 10px 4px 7px; border-radius: 100px; }
+    .tag .tag-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .status-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px 4px 9px; font-size: 11.5px; font-weight: 500; border-radius: 100px; }
+    .status-pill .pill-dot { width: 6px; height: 6px; border-radius: 50%; }
+    .popup-facts { padding: 4px 20px 18px; font-size: 12.5px; color: var(--text2); }
+    .popup-facts p { padding: 5px 0; }
+    .popup-facts p a { color: var(--accent); }
+    .solar-est {
+      margin: 4px 20px 16px; padding: 10px 12px;
+      background: var(--accentDim); color: var(--accentDk);
+      border-radius: 10px; font-size: 12px; line-height: 1.5;
+    }
+
+    /* ── Loading ──────────────────────────────────────────── */
+    #loading {
+      position: fixed; inset: 0; background: var(--bg);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 9999; color: var(--text2); font-size: 14px; gap: 16px;
+    }
+    .spinner { width: 32px; height: 32px; border: 3px solid var(--accentDim); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<!-- ── Top nav ───────────────────────────────────────────── -->
+<nav id="top-nav">
+  <div class="brand-mark"></div>
+  <span class="nav-brand-name">Turbine Energy</span>
+  <span class="nav-brand-sub">Solar Prospects — Yorkshire &amp; Humber pilot</span>
+</nav>
+
+<!-- ── Mobile controls ──────────────────────────────────── -->
+<button id="menu-btn" aria-label="Open menu">&#9776;</button>
+<div id="sidebar-overlay"></div>
+
+<div id="main-wrap">
+
+<!-- ── Sidebar ───────────────────────────────────────────── -->
+<div id="sidebar">
+
+  <div id="count-bar">
+    <div class="count-eyebrow">Showing</div>
+    <div class="count-main">
+      <strong id="shown">–</strong>
+      <span class="count-secondary"> of <span id="total">–</span></span>
+    </div>
+    <div class="count-label">buildings in view</div>
+  </div>
+
+  <div class="section">
+    <h3>Search</h3>
+    <input id="search" type="text" placeholder="Address or postcode…"/>
+  </div>
+
+  <div class="section">
+    <h3>Floor area (m²)</h3>
+    <div class="range-row">
+      <input id="floor-min" type="number" min="0" step="100" placeholder="Min"/>
+      <span>–</span>
+      <input id="floor-max" type="number" min="0" step="100" placeholder="Max"/>
+    </div>
+    <div class="range-hint">Proxy for electricity usage — see note below.</div>
+  </div>
+
+  <div class="section">
+    <h3>Building type</h3>
+    <div id="building-type-list" class="chip-list"></div>
+  </div>
+
+  <div class="section">
+    <h3>EPC rating</h3>
+    <div id="epc-rating-list" class="chip-list"></div>
+  </div>
+
+  <div class="section">
+    <h3>Solar status <span class="clear" id="solar-status-clear">show all</span></h3>
+    <div id="solar-status-list" class="chip-list"></div>
+  </div>
+
+  <button id="reset">Reset filters</button>
+
+  <div id="footer">
+    Source: non-domestic EPC register (England &amp; Wales) + Google Solar API.<br>
+    Pilot region: Yorkshire &amp; Humber. Manually refreshed.
+    <div class="caveat">
+      ⚠ Floor area &amp; building type are a <strong>proxy</strong> for electricity usage,
+      not a measurement — there's no public per-building consumption data in the UK.
+      Solar status reflects Google's aerial-imagery detection and may be wrong,
+      especially where "no imagery coverage" is shown.
+    </div>
+  </div>
+</div>
+
+<!-- ── Map ───────────────────────────────────────────────── -->
+<div id="map"></div>
+
+</div><!-- #main-wrap -->
+
+<!-- ── Loading ───────────────────────────────────────────── -->
+<div id="loading">
+  <div class="spinner"></div>
+  <span>Loading prospect data…</span>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="shared/solar-status-config.js"></script>
+<script src="shared/epc-rating-config.js"></script>
+<script src="shared/escape-html.js"></script>
+<script>
+
+/* ── Building-type bucketing ─────────────────────────────────
+   EPC PROPERTY_TYPE is free text with dozens of literal values.
+   This keyword bucketing is a first pass, NOT verified against a real
+   EPC export yet — tune once real property_type values are seen. */
+const BUILDING_TYPE_BUCKETS = {
+  // Checked in this order — "Retail" must come before "Warehouse/Industrial"
+  // so EPC's "Retail Warehouse" property type lands in Retail, not Industrial.
+  "Retail":               ["retail", "shop", "supermarket", "shopping"],
+  "Warehouse/Industrial": ["warehouse", "industrial", "factory", "distribution", "storage", "workshop", "manufacturing"],
+  "Office":                ["office"],
+  "Hotel/Leisure":        ["hotel", "leisure", "restaurant", "pub", "bar", "sport", "gym", "cinema"],
+  "Healthcare":           ["hospital", "health", "clinic", "surgery", "care home"],
+  "Education":            ["school", "college", "university", "education"],
+};
+const BUILDING_TYPE_ORDER = [...Object.keys(BUILDING_TYPE_BUCKETS), "Other"];
+
+function bucketPropertyType(pt) {
+  const lower = (pt || "").toLowerCase();
+  for (const [bucket, keywords] of Object.entries(BUILDING_TYPE_BUCKETS)) {
+    if (keywords.some(k => lower.includes(k))) return bucket;
+  }
+  return "Other";
+}
+
+const BUILDING_TYPE_COLORS = {
+  "Warehouse/Industrial": "#5d8a64",
+  "Retail":               "#c08438",
+  "Office":               "#6f5b94",
+  "Hotel/Leisure":        "#2f5a3d",
+  "Healthcare":           "#b85544",
+  "Education":            "#8e9080",
+  "Other":                "#b9b9a9",
+};
+
+const EPC_RATING_ORDER = ["A", "B", "C", "D", "E", "F", "G"];
+const SOLAR_STATUS_ORDER = ["prospect", "has_solar", "no_coverage", "pending", "error"];
+
+/* ── Map setup ───────────────────────────────────────────── */
+const map = L.map("map", { center: [53.85, -1.3], zoom: 9, zoomControl: false });
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',
+  maxZoom: 19,
+}).addTo(map);
+L.control.zoom({ position: 'topright' }).addTo(map);
+
+const cluster = L.markerClusterGroup({
+  chunkedLoading: true,
+  maxClusterRadius: 50,
+  iconCreateFunction: c => L.divIcon({
+    html: `<div class="day-cluster">${c.getChildCount()}</div>`,
+    className: "", iconSize: [36, 36],
+  }),
+});
+map.addLayer(cluster);
+
+/* ── State ───────────────────────────────────────────────── */
+let allMarkers = [];
+let activeBuildingTypes = new Set(BUILDING_TYPE_ORDER);
+let activeRatings = new Set(EPC_RATING_ORDER);
+let activeSolarStatuses = new Set(['prospect']); // default: only show fresh prospects
+let searchTerm = "";
+let floorMin = null;
+let floorMax = null;
+
+/* ── Marker icon ─────────────────────────────────────────── */
+function makeMarkerIcon(d) {
+  const cfg = SOLAR_STATUS[d.solar_status];
+  const color = cfg ? cfg.color : '#000000';
+  const size = 16;
+  const height = Math.round(size * 1.45);
+  const path = `M${size/2} 0 C ${size*0.86} 0, ${size} ${size*0.26}, ${size} ${size*0.5} C ${size} ${size*0.78}, ${size/2} ${height}, ${size/2} ${height} C ${size/2} ${height}, 0 ${size*0.78}, 0 ${size*0.5} C 0 ${size*0.26}, ${size*0.14} 0, ${size/2} 0 Z`;
+  const body = `<div style="width:${size}px;height:${height}px;background:${color};clip-path:path('${path}');filter:drop-shadow(0 2px 3px rgba(0,0,0,.28));"></div>`;
+  const core = `<div style="position:absolute;top:${Math.round(size*0.3)}px;left:50%;transform:translateX(-50%);width:${Math.round(size*0.36)}px;height:${Math.round(size*0.36)}px;border-radius:50%;background:#fff;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08);"></div>`;
+  const html = `<div class="day-marker" style="position:relative;width:${size}px;height:${height}px;">${body}${core}</div>`;
+  return L.divIcon({ html, className: '', iconSize: [size, height], iconAnchor: [size/2, height] });
+}
+
+/* ── Popup builder ───────────────────────────────────────── */
+function buildPopup(d) {
+  const solarCfg = SOLAR_STATUS[d.solar_status] || { color: '#999', soft: '#eee', label: d.solar_status };
+  const epcCfg = EPC_RATING[d.epc_rating] || null;
+  const bucket = bucketPropertyType(d.property_type);
+
+  const statusPill = `<span class="status-pill" style="background:${solarCfg.soft};color:${solarCfg.color}"><span class="pill-dot" style="background:${solarCfg.color}"></span>${solarCfg.label}</span>`;
+  const epcTag = epcCfg
+    ? `<span class="tag"><span class="tag-dot" style="background:${epcCfg.color}"></span>EPC ${epcCfg.label}</span>`
+    : '';
+  const typeTag = `<span class="tag"><span class="tag-dot" style="background:${BUILDING_TYPE_COLORS[bucket]}"></span>${escapeHtml(bucket)}</span>`;
+
+  const maps = d.postcode
+    ? `https://www.google.com/maps/search/${encodeURIComponent(d.postcode)}`
+    : `https://www.google.com/maps/search/${encodeURIComponent(d.address || '')}`;
+  const addr = `<p>📍 <a href="${maps}" target="_blank" rel="noopener">${escapeHtml(d.address || d.postcode || 'Address not listed')}</a></p>`;
+  const area = d.floor_area ? `<p>📐 ${Math.round(d.floor_area).toLocaleString()} m² floor area</p>` : '';
+  const type = d.property_type ? `<p>🏢 ${escapeHtml(d.property_type)}</p>` : '';
+  const la = d.local_authority ? `<p>📍 ${escapeHtml(d.local_authority)}</p>` : '';
+
+  const solarEst = (d.solar_status === 'prospect' && (d.solar_max_panels || d.solar_yearly_energy_kwh))
+    ? `<div class="solar-est">☀ Estimated roof potential: ${d.solar_max_panels ? `up to <strong>${d.solar_max_panels}</strong> panels` : ''}${d.solar_max_panels && d.solar_yearly_energy_kwh ? ' · ' : ''}${d.solar_yearly_energy_kwh ? `~<strong>${Math.round(d.solar_yearly_energy_kwh).toLocaleString()}</strong> kWh/year` : ''}</div>`
+    : '';
+
+  return `
+    <div class="popup">
+      <div class="popup-header">
+        <div class="popup-eyebrow">Commercial prospect</div>
+        <div class="popup-name">${escapeHtml(d.address ? d.address.split(',')[0] : (d.postcode || 'Unnamed building'))}</div>
+        ${d.postcode ? `<div class="popup-meta">${escapeHtml(d.postcode)}</div>` : ''}
+        <div class="tags">${statusPill}${epcTag}${typeTag}</div>
+      </div>
+      ${solarEst}
+      <div class="popup-facts">${addr}${area}${type}${la}</div>
+    </div>`;
+}
+
+/* ── Init ────────────────────────────────────────────────── */
+function initMap(data) {
+  document.getElementById("total").textContent = data.length.toLocaleString();
+  data.forEach(d => {
+    if (!d.lat || !d.lng) return;
+    d._bucket = bucketPropertyType(d.property_type);
+    const marker = L.marker([d.lat, d.lng], { icon: makeMarkerIcon(d) });
+    marker.bindTooltip(d.address || d.postcode || 'Unnamed building', { direction: "top", offset: [0, -10], className: 'day-tooltip', opacity: 0.96 });
+    marker._d = d;
+    marker.on('click', () => marker.bindPopup(buildPopup(d), { maxWidth: 320, autoPan: true }).openPopup());
+    allMarkers.push(marker);
+  });
+  buildBuildingTypeChips(data);
+  buildEpcRatingChips(data);
+  buildSolarStatusChips(data);
+}
+
+/* ── Chip builders ───────────────────────────────────────── */
+function buildBuildingTypeChips(data) {
+  const counts = {};
+  data.forEach(d => { counts[d._bucket] = (counts[d._bucket] || 0) + 1; });
+  const el = document.getElementById("building-type-list");
+  BUILDING_TYPE_ORDER.filter(b => counts[b]).forEach(bucket => {
+    const row = document.createElement("label");
+    row.className = "chip on";
+    row.innerHTML = `<input type="checkbox" checked data-bucket="${bucket}"/>
+      <span class="dot" style="background:${BUILDING_TYPE_COLORS[bucket]}"></span>
+      ${escapeHtml(bucket)}<span class="chip-n">${counts[bucket].toLocaleString()}</span>`;
+    row.querySelector("input").addEventListener("change", e => {
+      e.target.checked ? activeBuildingTypes.add(bucket) : activeBuildingTypes.delete(bucket);
+      row.classList.toggle('on', e.target.checked);
+      applyFilters();
+    });
+    el.appendChild(row);
+  });
+}
+
+function buildEpcRatingChips(data) {
+  const counts = {};
+  data.forEach(d => { if (d.epc_rating) counts[d.epc_rating] = (counts[d.epc_rating] || 0) + 1; });
+  const el = document.getElementById("epc-rating-list");
+  EPC_RATING_ORDER.filter(r => counts[r]).forEach(rating => {
+    const cfg = EPC_RATING[rating];
+    const row = document.createElement("label");
+    row.className = "chip on";
+    row.innerHTML = `<input type="checkbox" checked data-rating="${rating}"/>
+      <span class="dot" style="background:${cfg.color}"></span>
+      ${cfg.label}<span class="chip-n">${counts[rating].toLocaleString()}</span>`;
+    row.querySelector("input").addEventListener("change", e => {
+      e.target.checked ? activeRatings.add(rating) : activeRatings.delete(rating);
+      row.classList.toggle('on', e.target.checked);
+      applyFilters();
+    });
+    el.appendChild(row);
+  });
+}
+
+function buildSolarStatusChips(data) {
+  const counts = {};
+  data.forEach(d => { counts[d.solar_status] = (counts[d.solar_status] || 0) + 1; });
+  const el = document.getElementById("solar-status-list");
+  SOLAR_STATUS_ORDER.filter(s => counts[s]).forEach(status => {
+    const cfg = SOLAR_STATUS[status];
+    const row = document.createElement("label");
+    row.className = "chip" + (activeSolarStatuses.has(status) ? " on" : "");
+    row.innerHTML = `<input type="checkbox" ${activeSolarStatuses.has(status) ? "checked" : ""} data-status="${status}"/>
+      <span class="dot" style="background:${cfg.color}"></span>
+      ${cfg.label}<span class="chip-n">${counts[status].toLocaleString()}</span>`;
+    row.querySelector("input").addEventListener("change", e => {
+      e.target.checked ? activeSolarStatuses.add(status) : activeSolarStatuses.delete(status);
+      row.classList.toggle('on', e.target.checked);
+      applyFilters();
+    });
+    el.appendChild(row);
+  });
+}
+
+document.getElementById("solar-status-clear").addEventListener("click", () => {
+  activeSolarStatuses = new Set(SOLAR_STATUS_ORDER);
+  document.querySelectorAll("#solar-status-list input").forEach(cb => {
+    cb.checked = true;
+    cb.closest('.chip').classList.add('on');
+  });
+  applyFilters();
+});
+
+/* ── Filter logic ────────────────────────────────────────── */
+function applyFilters() {
+  const term = searchTerm.toLowerCase();
+  cluster.clearLayers();
+  let shown = 0;
+  allMarkers.forEach(m => {
+    const d = m._d;
+    const typeOk   = activeBuildingTypes.has(d._bucket);
+    const ratingOk = !d.epc_rating || activeRatings.has(d.epc_rating);
+    const statusOk = activeSolarStatuses.has(d.solar_status);
+    const searchOk = !term || (d.address||'').toLowerCase().includes(term) || (d.postcode||'').toLowerCase().includes(term);
+    const minOk    = floorMin == null || (d.floor_area != null && d.floor_area >= floorMin);
+    const maxOk    = floorMax == null || (d.floor_area != null && d.floor_area <= floorMax);
+
+    if (typeOk && ratingOk && statusOk && searchOk && minOk && maxOk) {
+      cluster.addLayer(m);
+      shown++;
+    }
+  });
+  document.getElementById("shown").textContent = shown.toLocaleString();
+}
+
+/* ── Event listeners ─────────────────────────────────────── */
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.remove('open');
+}
+document.getElementById('menu-btn').addEventListener('click', () => {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebar-overlay').classList.toggle('open');
+});
+document.getElementById('sidebar-overlay').addEventListener('click', closeSidebar);
+
+document.getElementById("search").addEventListener("input", e => { searchTerm = e.target.value; applyFilters(); });
+document.getElementById("floor-min").addEventListener("input", e => { floorMin = e.target.value === '' ? null : Number(e.target.value); applyFilters(); });
+document.getElementById("floor-max").addEventListener("input", e => { floorMax = e.target.value === '' ? null : Number(e.target.value); applyFilters(); });
+
+document.getElementById("reset").addEventListener("click", () => {
+  activeBuildingTypes = new Set(BUILDING_TYPE_ORDER);
+  activeRatings = new Set(EPC_RATING_ORDER);
+  activeSolarStatuses = new Set(['prospect']);
+  searchTerm = ""; floorMin = null; floorMax = null;
+  document.getElementById("search").value = "";
+  document.getElementById("floor-min").value = "";
+  document.getElementById("floor-max").value = "";
+  document.querySelectorAll("#building-type-list input, #epc-rating-list input").forEach(cb => {
+    cb.checked = true;
+    cb.closest('.chip').classList.add('on');
+  });
+  document.querySelectorAll("#solar-status-list input").forEach(cb => {
+    const isProspect = cb.dataset.status === 'prospect';
+    cb.checked = isProspect;
+    cb.closest('.chip').classList.toggle('on', isProspect);
+  });
+  applyFilters();
+});
+
+/* ── Bootstrap ───────────────────────────────────────────── */
+fetch("prospects.json")
+  .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+  .then(data => {
+    document.getElementById("loading").style.display = "none";
+    initMap(data);
+    applyFilters();
+  })
+  .catch(() => {
+    document.getElementById("loading").innerHTML =
+      "<p style='color:var(--alert)'>Failed to load prospect data.<br>Please try refreshing.</p>";
+  });
+
+</script>
+</body>
+</html>
