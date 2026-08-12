@@ -583,16 +583,10 @@ const SOLAR_STATUS_ORDER = ["prospect", "has_solar", "no_coverage", "pending", "
 
 /* ── Map setup ───────────────────────────────────────────── */
 const map = L.map("map", { center: [53.85, -1.3], zoom: 9, zoomControl: false });
-const streetsLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',
   maxZoom: 19,
-});
-const satelliteLayer = L.tileLayer("https://api.maptiler.com/tiles/satellite-v2/{z}/{x}/{y}.jpg?key=wqmsUAgFyXoAm64J6W0a", {
-  attribution: '© <a href="https://www.maptiler.com/copyright/">MapTiler</a>',
-  maxZoom: 20,
-});
-streetsLayer.addTo(map);
-L.control.layers({ "Streets": streetsLayer, "Satellite": satelliteLayer }, null, { position: 'topright' }).addTo(map);
+}).addTo(map);
 L.control.zoom({ position: 'topright' }).addTo(map);
 
 const cluster = L.markerClusterGroup({
