@@ -11,7 +11,11 @@ This is a sibling project to `mcs-map` (Amco Renewables' installer map/CRM at `C
 **GitHub Pages:** not yet enabled. **Do not enable it (or otherwise go live) until the Azure AD provider is confirmed enabled and a real `@turbineenergyuk.co.uk` account has completed the OAuth login end-to-end in Supabase.** Merging this branch's code is not the same as being ready to go live: until Azure AD is wired up, the *only* way anyone gets a session is the email/password signup path, and migration `004` only restricts *who* an authenticated session belongs to — it doesn't stand up the intended login method. If Pages goes live before Azure AD works, staff have no way to sign in while the site is technically reachable. See Section 9, step 7.
 **Local folder:** as of this writing, still `C:\Users\GregRoy\Projects\commercial-map` on this machine — cosmetic only, nothing in the code depends on the local path. Safe to rename to `turbine-solar-prospects` once closed in your editor.
 
-**Status: v1 pilot build.** Data pipeline code, the map frontend, and an Azure AD login gate are built and pushed; the prospects table already holds real ingested data (~21,800 rows). `index.html` queries Supabase live (not a static file) and shows "Failed to load prospect data" only if that live query fails (see Section 6). The EPC download step requires a human to register a GOV.UK One Login account (Section 7, risk 1). **No CRM/contact-logging layer yet** — this build ships the prospect map only, unlike mcs-map's full map+CRM+dashboard. Authentication is live (Microsoft/Azure AD via Supabase, restricted to `@turbineenergyuk.co.uk` both client-side and via RLS — see Section 5 and migrations 003/004), but see the GitHub Pages note in Section 1 above before going live.
+**Status: v1 pilot build, real data loaded, two external dependencies pending.** Data pipeline code, the map frontend, Turbine Energy's real branding, and an Azure AD login gate are all built and pushed. The `prospects` table holds **21,808 real Yorkshire & Humber buildings**, ingested from the full 2011–2026 non-domestic EPC bulk export (`data/` — see Section 4); **21,265 of those (96.6%) are geocoded** (lat/lng filled via postcodes.io). `index.html` queries Supabase live (not a static file) and shows "Failed to load prospect data" only if that live query fails (see Section 6). **No CRM/contact-logging layer yet** — this build ships the prospect map only, unlike mcs-map's full map+CRM+dashboard. Authentication is live (Microsoft/Azure AD via Supabase, restricted to `@turbineenergyuk.co.uk` both client-side and via RLS — see Section 5 and migrations 003/004), but see the GitHub Pages note in Section 1 above before going live.
+
+**Two things block the pilot from being fully populated and truly usable end-to-end:**
+1. **Solar enrichment hasn't run yet** — blocked on a Google Cloud Solar API key (Section 4, Step 0.3). Until it runs, every row's `solar_status` is `pending`, and since the map defaults to showing only `prospect` rows, **the map will currently appear empty** even though the data is loaded. Cap the Solar API's quota (APIs & Services → Solar API → Quotas) to a conservative daily limit before running this at scale — the free tier is 10,000 requests/month, and there's no built-in spend confirmation gate on Google Cloud, only quota caps and billing alerts.
+2. **Turbine IT hasn't completed the Azure App Registration yet** — until they do and it's wired into Supabase (Section 1's GitHub Pages warning), the only way to get a session is the email/password signup path, which works for testing but isn't the intended login method for staff.
 
 ---
 
@@ -80,9 +84,9 @@ Every step is idempotent (upserts on `epc_lmk_key`, `solar-enrichment` only touc
 4. `npm install` in the repo root.
 
 ### Step 1 — download EPC data (manual, human-gated)
-Go to https://get-energy-performance-data.communities.gov.uk/, sign in, download the **non-domestic** EPC bulk CSV (England & Wales). Save into `data/` (gitignored).
+Go to https://get-energy-performance-data.communities.gov.uk/, sign in, download the **non-domestic certificates** bulk CSV per year (England & Wales) — not "recommendations", that's a different, unused dataset (see Section 7, risk 1). Save into `data/` (gitignored).
 
-**Before running the ingest script**, open the CSV and check its header row against `COLUMN_CANDIDATES` in `scripts/ingest-epc.mjs` — the column names in that script are a best guess based on the historical schema and have not been verified against a live export. The script fails loudly (lists the actual headers it found) if it can't match what it needs, rather than silently mis-mapping columns.
+`scripts/ingest-epc.mjs`'s `COLUMN_CANDIDATES` map has been verified against a real 2011–2026 export (Section 7, risk 2) — a first run shouldn't need any changes. If the portal changes its schema again in the future, the script still fails loudly and lists the actual headers found, rather than silently mis-mapping columns.
 
 ### Step 2 — ingest
 ```
@@ -137,11 +141,11 @@ RLS: authenticated `SELECT` only, further restricted to `@turbineenergyuk.co.uk`
 
 Single page, no CRM. Gated by a Microsoft/Azure AD login screen (`@turbineenergyuk.co.uk` only) — see Section 1 and `docs/superpowers/specs/2026-08-12-azure-ad-auth-design.md`. Once signed in, loads prospect data via a live, paginated Supabase query (`fetchAllProspects()` in `index.html`), not a static file.
 
-- Sidebar filters: search (address/postcode), floor-area min/max, building-type chips, EPC rating chips (A–G, using the standard UK EPC colour band, not the Daylight palette), solar-status chips.
+- Sidebar filters: search (address/postcode), floor-area min/max, building-type chips, EPC rating chips (A–G, using the standard UK EPC colour band, kept distinct from the app's own Turbine Energy brand palette), solar-status chips.
 - **Solar-status defaults to showing only `prospect`** — that's the point of the tool. A "show all" link reveals `has_solar`/`no_coverage`/etc. for spot-checking.
 - Marker pin colour = `solar_status` (via `shared/solar-status-config.js`), following mcs-map's `makeMarkerIcon`/teardrop-pin pattern.
 - Popup shows address, floor area, property type, local authority, EPC rating, solar status, and (for prospects with data) an estimated panel count / yearly kWh potential pulled from the Solar API response.
-- `BUILDING_TYPE_BUCKETS` (inline in `index.html`) groups EPC's free-text `property_type` into ~6 buckets via keyword matching — **not verified against real EPC data yet**, tune once real values are seen.
+- `BUILDING_TYPE_BUCKETS` (inline in `index.html`) groups EPC's `property_type` (UK planning Use Classes Order labels, not free text) into ~6 buckets via word-boundary keyword matching — spot-checked against real ingested data, see Section 7 risk 3 for the one known ambiguous case.
 
 No radius circle (no obvious Turbine Energy depot location yet — ask the client), no Log Contact modal, no dashboard.
 
@@ -149,9 +153,9 @@ No radius circle (no obvious Turbine Energy depot location yet — ask the clien
 
 ## 7. Known Risks / Open Items
 
-1. **EPC portal moved.** `epc.opendatacommunities.org` now redirects to `get-energy-performance-data.communities.gov.uk`, which requires a GOV.UK One Login account for bulk downloads (confirmed via live fetch). Not confirmed whether the new portal still supports region-filtered downloads or a non-interactive API — do a manual walkthrough before assuming either.
-2. **EPC CSV column names are unverified.** `scripts/ingest-epc.mjs`'s `COLUMN_CANDIDATES` map is a best guess from the historical schema. The script fails loudly with the real header list if it can't match — don't silently trust a first run.
-3. **`BUILDING_TYPE_BUCKETS` bucketing is unverified** against real `property_type` values — same caveat.
+1. **EPC portal — resolved.** `epc.opendatacommunities.org` redirects to `get-energy-performance-data.communities.gov.uk`, which requires a GOV.UK One Login account. Confirmed via a real walkthrough: the portal offers separate **certificates** and **recommendations** downloads per year — only **certificates** is needed (recommendations is retrofit-suggestion data, unused by this pipeline). Certificates are available per-year back to 2011; header schema is identical across all years 2011–2026.
+2. **EPC CSV column names — verified against a real export, and fixed.** `scripts/ingest-epc.mjs`'s `COLUMN_CANDIDATES` map was a guess based on the historical (`opendatacommunities`) schema; the real bulk export uses different names for two fields the script needs: `LMK_KEY` → `certificate_number`, and `TOTAL_FLOOR_AREA` → `floor_area`. Both are now in `COLUMN_CANDIDATES` alongside the original guesses, and a full 2011–2026 ingest (1,059,502 raw rows) ran clean. The script still fails loudly and lists real headers if a future export changes again.
+3. **`BUILDING_TYPE_BUCKETS` bucketing — spot-checked against real data, works for observed categories.** Real `property_type` values follow the UK planning Use Classes Order format (e.g. `"A1/A2 Retail and Financial/Professional services"`, `"B1 Offices and Workshop businesses"`, `"B2 to B7 General Industrial and Special Industrial Groups"`, `"B8 Storage or Distribution"`, `"C2 Residential Institutions - Hospitals and Care Homes"`), not free-text descriptions. The keyword matching correctly buckets all of these seen so far. One ambiguous case worth knowing: `"B1 Offices and Workshop businesses"` matches Warehouse/Industrial (via `"workshop"`) rather than Office, because Warehouse/Industrial is checked first and B1 is a genuinely mixed-use category — this is an order-dependent judgment call, not a bug, but worth revisiting if the sales team finds B1 buildings miscategorized. C1 (Hotels) and D1/D2 (Institutions/Assembly and Leisure) categories haven't been directly observed yet.
 4. **Google Solar API `detectionStatus` field path is unverified.** `supabase/functions/solar-enrichment/index.ts`'s `classifyDetection()` checks a few plausible JSON paths and always stores the raw response in `solar_raw` specifically so this can be corrected by reprocessing stored data, without a second paid API call, once a real response is seen. **Do this check early in the pilot**, before trusting the `prospect`/`has_solar` split at any scale.
 5. **Google Solar API coverage won't be uniform** across Yorkshire & Humber — expect a real `no_coverage` rate, especially for large sheds/industrial buildings on urban outskirts.
 6. **EPC data is a proxy, not a measurement.** Self-declared at assessment time, buildings get renovated afterward. Keep the UI caveat in `index.html`'s footer.
@@ -165,20 +169,22 @@ No radius circle (no obvious Turbine Energy depot location yet — ask the clien
 - Automated refresh (pg_cron) — v1 is a manually-run pipeline. EPC re-ingestion should be at most monthly once the portal's automation story is confirmed; solar re-checks should be far less frequent (6–12 months, and only for `has_solar` rows, to catch removed panels) since Google's own aerial imagery doesn't refresh often.
 - `prospect_contacts` table + Log Contact modal + dashboard, mirroring mcs-map's CRM layer — schema is designed to support this (see Section 5) but nothing is built.
 - Region expansion beyond Yorkshire & Humber — the `region` column and `scripts/ingest-epc.mjs`'s local-authority filter are the two places to widen.
-- Branding — currently reuses mcs-map's "Daylight" placeholder palette; Turbine Energy may want their own.
 
 ---
 
 ## 9. How to Continue Development
 
-**Already done:** repo created and scaffold pushed to `main` (https://github.com/CatchSit/turbine-solar-prospects), Supabase project `turbine-solar-prospects` created.
+**Already done:**
+- Repo created and pushed to `main` (https://github.com/CatchSit/turbine-solar-prospects); Supabase project `turbine-solar-prospects` created, migrations 001–004 applied.
+- `npm install`, GOV.UK One Login registered, full 2011–2026 non-domestic EPC bulk certificates downloaded and ingested (Section 4, Steps 1–2) — **21,808 Yorkshire & Humber prospects** in the table.
+- Geocoding run (Section 4, Step 3) — **21,265 of those (96.6%) have lat/lng**; the remaining ~750 failed to match in postcodes.io (expected background noise, Section 7 risk 7).
+- Turbine Energy's real brand palette applied (pulled from the `turbine-homepage` marketing site build) and the `BUILDING_TYPE_BUCKETS` keyword matching spot-checked against the real ingested data (Section 7, risk 3).
+- Azure AD login gate built: Microsoft/Azure AD sign-in via Supabase Auth, restricted to `@turbineenergyuk.co.uk` both client-side and via RLS (migrations 003–004, live-verified against the real project — see `docs/superpowers/specs/2026-08-12-azure-ad-auth-design.md`).
 
 **Next steps:**
-1. `npm install`.
-2. Confirm migrations 001 through 004 have been run against the Supabase project (Section 4, Step 0) — run any that haven't.
-3. Register GOV.UK One Login, download the non-domestic EPC bulk CSV, and **check its header row against `scripts/ingest-epc.mjs`'s column mapping before trusting a run**.
-4. Get a Google Cloud API key with the Solar API enabled and set `GOOGLE_SOLAR_API_KEY` as a Supabase secret.
-5. Run the pipeline (Section 4, Steps 2–4) for a small sample first — spot-check ~15–20 known buildings (some with visible rooftop solar, some without) before trusting the funnel at scale. There's no separate export step — data ingested into `prospects` is visible in the live map on next load once you're signed in (see Section 4's note after Step 4).
-6. Serve `index.html` locally (`npx serve .`), sign in, and exercise every filter against the real live data.
-7. **Confirm the Azure AD provider is enabled and working end-to-end (a real `@turbineenergyuk.co.uk` account completing sign-in) before enabling GitHub Pages or otherwise going live** — see the warning in Section 1. Once confirmed, enable GitHub Pages on the repo (Settings → Pages → deploy from `main`).
-8. Optionally rename the local folder from `commercial-map` to `turbine-solar-prospects` (close it in your editor first — see Section 1).
+1. **Get a Google Cloud API key with the Solar API enabled** and set `GOOGLE_SOLAR_API_KEY` as a Supabase secret (Section 4, Step 0.3) — this is the main blocker right now. Cap the Solar API's quota to something conservative before running it (APIs & Services → Solar API → Quotas) — no built-in spend confirmation exists on Google Cloud, only quota caps and billing alerts.
+2. Run solar enrichment (Section 4, Step 4) — repeat the invoke command until the processed count is 0. Spot-check ~15–20 known buildings (some with visible rooftop solar, some without) before trusting the `prospect`/`has_solar` funnel at scale, and verify `classifyDetection()`'s field-path guess against a real response early (Section 7, risk 4).
+3. **Get the Azure App Registration back from Turbine Energy's IT team** (Tenant ID, Client ID, Client secret) and wire it into Supabase (Authentication → Providers → Azure) — see Section 1's GitHub Pages warning for why this has to happen before going live.
+4. Serve `index.html` locally (`npx serve .`), sign in (email/password works for testing until Azure AD is wired up), and exercise every filter against the real live data — note the map will look empty until Step 2 above populates `solar_status` beyond `pending`.
+5. **Confirm the Azure AD provider is enabled and working end-to-end (a real `@turbineenergyuk.co.uk` account completing sign-in) before enabling GitHub Pages or otherwise going live** — see the warning in Section 1. Once confirmed, enable GitHub Pages on the repo (Settings → Pages → deploy from `main`).
+6. Optionally rename the local folder from `commercial-map` to `turbine-solar-prospects` (close it in your editor first — see Section 1).
