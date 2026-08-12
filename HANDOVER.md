@@ -39,8 +39,7 @@ Two hard problems had to be solved before any of this could be built, and the de
 
 ```
 turbine-solar-prospects/
-├── index.html                        # Only page — prospect map (no login, no CRM)
-├── prospects.json                    # Static export consumed by index.html
+├── index.html                        # Only page — prospect map, gated by Azure AD login
 ├── HANDOVER.md                       # This file
 ├── package.json
 ├── .gitignore
@@ -49,20 +48,23 @@ turbine-solar-prospects/
 │   ├── solar-status-config.js        # solar_status -> {color, label}
 │   └── epc-rating-config.js          # EPC A-G -> {color, label}
 ├── data/                             # gitignored — raw EPC CSV downloads go here
+├── docs/superpowers/
+│   ├── specs/2026-08-12-azure-ad-auth-design.md
+│   └── plans/2026-08-12-azure-ad-auth.md
 ├── scripts/                          # Manually-run Node pipeline tooling
 │   ├── ingest-epc.mjs                # CSV -> region+floor-area filter -> dedupe -> upsert `prospects`
-│   ├── geocode-postcodes.mjs         # postcodes.io bulk lookup -> fills lat/lng
-│   └── export-prospects-json.mjs     # Supabase -> prospects.json -> push via GitHub Git Data API
+│   └── geocode-postcodes.mjs         # postcodes.io bulk lookup -> fills lat/lng
 └── supabase/
     ├── migrations/
     │   ├── 001_prospects_schema.sql
-    │   └── 002_prospects_rls.sql
+    │   ├── 002_prospects_rls.sql
+    │   └── 003_prospects_auth_rls.sql  # Drops public read, requires authenticated
     └── functions/
         └── solar-enrichment/
             └── index.ts               # Batched, resumable Google Solar API enrichment
 ```
 
-Unlike mcs-map, **the browser never talks to Supabase directly** — there's no CRM data yet to justify shipping an anon key + live queries. `index.html` only fetches the static `prospects.json`. All Supabase access happens server-side (scripts + Edge Function) using the service-role key.
+As of the Azure AD login work, `index.html` **does** talk to Supabase directly, matching mcs-map: the anon key is embedded client-side (safe — RLS is the real gate) and the frontend queries `prospects` live, behind a required Microsoft/Azure AD sign-in (`@turbineenergyuk.co.uk` only). See `docs/superpowers/specs/2026-08-12-azure-ad-auth-design.md` for the full design. The pipeline scripts (ingest, geocode, solar-enrichment) still write server-side using the service-role key, unaffected by this change.
 
 ---
 
@@ -157,7 +159,7 @@ No radius circle (no obvious Turbine Energy depot location yet — ask the clien
 5. **Google Solar API coverage won't be uniform** across Yorkshire & Humber — expect a real `no_coverage` rate, especially for large sheds/industrial buildings on urban outskirts.
 6. **EPC data is a proxy, not a measurement.** Self-declared at assessment time, buildings get renovated afterward. Keep the UI caveat in `index.html`'s footer.
 7. **postcodes.io has no formal SLA.** Fine for a pilot; switch `scripts/geocode-postcodes.mjs` to a local ONSPD CSV join before any national-scale expansion — both for reliability and to avoid overloading a free public service.
-8. **Auth is deliberately absent in v1**, unlike mcs-map's Azure AD gate — there's no CRM data yet to protect. Revisit when a `prospect_contacts` table lands.
+8. **Auth is now live** (Azure AD via Supabase, matching mcs-map) — see `docs/superpowers/specs/2026-08-12-azure-ad-auth-design.md`. An `ADMIN_EMAILS` stub exists in `index.html` but doesn't gate anything yet; wire it up when the `prospect_contacts` CRM table lands.
 
 ---
 
@@ -165,7 +167,6 @@ No radius circle (no obvious Turbine Energy depot location yet — ask the clien
 
 - Automated refresh (pg_cron) — v1 is a manually-run pipeline. EPC re-ingestion should be at most monthly once the portal's automation story is confirmed; solar re-checks should be far less frequent (6–12 months, and only for `has_solar` rows, to catch removed panels) since Google's own aerial imagery doesn't refresh often.
 - `prospect_contacts` table + Log Contact modal + dashboard, mirroring mcs-map's CRM layer — schema is designed to support this (see Section 5) but nothing is built.
-- Authentication, once there's CRM data worth protecting.
 - Region expansion beyond Yorkshire & Humber — the `region` column and `scripts/ingest-epc.mjs`'s local-authority filter are the two places to widen.
 - Branding — currently reuses mcs-map's "Daylight" placeholder palette; Turbine Energy may want their own.
 
