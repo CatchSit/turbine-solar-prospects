@@ -587,9 +587,9 @@ const streetsLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}
   attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',
   maxZoom: 19,
 });
-const satelliteLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
-  attribution: 'Esri, Maxar, Earthstar Geographics',
-  maxZoom: 19,
+const satelliteLayer = L.tileLayer("https://api.maptiler.com/tiles/satellite-v2/{z}/{x}/{y}.jpg?key=wqmsUAgFyXoAm64J6W0a", {
+  attribution: '© <a href="https://www.maptiler.com/copyright/">MapTiler</a>',
+  maxZoom: 20,
 });
 streetsLayer.addTo(map);
 L.control.layers({ "Streets": streetsLayer, "Satellite": satelliteLayer }, null, { position: 'topright' }).addTo(map);
