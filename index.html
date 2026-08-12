@@ -11,19 +11,19 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
   <style>
-    /* ── Daylight tokens (placeholder branding, reused from mcs-map) ─── */
+    /* ── Turbine Energy tokens (pulled from the turbine-homepage build's .te design tokens) ─── */
     :root {
-      --bg:        #fafaf7;
+      --bg:        #f8f9fa;
       --surface:   #ffffff;
-      --surface2:  #f4f4ee;
-      --border:    #e6e4d9;
-      --borderH:   #d8d5c5;
-      --text:      #1f2117;
-      --text2:     #535649;
-      --text3:     #8e9080;
-      --accent:    #5d8a64;
-      --accentDim: #dde9da;
-      --accentDk:  #2f5a3d;
+      --surface2:  #eef1ec;
+      --border:    rgba(17,24,39,0.12);
+      --borderH:   rgba(17,24,39,0.18);
+      --text:      #111827;
+      --text2:     #6b7280;
+      --text3:     rgba(17,24,39,0.38);
+      --accent:    #2ba45e;
+      --accentDim: rgba(43,164,94,0.12);
+      --accentDk:  #1f8a52;
       --warn:      #c08438;
       --warnSoft:  #f3e3cb;
       --alert:     #b85544;
@@ -351,10 +351,18 @@ const BUILDING_TYPE_BUCKETS = {
 };
 const BUILDING_TYPE_ORDER = [...Object.keys(BUILDING_TYPE_BUCKETS), "Other"];
 
+// Word-boundary matching, not plain substring — otherwise short keywords like
+// "bar" or "sport" false-match inside unrelated words ("barn", "transport").
+const BUILDING_TYPE_MATCHERS = Object.fromEntries(
+  Object.entries(BUILDING_TYPE_BUCKETS).map(([bucket, keywords]) => [
+    bucket, keywords.map(k => new RegExp(`\\b${k}s?\\b`, "i")),
+  ])
+);
+
 function bucketPropertyType(pt) {
-  const lower = (pt || "").toLowerCase();
-  for (const [bucket, keywords] of Object.entries(BUILDING_TYPE_BUCKETS)) {
-    if (keywords.some(k => lower.includes(k))) return bucket;
+  const text = pt || "";
+  for (const [bucket, matchers] of Object.entries(BUILDING_TYPE_MATCHERS)) {
+    if (matchers.some(re => re.test(text))) return bucket;
   }
   return "Other";
 }
