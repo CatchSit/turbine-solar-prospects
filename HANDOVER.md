@@ -8,10 +8,10 @@ This is a sibling project to `mcs-map` (Amco Renewables' installer map/CRM at `C
 
 **Repo:** https://github.com/CatchSit/turbine-solar-prospects (created, initial scaffold pushed to `main`)
 **Supabase project:** `turbine-solar-prospects` (created — confirm migrations have been run before assuming the schema exists, see Section 4)
-**GitHub Pages:** not yet enabled
+**GitHub Pages:** not yet enabled. **Do not enable it (or otherwise go live) until the Azure AD provider is confirmed enabled and a real `@turbineenergyuk.co.uk` account has completed the OAuth login end-to-end in Supabase.** Merging this branch's code is not the same as being ready to go live: until Azure AD is wired up, the *only* way anyone gets a session is the email/password signup path, and migration `004` only restricts *who* an authenticated session belongs to — it doesn't stand up the intended login method. If Pages goes live before Azure AD works, staff have no way to sign in while the site is technically reachable. See Section 9, step 7.
 **Local folder:** as of this writing, still `C:\Users\GregRoy\Projects\commercial-map` on this machine — cosmetic only, nothing in the code depends on the local path. Safe to rename to `turbine-solar-prospects` once closed in your editor.
 
-**Status: v1 pilot build, scaffold only.** Data pipeline code and map frontend are built and pushed; **no real data has been ingested yet** — the map will show "Failed to load prospect data" until `prospects.json` exists (see Section 4 to run the pipeline). The EPC download step requires a human to register a GOV.UK One Login account (Section 7, risk 1). **No CRM/contact-logging layer and no authentication** — this build ships the prospect map only, unlike mcs-map's full map+CRM+dashboard.
+**Status: v1 pilot build.** Data pipeline code, the map frontend, and an Azure AD login gate are built and pushed; the prospects table already holds real ingested data (~21,800 rows). `index.html` queries Supabase live (not a static file) and shows "Failed to load prospect data" only if that live query fails (see Section 6). The EPC download step requires a human to register a GOV.UK One Login account (Section 7, risk 1). **No CRM/contact-logging layer yet** — this build ships the prospect map only, unlike mcs-map's full map+CRM+dashboard. Authentication is live (Microsoft/Azure AD via Supabase, restricted to `@turbineenergyuk.co.uk` both client-side and via RLS — see Section 5 and migrations 003/004), but see the GitHub Pages note in Section 1 above before going live.
 
 ---
 
@@ -30,7 +30,7 @@ Two hard problems had to be solved before any of this could be built, and the de
 |---|---|
 | Leaflet.js 1.9.4 + MarkerCluster 1.5.3 | Interactive map rendering |
 | Plain HTML/CSS/JS | No framework, no build toolchain — same as mcs-map |
-| Node.js scripts (`scripts/`) | EPC ingestion, geocoding, JSON export — run manually, not in-browser |
+| Node.js scripts (`scripts/`) | EPC ingestion, geocoding — run manually, not in-browser |
 | Supabase (Postgres) | Stores the enriched `prospects` table |
 | Supabase Edge Function (Deno) | `solar-enrichment` — batched Google Solar API calls |
 | Google Solar API | Roof solar potential + existing-array detection |
@@ -58,7 +58,8 @@ turbine-solar-prospects/
     ├── migrations/
     │   ├── 001_prospects_schema.sql
     │   ├── 002_prospects_rls.sql
-    │   └── 003_prospects_auth_rls.sql  # Drops public read, requires authenticated
+    │   ├── 003_prospects_auth_rls.sql  # Drops public read, requires authenticated (superseded by 004)
+    │   └── 004_prospects_domain_rls.sql # Narrows read further to @turbineenergyuk.co.uk (RLS-enforced)
     └── functions/
         └── solar-enrichment/
             └── index.ts               # Batched, resumable Google Solar API enrichment
@@ -73,7 +74,7 @@ As of the Azure AD login work, `index.html` **does** talk to Supabase directly, 
 Every step is idempotent (upserts on `epc_lmk_key`, `solar-enrichment` only touches `pending` rows), so re-running is always safe.
 
 ### Step 0 — one-time setup
-1. Supabase project `turbine-solar-prospects` is already created. Confirm `supabase/migrations/001_prospects_schema.sql` then `002_prospects_rls.sql` have been run in its SQL editor — run them if not (check with `SELECT * FROM prospects LIMIT 1;`; a "relation does not exist" error means they haven't been run yet).
+1. Supabase project `turbine-solar-prospects` is already created. Confirm migrations `001_prospects_schema.sql` through `004_prospects_domain_rls.sql` (all four, in order) have been run in its SQL editor — run any that haven't (check with `SELECT * FROM prospects LIMIT 1;`; a "relation does not exist" error means `001`/`002` haven't been run yet). `004` is the one that actually enforces the `@turbineenergyuk.co.uk` restriction at the database level — don't treat `003` alone as sufficient, see Section 5.
 2. Register a GOV.UK One Login account (needed to download EPC bulk data — see Section 7).
 3. Get a Google Cloud API key with the Solar API enabled, and set it as the `GOOGLE_SOLAR_API_KEY` secret on the Supabase project (`supabase secrets set GOOGLE_SOLAR_API_KEY=...`).
 4. `npm install` in the repo root.
@@ -103,13 +104,9 @@ supabase functions invoke solar-enrichment   # repeat until processed count is 0
 ```
 Requires the `GOOGLE_SOLAR_API_KEY` secret set on the Supabase project. Watch the invocation logs for the `prospect / has_solar / no_coverage / error` funnel counts before this scales past the pilot — `buildingInsights` free tier is 10,000 requests/month.
 
-### Step 5 — export to the map
-```
-SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... GITHUB_PAT=... GITHUB_REPO=CatchSit/turbine-solar-prospects npm run export
-```
-Re-exports the **full current** `prospects` table (not incremental) to `prospects.json` and pushes it via the GitHub Git Data API, same blob/tree/commit/ref-update flow as mcs-map's `mcs-scraper`. Only rows with a resolved `lat`/`lng` are included.
+There is no separate export step — `index.html` queries the `prospects` table live (Section 6), gated by the Azure AD login and RLS, so once Steps 1–4 have run, the data is already visible in the map on next load. (The old `npm run export` script that pushed a static `prospects.json` to GitHub was retired when live Supabase queries replaced it — see `docs/superpowers/specs/2026-08-12-azure-ad-auth-design.md`.)
 
-Repeat steps 1–5 (or just 3–5 if only re-checking solar status) whenever the pilot needs refreshing — no cron is set up yet (see Section 8).
+Repeat steps 1–4 (or just 3–4 if only re-checking solar status) whenever the pilot needs refreshing — no cron is set up yet (see Section 8).
 
 ---
 
@@ -130,7 +127,7 @@ Repeat steps 1–5 (or just 3–5 if only re-checking solar status) whenever the
 | `solar_status` | text | `pending` \| `prospect` \| `has_solar` \| `no_coverage` \| `error` |
 | `solar_checked_at`, `solar_detection_status`, `solar_max_panels`, `solar_yearly_energy_kwh`, `solar_raw` | — | Filled by `solar-enrichment`; `solar_raw` keeps the full API response so reclassification doesn't need a second paid call |
 
-RLS: public `SELECT` only. No client insert/update/delete policies — all writes are server-side via the service-role key.
+RLS: authenticated `SELECT` only, further restricted to `@turbineenergyuk.co.uk` accounts at the database level (migration `004_prospects_domain_rls.sql` supersedes `003_prospects_auth_rls.sql`'s "any authenticated session" policy — `003` alone was found in review to be bypassable by anyone who self-registers via the exposed anon key, since public email signup is enabled on the project; `004` closes that by checking `auth.jwt() ->> 'email'` in the policy itself). No client insert/update/delete policies — all writes are server-side via the service-role key.
 
 **Future extension point (not built):** a `prospect_contacts` table, FK'd to `prospects.id`, mirroring mcs-map's `contacts` table — see the commented-out DDL at the bottom of `001_prospects_schema.sql`.
 
@@ -138,7 +135,7 @@ RLS: public `SELECT` only. No client insert/update/delete policies — all write
 
 ## 6. Frontend (`index.html`)
 
-Single page, no login, no CRM. Loads `prospects.json` on page load.
+Single page, no CRM. Gated by a Microsoft/Azure AD login screen (`@turbineenergyuk.co.uk` only) — see Section 1 and `docs/superpowers/specs/2026-08-12-azure-ad-auth-design.md`. Once signed in, loads prospect data via a live, paginated Supabase query (`fetchAllProspects()` in `index.html`), not a static file.
 
 - Sidebar filters: search (address/postcode), floor-area min/max, building-type chips, EPC rating chips (A–G, using the standard UK EPC colour band, not the Daylight palette), solar-status chips.
 - **Solar-status defaults to showing only `prospect`** — that's the point of the tool. A "show all" link reveals `has_solar`/`no_coverage`/etc. for spot-checking.
@@ -146,7 +143,7 @@ Single page, no login, no CRM. Loads `prospects.json` on page load.
 - Popup shows address, floor area, property type, local authority, EPC rating, solar status, and (for prospects with data) an estimated panel count / yearly kWh potential pulled from the Solar API response.
 - `BUILDING_TYPE_BUCKETS` (inline in `index.html`) groups EPC's free-text `property_type` into ~6 buckets via keyword matching — **not verified against real EPC data yet**, tune once real values are seen.
 
-No radius circle (no obvious Turbine Energy depot location yet — ask the client), no Log Contact modal, no dashboard, no auth.
+No radius circle (no obvious Turbine Energy depot location yet — ask the client), no Log Contact modal, no dashboard.
 
 ---
 
@@ -178,10 +175,10 @@ No radius circle (no obvious Turbine Energy depot location yet — ask the clien
 
 **Next steps:**
 1. `npm install`.
-2. Confirm the two migrations have been run against the Supabase project (Section 4, Step 0) — run them if not.
+2. Confirm migrations 001 through 004 have been run against the Supabase project (Section 4, Step 0) — run any that haven't.
 3. Register GOV.UK One Login, download the non-domestic EPC bulk CSV, and **check its header row against `scripts/ingest-epc.mjs`'s column mapping before trusting a run**.
 4. Get a Google Cloud API key with the Solar API enabled and set `GOOGLE_SOLAR_API_KEY` as a Supabase secret.
-5. Run the pipeline (Section 4, Steps 2–5) for a small sample first — spot-check ~15–20 known buildings (some with visible rooftop solar, some without) before trusting the funnel at scale. Step 5 pushes `prospects.json` straight to the live repo, so this is a real, visible update once run.
-6. Serve `index.html` locally (`npx serve .`) and exercise every filter against the real `prospects.json`.
-7. Enable GitHub Pages on the repo (Settings → Pages → deploy from `main`) once there's real data worth publishing.
+5. Run the pipeline (Section 4, Steps 2–4) for a small sample first — spot-check ~15–20 known buildings (some with visible rooftop solar, some without) before trusting the funnel at scale. There's no separate export step — data ingested into `prospects` is visible in the live map on next load once you're signed in (see Section 4's note after Step 4).
+6. Serve `index.html` locally (`npx serve .`), sign in, and exercise every filter against the real live data.
+7. **Confirm the Azure AD provider is enabled and working end-to-end (a real `@turbineenergyuk.co.uk` account completing sign-in) before enabling GitHub Pages or otherwise going live** — see the warning in Section 1. Once confirmed, enable GitHub Pages on the repo (Settings → Pages → deploy from `main`).
 8. Optionally rename the local folder from `commercial-map` to `turbine-solar-prospects` (close it in your editor first — see Section 1).

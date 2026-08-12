@@ -518,7 +518,7 @@ document.getElementById('ms-btn').addEventListener('click', async () => {
 
 document.getElementById('sign-out-btn').addEventListener('click', async () => {
   await db.auth.signOut();
-  showLoginScreen();
+  location.reload();
 });
 
 db.auth.getSession().then(({ data: { session } }) => {
@@ -811,6 +811,7 @@ async function fetchAllProspects() {
       .from('prospects')
       .select('id, address, postcode, lat, lng, property_type, floor_area:total_floor_area, epc_rating:current_energy_rating, local_authority, solar_status, solar_max_panels, solar_yearly_energy_kwh')
       .not('lat', 'is', null)
+      .order('id', { ascending: true })
       .range(from, from + PAGE - 1);
     if (error) throw new Error(JSON.stringify(error));
     rows.push(...data);
@@ -820,14 +821,18 @@ async function fetchAllProspects() {
   return rows;
 }
 
+let dataLoaded = false;
 function bootstrapData() {
+  if (dataLoaded) return;
+  dataLoaded = true;
   fetchAllProspects()
     .then(data => {
       document.getElementById("loading").style.display = "none";
       initMap(data);
       applyFilters();
     })
-    .catch(() => {
+    .catch(e => {
+      console.error(e);
       document.getElementById("loading").innerHTML =
         "<p style='color:var(--alert)'>Failed to load prospect data.<br>Please try refreshing.</p>";
     });
