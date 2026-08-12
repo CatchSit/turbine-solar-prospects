@@ -50,7 +50,7 @@ function postcodeOutcodeArea(postcode) {
 // ─── Column mapping (defensive — see header note above) ──────────────────
 
 const COLUMN_CANDIDATES = {
-  lmk_key:                  ['LMK_KEY', 'lmk-key'],
+  lmk_key:                  ['LMK_KEY', 'lmk-key', 'certificate_number'],
   uprn:                     ['UPRN', 'uprn'],
   address1:                 ['ADDRESS1', 'address1', 'ADDRESS'],
   address2:                 ['ADDRESS2', 'address2'],
@@ -59,7 +59,7 @@ const COLUMN_CANDIDATES = {
   postcode:                 ['POSTCODE', 'postcode'],
   local_authority_label:    ['LOCAL_AUTHORITY_LABEL', 'local-authority-label'],
   property_type:            ['PROPERTY_TYPE', 'property-type'],
-  total_floor_area:         ['TOTAL_FLOOR_AREA', 'total-floor-area'],
+  total_floor_area:         ['TOTAL_FLOOR_AREA', 'total-floor-area', 'floor_area'],
   current_energy_rating:    ['CURRENT_ENERGY_RATING', 'current-energy-rating', 'ASSET_RATING_BAND'],
   current_energy_efficiency:['CURRENT_ENERGY_EFFICIENCY', 'current-energy-efficiency', 'ASSET_RATING'],
   lodgement_date:           ['LODGEMENT_DATE', 'lodgement-date'],
@@ -99,6 +99,7 @@ function buildAddress(row, col) {
 
 function toProspectRow(row, col) {
   const floorArea = parseFloat(row[col.total_floor_area]);
+  const efficiency = parseInt(row[col.current_energy_efficiency], 10);
   return {
     epc_lmk_key:               String(row[col.lmk_key] ?? '').trim(),
     uprn:                      String(row[col.uprn] ?? '').trim() || null,
@@ -109,7 +110,7 @@ function toProspectRow(row, col) {
     property_type:             String(row[col.property_type] ?? '').trim(),
     total_floor_area:          Number.isFinite(floorArea) ? floorArea : null,
     current_energy_rating:     String(row[col.current_energy_rating] ?? '').trim().toUpperCase() || null,
-    current_energy_efficiency: parseInt(row[col.current_energy_efficiency], 10) || null,
+    current_energy_efficiency: Number.isFinite(efficiency) ? efficiency : null,
     lodgement_date:            String(row[col.lodgement_date] ?? '').trim() || null,
   };
 }

@@ -35,13 +35,27 @@ async function geocodeBatch(postcodes) {
   return result; // [{ query, result: { latitude, longitude, ... } | null }]
 }
 
+async function fetchPendingRows() {
+  const rows = [];
+  const PAGE = 1000; // PostgREST's default max-rows cap — must page past it explicitly
+  let from = 0;
+  while (true) {
+    const { data, error } = await db
+      .from('prospects')
+      .select('id, postcode')
+      .is('lat', null)
+      .not('postcode', 'is', null)
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(JSON.stringify(error));
+    rows.push(...data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return rows;
+}
+
 async function main() {
-  const { data: rows, error } = await db
-    .from('prospects')
-    .select('id, postcode')
-    .is('lat', null)
-    .not('postcode', 'is', null);
-  if (error) throw new Error(JSON.stringify(error));
+  const rows = await fetchPendingRows();
 
   console.log(`Prospects needing geocoding: ${rows.length}`);
   if (!rows.length) return;

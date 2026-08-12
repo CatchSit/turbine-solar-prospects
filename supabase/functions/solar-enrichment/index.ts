@@ -48,8 +48,14 @@ function classifyDetection(json: any): { detected: boolean | null; detectionStat
   ].filter(Boolean)
   const detectionStatus = candidates[0] ?? null
   if (!detectionStatus) return { detected: null, detectionStatus: null }
-  const detected = /DETECTED(?!_NO|_ZERO)/i.test(detectionStatus) && !/NO_ARRAYS|NONE|ZERO/i.test(detectionStatus)
-  return { detected, detectionStatus }
+
+  if (/NO_ARRAYS|NONE|ZERO/i.test(detectionStatus)) return { detected: false, detectionStatus }
+  if (/DETECTED/i.test(detectionStatus)) return { detected: true, detectionStatus }
+
+  // Unrecognized status (e.g. an UNSPECIFIED enum default) — don't guess,
+  // fall through to 'error' so it gets flagged for review instead of
+  // silently becoming a lead.
+  return { detected: null, detectionStatus }
 }
 
 // deno-lint-ignore no-explicit-any
