@@ -37,7 +37,8 @@ button { font-family: inherit; cursor: pointer; }
 .filters select, .filters input { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; background: var(--surface2); }
 #export-btn { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; }
 table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-th { text-align: left; padding: 10px 16px; color: var(--text3); font-weight: 500; border-bottom: 1px solid var(--border); cursor: pointer; white-space: nowrap; }
+th { text-align: left; padding: 10px 16px; color: var(--text3); font-weight: 500; border-bottom: 1px solid var(--border); cursor: pointer; white-space: nowrap; user-select: none; }
+th .sort-ind { color: var(--accent); }
 td { padding: 10px 16px; border-bottom: 1px solid var(--border); vertical-align: top; }
 .outcome-tag { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px 3px 6px; border-radius: 100px; font-size: 11px; }
 .outcome-tag .dot { width: 6px; height: 6px; border-radius: 50%; }
@@ -72,12 +73,12 @@ td { padding: 10px 16px; border-bottom: 1px solid var(--border); vertical-align:
     </div>
     <table>
       <thead><tr>
-        <th data-col="contacted_at">Date</th>
-        <th data-col="prospect_address">Prospect</th>
-        <th data-col="employee">Employee</th>
-        <th data-col="outcome">Outcome</th>
-        <th data-col="follow_up_date">Follow-up</th>
-        <th data-col="notes">Notes</th>
+        <th data-col="contacted_at"><span class="th-label">Date</span><span class="sort-ind"></span></th>
+        <th data-col="prospect_address"><span class="th-label">Prospect</span><span class="sort-ind"></span></th>
+        <th data-col="employee"><span class="th-label">Employee</span><span class="sort-ind"></span></th>
+        <th data-col="outcome"><span class="th-label">Outcome</span><span class="sort-ind"></span></th>
+        <th data-col="follow_up_date"><span class="th-label">Follow-up</span><span class="sort-ind"></span></th>
+        <th data-col="notes"><span class="th-label">Notes</span><span class="sort-ind"></span></th>
       </tr></thead>
       <tbody id="table-body"></tbody>
     </table>
@@ -89,7 +90,7 @@ td { padding: 10px 16px; border-bottom: 1px solid var(--border); vertical-align:
 
 <script src="shared/escape-html.js"></script>
 <script src="shared/contact-outcome-config.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
 const { createClient } = supabase;
@@ -105,6 +106,14 @@ let allData = [];
 let prospectNames = {};
 let activePeriod = 'week';
 let activeCharts = {};
+let sortState = { col: 'contacted_at', asc: false };
+
+// Stable grouping key for "by employee" — groups by employee_email (the
+// account-tied identifier) rather than the free-text employee name, since
+// the display name is just whatever a rep typed/had pre-filled. Falls back
+// to the name itself for any legacy row logged before employee_email was
+// consistently populated.
+function employeeKey(c) { return c.employee_email || c.employee; }
 
 async function boot(user) {
   if (!isAdmin(user)) {
@@ -114,6 +123,7 @@ async function boot(user) {
   document.getElementById('wrap').style.display = 'block';
   await loadData();
   populateFilters();
+  setupSorting();
   buildCharts();
   renderTable();
 }
@@ -125,29 +135,78 @@ db.auth.getSession().then(({ data: { session } }) => {
   else location.href = 'index.html';
 });
 
+// PostgREST caps unpaginated results at 1000 rows — page past it explicitly,
+// mirroring index.html's fetchAllProspects() pattern.
+const PAGE_SIZE = 1000;
+
+async function fetchAllContacts() {
+  const rows = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await db
+      .from('prospect_contacts')
+      .select('*')
+      .is('deleted_at', null)
+      .order('contacted_at', { ascending: false })
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) { console.error('Failed to load prospect_contacts:', error); return null; }
+    rows.push(...data);
+    if (data.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return rows;
+}
+
+async function fetchProspectsByIds(ids) {
+  const rows = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await db
+      .from('prospects')
+      .select('id, address, postcode')
+      .in('id', ids)
+      .order('id', { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) { console.error('Failed to load prospects:', error); return rows; }
+    rows.push(...(data || []));
+    if (data.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return rows;
+}
+
 async function loadData() {
-  const { data: contacts, error } = await db.from('prospect_contacts').select('*').order('contacted_at', { ascending: false });
-  if (error) { console.error('Failed to load prospect_contacts:', error); allData = []; return; }
+  const contacts = await fetchAllContacts();
   allData = contacts || [];
 
   const ids = [...new Set(allData.map(c => c.prospect_id))];
   if (ids.length) {
-    const { data: prospects } = await db.from('prospects').select('id, address, postcode').in('id', ids);
-    (prospects || []).forEach(p => { prospectNames[p.id] = p.address || p.postcode || 'Unknown'; });
+    const prospects = await fetchProspectsByIds(ids);
+    prospects.forEach(p => { prospectNames[p.id] = p.address || p.postcode || 'Unknown'; });
   }
 }
 
 function periodData() {
   if (activePeriod === 'all') return allData;
   const days = activePeriod === 'week' ? 7 : 30;
-  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  // Align to a calendar-day boundary so this matches the daily-activity
+  // chart's calendar-date bucketing exactly — otherwise a rolling
+  // now-minus-N-days cutoff and N-calendar-dates of buckets can disagree
+  // by up to a day, and the employee/activity charts won't sum to the
+  // same total for the same period selection.
+  cutoff.setHours(0, 0, 0, 0);
   return allData.filter(c => new Date(c.contacted_at) >= cutoff);
 }
 
 function populateFilters() {
-  const employees = [...new Set(allData.map(c => c.employee))].sort();
+  const empByKey = new Map();
+  allData.forEach(c => { const key = employeeKey(c); if (!empByKey.has(key)) empByKey.set(key, c.employee); });
   const empSel = document.getElementById('f-employee');
-  employees.forEach(e => { const opt = document.createElement('option'); opt.value = e; opt.textContent = e; empSel.appendChild(opt); });
+  [...empByKey.entries()].sort((a, b) => (a[1] || '').localeCompare(b[1] || '')).forEach(([key, name]) => {
+    const opt = document.createElement('option'); opt.value = key; opt.textContent = name; empSel.appendChild(opt);
+  });
 
   const outSel = document.getElementById('f-outcome');
   CONTACT_OUTCOME_ORDER.forEach(o => { const opt = document.createElement('option'); opt.value = o; opt.textContent = CONTACT_OUTCOME[o].label; outSel.appendChild(opt); });
@@ -160,7 +219,26 @@ function populateFilters() {
       document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       buildCharts();
+      renderTable();
     });
+  });
+}
+
+function setupSorting() {
+  document.querySelectorAll('th[data-col]').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      if (sortState.col === col) sortState.asc = !sortState.asc;
+      else { sortState.col = col; sortState.asc = true; }
+      renderTable();
+    });
+  });
+}
+
+function updateSortIndicators() {
+  document.querySelectorAll('th[data-col]').forEach(th => {
+    const ind = th.querySelector('.sort-ind');
+    ind.textContent = th.dataset.col === sortState.col ? (sortState.asc ? ' ▲' : ' ▼') : '';
   });
 }
 
@@ -191,12 +269,16 @@ function buildCharts() {
   });
 
   const empCounts = {};
-  pd.forEach(c => { empCounts[c.employee] = (empCounts[c.employee] || 0) + 1; });
-  const sorted = Object.entries(empCounts).sort((a,b) => b[1] - a[1]);
+  pd.forEach(c => {
+    const key = employeeKey(c);
+    if (!empCounts[key]) empCounts[key] = { label: c.employee, count: 0 };
+    empCounts[key].count++;
+  });
+  const sorted = Object.values(empCounts).sort((a, b) => b.count - a.count);
   if (activeCharts.employee) activeCharts.employee.destroy();
   activeCharts.employee = new Chart(document.getElementById('chart-employee'), {
     type: 'bar',
-    data: { labels: sorted.map(e => e[0]), datasets: [{ data: sorted.map(e => e[1]), backgroundColor: '#1f8a52', borderRadius: 6, maxBarThickness: 20 }] },
+    data: { labels: sorted.map(e => e.label), datasets: [{ data: sorted.map(e => e.count), backgroundColor: '#1f8a52', borderRadius: 6, maxBarThickness: 20 }] },
     options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 } } } }
   });
 }
@@ -205,19 +287,58 @@ function filteredRows() {
   const emp = document.getElementById('f-employee').value;
   const outcome = document.getElementById('f-outcome').value;
   const search = document.getElementById('f-search').value.trim().toLowerCase();
-  return allData.filter(c => {
-    if (emp && c.employee !== emp) return false;
+  return periodData().filter(c => {
+    if (emp && employeeKey(c) !== emp) return false;
     if (outcome && c.outcome !== outcome) return false;
     if (search && !(prospectNames[c.prospect_id] || '').toLowerCase().includes(search)) return false;
     return true;
   });
 }
 
+function sortRows(rows) {
+  const { col, asc } = sortState;
+  const dir = asc ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    let av, bv;
+    switch (col) {
+      case 'contacted_at':
+      case 'follow_up_date':
+        av = a[col] ? new Date(a[col]).getTime() : -Infinity;
+        bv = b[col] ? new Date(b[col]).getTime() : -Infinity;
+        break;
+      case 'prospect_address':
+        av = (prospectNames[a.prospect_id] || '').toLowerCase();
+        bv = (prospectNames[b.prospect_id] || '').toLowerCase();
+        break;
+      case 'outcome':
+        av = (CONTACT_OUTCOME[a.outcome]?.label || a.outcome || '').toLowerCase();
+        bv = (CONTACT_OUTCOME[b.outcome]?.label || b.outcome || '').toLowerCase();
+        break;
+      case 'employee':
+      case 'notes':
+        av = (a[col] || '').toLowerCase();
+        bv = (b[col] || '').toLowerCase();
+        break;
+      default:
+        av = a[col]; bv = b[col];
+    }
+    if (av < bv) return -1 * dir;
+    if (av > bv) return 1 * dir;
+    return 0;
+  });
+}
+
 function renderTable() {
-  const rows = filteredRows();
+  const rows = sortRows(filteredRows());
   const tbody = document.getElementById('table-body');
   tbody.innerHTML = '';
-  document.getElementById('empty-state').style.display = rows.length ? 'none' : 'block';
+  updateSortIndicators();
+
+  const emptyState = document.getElementById('empty-state');
+  emptyState.style.display = rows.length ? 'none' : 'block';
+  emptyState.textContent = allData.length === 0
+    ? 'No contacts logged yet.'
+    : 'No contacts match the current filters.';
 
   rows.forEach(c => {
     const cfg = CONTACT_OUTCOME[c.outcome] || { color: '#999', label: c.outcome };
@@ -233,12 +354,29 @@ function renderTable() {
   });
 }
 
+// Quotes a CSV cell and guards against formula injection: a leading
+// =, +, -, @, tab, or CR opens a formula-execution context when the file
+// is opened in Excel/Sheets — this matters for ordinary note-taking too
+// (e.g. a rep writing "- called, no answer"), not just adversarial input.
+function csvCell(value) {
+  let s = value === null || value === undefined ? '' : String(value);
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  return `"${s.replace(/"/g, '""')}"`;
+}
+
 document.getElementById('export-btn').addEventListener('click', () => {
-  const rows = filteredRows();
-  const cols = ['contacted_at','prospect_id','employee','outcome','notes','next_action','follow_up_date'];
-  const header = ['Date','Prospect ID','Employee','Outcome','Notes','Next Action','Follow-up Date'];
-  const csvRows = rows.map(r => cols.map(c => `"${(r[c] || '').toString().replace(/"/g,'""')}"`).join(','));
-  const csv = [header.join(','), ...csvRows].join('\n');
+  const rows = sortRows(filteredRows());
+  const header = ['Date', 'Prospect', 'Employee', 'Outcome', 'Notes', 'Next Action', 'Follow-up Date'];
+  const csvRows = rows.map(r => [
+    r.contacted_at || '',
+    prospectNames[r.prospect_id] || 'Unknown',
+    r.employee || '',
+    CONTACT_OUTCOME[r.outcome]?.label || r.outcome || '',
+    r.notes || '',
+    r.next_action || '',
+    r.follow_up_date || '',
+  ].map(csvCell).join(','));
+  const csv = [header.map(csvCell).join(','), ...csvRows].join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
   Object.assign(document.createElement('a'), { href: url, download: `turbine-contacts-${new Date().toISOString().slice(0,10)}.csv` }).click();
