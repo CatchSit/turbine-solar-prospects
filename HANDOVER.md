@@ -17,6 +17,8 @@ This is a sibling project to `mcs-map` (Amco Renewables' installer map/CRM at `C
 1. **Solar enrichment hasn't run yet** — blocked on a Google Cloud Solar API key (Section 4, Step 0.3). Until it runs, every row's `solar_status` is `pending`, and since the map defaults to showing only `prospect` rows, **the map will currently appear empty** even though the data is loaded. Cap the Solar API's quota (APIs & Services → Solar API → Quotas) to a conservative daily limit before running this at scale — the free tier is 10,000 requests/month, and there's no built-in spend confirmation gate on Google Cloud, only quota caps and billing alerts.
 2. **Turbine IT hasn't completed the Azure App Registration yet** — until they do and it's wired into Supabase (Section 1's GitHub Pages warning), the only way to get a session is the email/password signup path, which works for testing but isn't the intended login method for staff.
 
+**A third, non-blocking item in progress:** a satellite imagery layer (Section 6) is being added so sales staff can visually check a roof before calling. It needs a separate, browser-exposed **Google Maps JavaScript API key** (different from the Solar API key above, which is server-side only) — requested from Turbine IT 2026-08-17, not yet received. The map works fine without it (defaults to streets-only); this only unblocks the satellite toggle.
+
 ---
 
 ## 2. Why This Exists (read before changing the filtering logic)
@@ -149,6 +151,8 @@ Single page, no CRM. Gated by a Microsoft/Azure AD login screen (`@turbineenergy
 
 No radius circle (no obvious Turbine Energy depot location yet — ask the client), no Log Contact modal, no dashboard.
 
+**Satellite imagery — in progress, not yet live.** Three free/no-key options were tried and rejected on 2026-08-12 by comparing real tiles over the same Leeds location: Esri World Imagery (too low-resolution to judge a rooftop) and MapTiler (added, then also reverted — see commits `9b389e1` → `019edc2` → `0cd1196`). The map currently reverted to plain OpenStreetMap streets only, no toggle. Google Maps satellite tiles looked the best of the options compared (Bing, Google, MapTiler, Esri) but need the Google Maps JavaScript SDK bridged into Leaflet rather than a simple tile-URL swap, and a browser-exposed, domain-restricted API key. That key was requested from Turbine IT on 2026-08-17: **Application restrictions → Websites → `https://catchsit.github.io/*`** only (no localhost entry — it wasn't accepted in the console, so testing is being done directly against the live Pages URL instead of locally), **API restrictions → Maps JavaScript API** only. Once the key arrives, wire up the Leaflet-Google bridge and re-add the toggle — do not reuse the Solar API key, which is a separate, server-side-only credential (Section 1).
+
 ---
 
 ## 7. Known Risks / Open Items
@@ -187,3 +191,4 @@ No radius circle (no obvious Turbine Energy depot location yet — ask the clien
 3. **Get the Azure App Registration back from Turbine Energy's IT team** (Tenant ID, Client ID, Client secret) and wire it into Supabase (Authentication → Providers → Azure) — see Section 1's GitHub Pages warning for why this has to happen before going live.
 4. Test at the live URL (`https://catchsit.github.io/turbine-solar-prospects/`) or locally (`npx serve .`) — sign in with a temporary email/password test account (create one via the Supabase Auth Admin API, since Azure AD isn't wired up yet) and exercise every filter against the real live data. Note the map will look empty until Step 2 above populates `solar_status` beyond `pending`.
 5. **Confirm the Azure AD provider is enabled and working end-to-end (a real `@turbineenergyuk.co.uk` account completing sign-in) before telling Turbine Energy staff about the live URL or treating this as launched** — see the warning in Section 1. GitHub Pages is already on; what's missing is the intended login method.
+6. **Get the Google Maps JavaScript API key back from Turbine IT** (requested 2026-08-17, restricted to `https://catchsit.github.io/*` and Maps JavaScript API only — Section 6) and wire up the satellite-imagery toggle via a Leaflet-Google bridge. Test against the live Pages URL, not localhost (the key has no localhost origin). Non-blocking for launch — the map works without it.
