@@ -677,7 +677,7 @@ function buildPopup(d) {
         <div class="popup-section-label">Talking points</div>
         <ul>${talkingPointsHtml}</ul>
       </div>
-      <div class="company-match" id="company-match-${d.id}">
+      <div class="company-match" id="company-match-${escapeHtml(d.id)}">
         <div class="popup-section-label">Company match</div>
         <div class="company-match-body">Looking up company registered at this address…</div>
       </div>
