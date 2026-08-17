@@ -251,6 +251,40 @@
     .company-match-links { display: flex; gap: 10px; margin-top: 6px; }
     .company-match-links a { color: var(--accent); }
 
+    /* ── Log Contact modal ──────────────────────────────────── */
+    #contact-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(17,24,39,0.4); z-index: 2000; align-items: center; justify-content: center; }
+    #contact-modal-overlay.open { display: flex; }
+    #contact-modal { width: 420px; max-width: 92vw; max-height: 88vh; overflow-y: auto; background: var(--surface); border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+    .modal-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 20px 22px 14px; border-bottom: 1px solid var(--border); }
+    .modal-eyebrow { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .08em; }
+    .modal-header-text h2 { font-size: 17px; font-weight: 600; margin-top: 4px; }
+    .modal-sub { font-size: 12.5px; color: var(--text2); margin-top: 2px; }
+    .modal-close { background: none; border: none; font-size: 16px; color: var(--text3); cursor: pointer; padding: 4px 8px; border-radius: 6px; }
+    .modal-close:hover { background: var(--surface2); color: var(--text); }
+    .modal-body { padding: 18px 22px; }
+    .modal-body label { display: block; font-size: 12.5px; font-weight: 500; color: var(--text2); margin: 14px 0 6px; }
+    .modal-body label:first-child { margin-top: 0; }
+    .modal-body .required { color: var(--alert); margin-left: 3px; }
+    .optional-label { color: var(--text3); font-weight: 400; font-size: 11.5px; }
+    .modal-body input[type="text"], .modal-body input[type="date"], .modal-body textarea {
+      width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px;
+      font-family: inherit; font-size: 13px; background: var(--surface2); color: var(--text);
+    }
+    .modal-body input:focus, .modal-body textarea:focus { outline: none; border-color: var(--accent); }
+    .modal-body textarea { resize: vertical; min-height: 70px; line-height: 1.5; }
+    .outcome-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .outcome-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px 6px 9px; border-radius: 100px; border: 1px solid var(--border); background: var(--surface2); font-size: 12px; color: var(--text2); cursor: pointer; font-family: inherit; }
+    .outcome-chip .chip-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .outcome-chip.on { color: #fff; border-color: transparent; }
+    .modal-footer { display: flex; align-items: center; justify-content: space-between; padding: 14px 22px; border-top: 1px solid var(--border); }
+    .modal-shortcuts { font-size: 11px; color: var(--text3); font-family: monospace; }
+    .modal-btns { display: flex; gap: 8px; }
+    .btn-secondary, .btn-primary { padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; font-family: inherit; border: none; }
+    .btn-secondary { background: var(--surface2); color: var(--text2); }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:disabled { opacity: .6; cursor: default; }
+    .log-contact-btn { margin: 0 20px 18px; padding: 9px 14px; width: calc(100% - 40px); background: var(--accentDim); color: var(--accentDk); border: none; border-radius: 8px; font-size: 12.5px; font-weight: 500; cursor: pointer; font-family: inherit; }
+
     /* ── Loading ──────────────────────────────────────────── */
     #loading {
       position: fixed; inset: 0; background: var(--bg);
@@ -455,6 +489,50 @@
   <span>Loading prospect data…</span>
 </div>
 
+<!-- ── Log Contact modal ─────────────────────────────────── -->
+<div id="contact-modal-overlay">
+  <div id="contact-modal">
+    <div class="modal-header">
+      <div class="modal-header-text">
+        <div class="modal-eyebrow">Log contact</div>
+        <h2 id="cm-prospect-name">—</h2>
+        <div class="modal-sub" id="cm-prospect-meta"></div>
+      </div>
+      <button class="modal-close" id="cm-close-btn" aria-label="Close">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <input type="hidden" id="cm-prospect-id"/>
+
+      <label>Your name</label>
+      <input type="text" id="cm-employee" placeholder="Enter your name…"/>
+
+      <label>Outcome <span class="required">*</span></label>
+      <div class="outcome-chips" id="cm-outcome-chips"></div>
+      <select id="cm-outcome" style="display:none"></select>
+
+      <div id="cm-followup-date-group" style="display:none">
+        <label>Date <span class="required">*</span></label>
+        <input type="date" id="cm-followup-date"/>
+      </div>
+
+      <label>Notes <span class="optional-label">— optional</span></label>
+      <textarea id="cm-notes" placeholder="What was said? Action items? Any sensitivities?"></textarea>
+
+      <label>Next action <span class="optional-label">— optional</span></label>
+      <textarea id="cm-next-action" placeholder="What needs to happen next…"></textarea>
+    </div>
+
+    <div class="modal-footer">
+      <span class="modal-shortcuts">Esc to cancel · ⌘+↵ to save</span>
+      <div class="modal-btns">
+        <button class="btn-secondary" id="cm-cancel">Cancel</button>
+        <button class="btn-primary" id="cm-submit">Save log</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script src="shared/solar-status-config.js"></script>
@@ -462,6 +540,7 @@
 <script src="shared/escape-html.js"></script>
 <script src="shared/building-types.js"></script>
 <script src="shared/talking-points.js"></script>
+<script src="shared/contact-outcome-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
 
@@ -646,6 +725,7 @@ function buildPopup(d) {
         <div class="popup-section-label">Company match</div>
         <div class="company-match-body">Looking up company registered at this address…</div>
       </div>
+      <button class="log-contact-btn" onclick="openContactModal('${escapeHtml(d.id)}', ${escapeHtml(JSON.stringify(d.address || d.postcode || 'Unnamed building'))})">Log contact</button>
     </div>`;
 }
 
@@ -717,6 +797,111 @@ async function loadCompanyMatch(d) {
     if (el) el.querySelector('.company-match-body').innerHTML = companyMatchFallbackHtml(d, true);
   }
 }
+
+/* ── Contact log modal ──────────────────────────────────────── */
+(function initContactModal() {
+  const chipsEl = document.getElementById('cm-outcome-chips');
+  const selectEl = document.getElementById('cm-outcome');
+  CONTACT_OUTCOME_ORDER.forEach(name => {
+    const cfg = CONTACT_OUTCOME[name];
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'outcome-chip';
+    chip.dataset.value = name;
+    chip.innerHTML = `<span class="chip-dot" style="background:${cfg.color}"></span>${escapeHtml(cfg.label)}`;
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('#cm-outcome-chips .outcome-chip').forEach(c => { c.classList.remove('on'); c.style.background = ''; c.style.borderColor = ''; });
+      chip.classList.add('on');
+      chip.style.background = cfg.color;
+      chip.style.borderColor = cfg.color;
+      selectEl.value = name;
+      selectEl.dispatchEvent(new Event('change'));
+    });
+    chipsEl.appendChild(chip);
+
+    const opt = document.createElement('option');
+    opt.value = name; opt.textContent = name;
+    selectEl.appendChild(opt);
+  });
+})();
+
+document.getElementById('cm-outcome').addEventListener('change', e => {
+  const group = document.getElementById('cm-followup-date-group');
+  const cfg = CONTACT_OUTCOME[e.target.value];
+  if (cfg && cfg.requiresDate) {
+    group.style.display = 'block';
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const input = document.getElementById('cm-followup-date');
+    input.min = todayStr;
+    if (!input.value) {
+      const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+      input.value = tomorrow.toISOString().slice(0, 10);
+    }
+  } else {
+    group.style.display = 'none';
+  }
+});
+
+function openContactModal(prospectId, prospectName) {
+  document.getElementById('cm-prospect-id').value = prospectId;
+  document.getElementById('cm-prospect-name').textContent = prospectName;
+  document.getElementById('cm-prospect-meta').textContent = '';
+  document.getElementById('cm-employee').value = currentUser ? getUserName(currentUser) : '';
+  document.querySelectorAll('#cm-outcome-chips .outcome-chip').forEach(c => { c.classList.remove('on'); c.style.background = ''; c.style.borderColor = ''; });
+  document.getElementById('cm-outcome').value = '';
+  document.getElementById('cm-followup-date-group').style.display = 'none';
+  document.getElementById('cm-followup-date').value = '';
+  document.getElementById('cm-notes').value = '';
+  document.getElementById('cm-next-action').value = '';
+  document.getElementById('contact-modal-overlay').classList.add('open');
+}
+
+function closeContactModal() {
+  document.getElementById('contact-modal-overlay').classList.remove('open');
+}
+
+document.getElementById('cm-cancel').addEventListener('click', closeContactModal);
+document.getElementById('cm-close-btn').addEventListener('click', closeContactModal);
+document.getElementById('contact-modal-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('contact-modal-overlay')) closeContactModal();
+});
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('contact-modal-overlay').classList.contains('open')) return;
+  if (e.key === 'Escape') closeContactModal();
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') document.getElementById('cm-submit').click();
+});
+
+document.getElementById('cm-submit').addEventListener('click', async () => {
+  const prospectId = document.getElementById('cm-prospect-id').value;
+  const employee = document.getElementById('cm-employee').value.trim();
+  const outcome = document.getElementById('cm-outcome').value;
+  const followUpDate = document.getElementById('cm-followup-date').value;
+  const notes = document.getElementById('cm-notes').value.trim();
+  const nextAction = document.getElementById('cm-next-action').value.trim();
+
+  if (!employee) { alert('Please enter your name.'); return; }
+  if (!outcome) { alert('Please pick an outcome.'); return; }
+  if (CONTACT_OUTCOME[outcome].requiresDate && !followUpDate) { alert('Please set a date.'); return; }
+
+  const btn = document.getElementById('cm-submit');
+  btn.disabled = true; btn.textContent = 'Saving…';
+
+  const { error } = await window.db.from('prospect_contacts').insert([{
+    prospect_id: prospectId,
+    employee,
+    employee_email: currentUser?.email || null,
+    outcome,
+    notes: notes || null,
+    next_action: nextAction || null,
+    follow_up_date: CONTACT_OUTCOME[outcome].requiresDate ? (followUpDate || null) : null,
+  }]);
+
+  btn.disabled = false; btn.textContent = 'Save log';
+
+  if (error) { alert('Failed to save: ' + error.message); return; }
+
+  closeContactModal();
+});
 
 /* ── Init ────────────────────────────────────────────────── */
 function initMap(data) {
