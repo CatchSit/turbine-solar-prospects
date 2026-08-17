@@ -235,6 +235,21 @@
       background: var(--accentDim); color: var(--accentDk);
       border-radius: 10px; font-size: 12px; line-height: 1.5;
     }
+    .popup-section-label { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text3); margin: 0 20px 6px; }
+    .talking-points { margin: 4px 0; padding: 0 20px 14px; }
+    .talking-points ul { margin: 0; padding-left: 16px; font-size: 12px; color: var(--text2); line-height: 1.55; }
+    .talking-points li { padding: 2px 0; }
+    .company-match { margin: 4px 0 18px; padding: 0 20px; }
+    .company-match-body { font-size: 12px; color: var(--text2); }
+    .company-card { padding: 8px 0; border-top: 1px solid var(--border); }
+    .company-card:first-child { border-top: none; }
+    .company-card.dissolved { opacity: .55; }
+    .company-name { font-weight: 500; color: var(--text); }
+    .company-status { font-weight: 400; color: var(--text3); }
+    .company-officers { margin-top: 2px; color: var(--text2); }
+    .company-match-fallback { color: var(--text3); }
+    .company-match-links { display: flex; gap: 10px; margin-top: 6px; }
+    .company-match-links a { color: var(--accent); }
 
     /* ── Loading ──────────────────────────────────────────── */
     #loading {
@@ -445,6 +460,7 @@
 <script src="shared/solar-status-config.js"></script>
 <script src="shared/epc-rating-config.js"></script>
 <script src="shared/escape-html.js"></script>
+<script src="shared/talking-points.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
 
@@ -645,6 +661,8 @@ function buildPopup(d) {
     ? `<div class="solar-est">☀ Estimated roof potential: ${d.solar_max_panels ? `up to <strong>${d.solar_max_panels}</strong> panels` : ''}${d.solar_max_panels && d.solar_yearly_energy_kwh ? ' · ' : ''}${d.solar_yearly_energy_kwh ? `~<strong>${Math.round(d.solar_yearly_energy_kwh).toLocaleString()}</strong> kWh/year` : ''}</div>`
     : '';
 
+  const talkingPointsHtml = buildTalkingPoints(d).map(p => `<li>${p}</li>`).join('');
+
   return `
     <div class="popup">
       <div class="popup-header">
@@ -655,7 +673,63 @@ function buildPopup(d) {
       </div>
       ${solarEst}
       <div class="popup-facts">${addr}${area}${type}${la}</div>
+      <div class="talking-points">
+        <div class="popup-section-label">Talking points</div>
+        <ul>${talkingPointsHtml}</ul>
+      </div>
+      <div class="company-match" id="company-match-${d.id}">
+        <div class="popup-section-label">Company match</div>
+        <div class="company-match-body">Looking up company registered at this address…</div>
+      </div>
     </div>`;
+}
+
+/* ── Company lookup ──────────────────────────────────────── */
+function companyMatchFallbackHtml(d) {
+  const q = encodeURIComponent(d.postcode || d.address || '');
+  return `
+    <div class="company-match-fallback">
+      No registered company match found. Try:
+      <div class="company-match-links">
+        <a href="https://www.google.com/search?q=${q}" target="_blank" rel="noopener">Google</a>
+        <a href="https://find-and-update.company-information.service.gov.uk/search?q=${q}" target="_blank" rel="noopener">Companies House</a>
+        <a href="https://www.linkedin.com/search/results/companies/?keywords=${q}" target="_blank" rel="noopener">LinkedIn</a>
+      </div>
+    </div>`;
+}
+
+async function loadCompanyMatch(d) {
+  const container = document.getElementById(`company-match-${d.id}`);
+  if (!container) return;
+
+  if (!d.postcode) {
+    container.querySelector('.company-match-body').innerHTML = companyMatchFallbackHtml(d);
+    return;
+  }
+
+  try {
+    const { data, error } = await window.db.functions.invoke('company-lookup', {
+      body: { prospect_id: d.id, postcode: d.postcode },
+    });
+
+    // The popup may have closed (or a different one opened) while this was in flight.
+    const el = document.getElementById(`company-match-${d.id}`);
+    if (!el) return;
+
+    if (error || !data || data.no_match || !data.companies?.length) {
+      el.querySelector('.company-match-body').innerHTML = companyMatchFallbackHtml(d);
+      return;
+    }
+
+    el.querySelector('.company-match-body').innerHTML = data.companies.map(c => `
+      <div class="company-card ${c.status !== 'active' ? 'dissolved' : ''}">
+        <div class="company-name">${escapeHtml(c.company_name)}${c.status !== 'active' ? ` <span class="company-status">· ${escapeHtml(c.status)} — likely not trading</span>` : ''}</div>
+        ${c.officers?.length ? `<div class="company-officers">${c.officers.map(o => escapeHtml(o.name) + (o.role ? ` (${escapeHtml(o.role)})` : '')).join(', ')}</div>` : ''}
+      </div>`).join('');
+  } catch (e) {
+    const el = document.getElementById(`company-match-${d.id}`);
+    if (el) el.querySelector('.company-match-body').innerHTML = companyMatchFallbackHtml(d);
+  }
 }
 
 /* ── Init ────────────────────────────────────────────────── */
@@ -667,7 +741,10 @@ function initMap(data) {
     const marker = L.marker([d.lat, d.lng], { icon: makeMarkerIcon(d) });
     marker.bindTooltip(d.address || d.postcode || 'Unnamed building', { direction: "top", offset: [0, -10], className: 'day-tooltip', opacity: 0.96 });
     marker._d = d;
-    marker.on('click', () => marker.bindPopup(buildPopup(d), { maxWidth: 320, autoPan: true }).openPopup());
+    marker.on('click', () => {
+      marker.bindPopup(buildPopup(d), { maxWidth: 320, autoPan: true }).openPopup();
+      loadCompanyMatch(d);
+    });
     allMarkers.push(marker);
   });
   buildBuildingTypeChips(data);
@@ -809,7 +886,7 @@ async function fetchAllProspects() {
   while (true) {
     const { data, error } = await db
       .from('prospects')
-      .select('id, address, postcode, lat, lng, property_type, floor_area:total_floor_area, epc_rating:current_energy_rating, local_authority, solar_status, solar_max_panels, solar_yearly_energy_kwh')
+      .select('id, address, postcode, lat, lng, property_type, floor_area:total_floor_area, epc_rating:current_energy_rating, local_authority, solar_status, solar_max_panels, solar_yearly_energy_kwh, current_energy_efficiency')
       .not('lat', 'is', null)
       .order('id', { ascending: true })
       .range(from, from + PAGE - 1);
