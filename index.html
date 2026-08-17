@@ -272,6 +272,7 @@
     }
     .modal-body input:focus, .modal-body textarea:focus { outline: none; border-color: var(--accent); }
     .modal-body textarea { resize: vertical; min-height: 70px; line-height: 1.5; }
+    .modal-body input[readonly] { background: var(--border); color: var(--text2); cursor: not-allowed; }
     .outcome-chips { display: flex; flex-wrap: wrap; gap: 6px; }
     .outcome-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px 6px 9px; border-radius: 100px; border: 1px solid var(--border); background: var(--surface2); font-size: 12px; color: var(--text2); cursor: pointer; font-family: inherit; }
     .outcome-chip .chip-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
@@ -311,6 +312,14 @@
       font-family: inherit; transition: background .12s, color .12s;
     }
     .nav-signout-btn:hover { background: var(--surface2); color: var(--text); }
+    .nav-dashboard-link {
+      background: transparent; color: var(--text2);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 7px 13px; font-size: 12.5px;
+      font-family: inherit; text-decoration: none;
+      transition: background .12s, color .12s;
+    }
+    .nav-dashboard-link:hover { background: var(--surface2); color: var(--text); text-decoration: none; }
 
     /* ── Login screen ────────────────────────────────────── */
     #login-screen {
@@ -382,6 +391,7 @@
   <div class="nav-right">
     <span class="nav-user-name" id="nav-user-name"></span>
     <div class="nav-avatar" id="nav-avatar"></div>
+    <a class="nav-dashboard-link" id="nav-dashboard-link" href="dashboard.html" style="display:none">Dashboard</a>
     <button class="nav-signout-btn" id="sign-out-btn">Sign out</button>
   </div>
 </nav>
@@ -505,7 +515,7 @@
       <input type="hidden" id="cm-prospect-id"/>
 
       <label>Your name</label>
-      <input type="text" id="cm-employee" placeholder="Enter your name…"/>
+      <input type="text" id="cm-employee" placeholder="Enter your name…" readonly/>
 
       <label>Outcome <span class="required">*</span></label>
       <div class="outcome-chips" id="cm-outcome-chips"></div>
@@ -595,6 +605,7 @@ function onAuthenticated(user) {
   const name = getUserName(user);
   document.getElementById('nav-user-name').textContent = name;
   document.getElementById('nav-avatar').textContent = getInitials(name);
+  document.getElementById('nav-dashboard-link').style.display = isAdmin(user) ? '' : 'none';
   return true;
 }
 
