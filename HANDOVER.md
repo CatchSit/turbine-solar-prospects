@@ -19,6 +19,7 @@ This is a sibling project to `mcs-map` (Amco Renewables' installer map/CRM at `C
    - Until enrichment actually runs, every row's `solar_status` is `pending`, and since the map defaults to showing only `prospect` rows, **the map will currently appear empty** even though the data is loaded.
 2. **Azure App Registration received, wired into Supabase, and fully verified live — done 2026-08-17.** Configured under Authentication → Providers → Azure (Tenant ID `0750b9d3-513f-4030-8191-2d825d3c58f2`, discovered via Microsoft's public OpenID discovery endpoint for `turbineenergyuk.co.uk` since IT's handoff only included the Client ID, Object ID, and secret, not the Tenant ID itself; the Supabase field is labeled "Azure Tenant URL" and expects the full `https://login.microsoftonline.com/<tenant-id>` form, not the bare GUID). One more fix was needed beyond the provider config: Authentication → **URL Configuration** still had its **Site URL** defaulted to `http://localhost:3000`, so even though the code sends a dynamic `redirectTo`, Supabase ignored it post-login and bounced every sign-in back to localhost regardless of which URL initiated it. Fixed by setting **Site URL** to `https://catchsit.github.io/turbine-solar-prospects/` and adding `https://catchsit.github.io/turbine-solar-prospects/**` to **Redirect URLs**. **A real `@turbineenergyuk.co.uk` account has now completed sign-in successfully end-to-end on the live URL** — the login gate is fully working, not just wired up.
 3. **Google Maps JavaScript API key not yet embedded** — key received 2026-08-17, restricted to `https://catchsit.github.io/*` and Maps JavaScript API only, but the satellite-imagery toggle hasn't been rebuilt to use it yet (Section 6), and testing is blocked on the same billing issue as item 1. Non-blocking for launch — the map works fine without it.
+4. **`COMPANIES_HOUSE_API_KEY` not yet registered** — the `company-lookup` Edge Function (Section 5, Section 6) is fully built and deployed, but the free Companies House API key it needs hasn't been registered yet (no billing required, unlike the Google keys — `developer.company-information.service.gov.uk`). Until it's set as a Supabase secret, the function returns a clean 503 ("Lookup unavailable — COMPANIES_HOUSE_API_KEY not configured") and the popup degrades gracefully to the manual-search-links fallback — nothing is broken, but real Companies House matching hasn't been exercised yet. Non-blocking for launch of the core map, but blocks trusting the Company match feature. See Section 4 Step 0 and Section 6.
 
 **Gotcha hit while wiring these up:** both API keys were originally pasted with a casing typo (`Aiza...` instead of the correct `AIza...` — every real Google API key starts `AIza`, capital I). Google's error messages for a malformed key ("API key not valid") look identical to a genuinely wrong key, so if a freshly-issued key gets rejected, check the casing before assuming IT sent a bad key.
 
@@ -55,23 +56,31 @@ turbine-solar-prospects/
 ├── shared/
 │   ├── escape-html.js                # Copied verbatim from mcs-map
 │   ├── solar-status-config.js        # solar_status -> {color, label}
-│   └── epc-rating-config.js          # EPC A-G -> {color, label}
+│   ├── epc-rating-config.js          # EPC A-G -> {color, label}
+│   ├── building-types.js             # BUILDING_TYPE_BUCKETS/bucketPropertyType/etc. — loads before talking-points.js
+│   └── talking-points.js             # buildTalkingPoints() — client-side "why this building" summary
 ├── data/                             # gitignored — raw EPC CSV downloads go here
 ├── docs/superpowers/
 │   ├── specs/2026-08-12-azure-ad-auth-design.md
+│   ├── specs/2026-08-17-decision-maker-contact-design.md
 │   └── plans/2026-08-12-azure-ad-auth.md
 ├── scripts/                          # Manually-run Node pipeline tooling
 │   ├── ingest-epc.mjs                # CSV -> region+floor-area filter -> dedupe -> upsert `prospects`
 │   └── geocode-postcodes.mjs         # postcodes.io bulk lookup -> fills lat/lng
 └── supabase/
+    ├── config.toml                    # Minimal — pins verify_jwt=true for company-lookup only
     ├── migrations/
     │   ├── 001_prospects_schema.sql
     │   ├── 002_prospects_rls.sql
     │   ├── 003_prospects_auth_rls.sql  # Drops public read, requires authenticated (superseded by 004)
-    │   └── 004_prospects_domain_rls.sql # Narrows read further to @turbineenergyuk.co.uk (RLS-enforced)
+    │   ├── 004_prospects_domain_rls.sql # Narrows read further to @turbineenergyuk.co.uk (RLS-enforced)
+    │   ├── 005_api_usage_tracking.sql  # api_usage table — Solar API monthly-cap tracking
+    │   └── 006_company_lookups.sql     # company_lookups table — Companies House cache
     └── functions/
-        └── solar-enrichment/
-            └── index.ts               # Batched, resumable Google Solar API enrichment
+        ├── solar-enrichment/
+        │   └── index.ts               # Batched, resumable Google Solar API enrichment
+        └── company-lookup/
+            └── index.ts               # On-demand Companies House lookup per prospect
 ```
 
 As of the Azure AD login work, `index.html` **does** talk to Supabase directly, matching mcs-map: the anon key is embedded client-side (safe — RLS is the real gate) and the frontend queries `prospects` live, behind a required Microsoft/Azure AD sign-in (`@turbineenergyuk.co.uk` only). See `docs/superpowers/specs/2026-08-12-azure-ad-auth-design.md` for the full design. The pipeline scripts (ingest, geocode, solar-enrichment) still write server-side using the service-role key, unaffected by this change.
@@ -83,10 +92,11 @@ As of the Azure AD login work, `index.html` **does** talk to Supabase directly, 
 Every step is idempotent (upserts on `epc_lmk_key`, `solar-enrichment` only touches `pending` rows), so re-running is always safe.
 
 ### Step 0 — one-time setup
-1. Supabase project `turbine-solar-prospects` is already created. Confirm migrations `001_prospects_schema.sql` through `004_prospects_domain_rls.sql` (all four, in order) have been run in its SQL editor — run any that haven't (check with `SELECT * FROM prospects LIMIT 1;`; a "relation does not exist" error means `001`/`002` haven't been run yet). `004` is the one that actually enforces the `@turbineenergyuk.co.uk` restriction at the database level — don't treat `003` alone as sufficient, see Section 5.
+1. Supabase project `turbine-solar-prospects` is already created. Confirm migrations `001_prospects_schema.sql` through `006_company_lookups.sql` (all six, in order) have been run in its SQL editor — run any that haven't (check with `SELECT * FROM prospects LIMIT 1;`; a "relation does not exist" error means `001`/`002` haven't been run yet). `004` is the one that actually enforces the `@turbineenergyuk.co.uk` restriction at the database level — don't treat `003` alone as sufficient, see Section 5. `005`/`006` add `api_usage` and `company_lookups`, needed by `solar-enrichment` and `company-lookup` respectively.
 2. Register a GOV.UK One Login account (needed to download EPC bulk data — see Section 7).
 3. Get a Google Cloud API key with the Solar API enabled, and set it as the `GOOGLE_SOLAR_API_KEY` secret on the Supabase project (`supabase secrets set GOOGLE_SOLAR_API_KEY=...`).
-4. `npm install` in the repo root.
+4. Register a free Companies House API key (`developer.company-information.service.gov.uk` — no billing/payment method required, unlike the Google keys) and set it as the `COMPANIES_HOUSE_API_KEY` secret (`supabase secrets set COMPANIES_HOUSE_API_KEY=...`). Not yet done — see Section 1, item 4.
+5. `npm install` in the repo root.
 
 ### Step 1 — download EPC data (manual, human-gated)
 Go to https://get-energy-performance-data.communities.gov.uk/, sign in, download the **non-domestic certificates** bulk CSV per year (England & Wales) — not "recommendations", that's a different, unused dataset (see Section 7, risk 1). Save into `data/` (gitignored).
@@ -166,7 +176,9 @@ No radius circle (no obvious Turbine Energy depot location yet — ask the clien
 - **Talking points** — a client-side-only "why this building" summary generated by `shared/talking-points.js` from data already on the row (EPC rating/efficiency, floor area + building-type bucket, and — once solar enrichment has run — real `solar_max_panels`/`solar_yearly_energy_kwh`, no invented £ figures). No network call, always renders.
 - **Company match** — fired automatically (fire-and-forget, its own loading state) via a new `company-lookup` Edge Function that looks up Companies House for a plausible company + current directors registered at the prospect's postcode, caching the result in the new `company_lookups` table (Section 5) for 90 days. On no match, no postcode, or any lookup failure, it falls back to one-click manual search links (Google, Companies House, LinkedIn) rather than a dead end — the popup never blocks or breaks on this.
 
-Requires the `COMPANIES_HOUSE_API_KEY` secret (free — `developer.company-information.service.gov.uk`, no billing needed, unlike the Google keys), which **is not yet registered** — same human-gated-dependency pattern as the Google API keys in Section 1. The function is fully built and deployed; live browser testing on 2026-08-17 confirmed it gracefully degrades to the manual-search fallback with the key absent, so nothing is broken in the meantime, but true Companies House matching hasn't been exercised against a real key yet. See Section 7, risk 9 for a related rough edge while the key is unset.
+Requires the `COMPANIES_HOUSE_API_KEY` secret (free — `developer.company-information.service.gov.uk`, no billing needed, unlike the Google keys), which **is not yet registered** — same human-gated-dependency pattern as the Google API keys in Section 1 (see Section 1, item 4). The function is fully built and deployed; live browser testing on 2026-08-17 confirmed it gracefully degrades to the manual-search fallback with the key absent (now via a clean `503`, not a crashed worker — see Section 7, risk 9), so nothing is broken in the meantime, but true Companies House matching hasn't been exercised against a real key yet.
+
+**Next step worth flagging:** `company-lookup` currently queries Companies House's `GET /search/companies?q=<postcode>` — a name-oriented free-text search that happens to index registered-office addresses, not a location-first endpoint. `GET /advanced-search/companies?location=<postcode>` may be a better-fit endpoint for this use case. Worth evaluating during the already-planned 10-15 prospect spot-check (design spec's "Testing & verification" section) once `COMPANIES_HOUSE_API_KEY` is registered and live testing becomes possible.
 
 ---
 
@@ -180,7 +192,7 @@ Requires the `COMPANIES_HOUSE_API_KEY` secret (free — `developer.company-infor
 6. **EPC data is a proxy, not a measurement.** Self-declared at assessment time, buildings get renovated afterward. Keep the UI caveat in `index.html`'s footer.
 7. **postcodes.io has no formal SLA.** Fine for a pilot; switch `scripts/geocode-postcodes.mjs` to a local ONSPD CSV join before any national-scale expansion — both for reliability and to avoid overloading a free public service.
 8. **Auth is now live** (Azure AD via Supabase, matching mcs-map) — see `docs/superpowers/specs/2026-08-12-azure-ad-auth-design.md`. An `ADMIN_EMAILS` stub exists in `index.html` but doesn't gate anything yet; wire it up when the `prospect_contacts` CRM table lands.
-9. **`company-lookup`'s missing-secret check will surface as a misleading CORS error until `COMPANIES_HOUSE_API_KEY` is set (Section 6).** The function throws at module load if any required secret (including `COMPANIES_HOUSE_API_KEY`) is missing, which happens before the Deno worker ever reaches `Deno.serve` — so even the CORS preflight `OPTIONS` request gets a 500, and the browser console reports it as "blocked by CORS policy" rather than a clear diagnostic. The frontend still degrades gracefully (Section 6), so this is non-blocking; it self-resolves once the real key is registered. Worth knowing so nobody chases a phantom CORS bug instead of just setting the secret.
+9. **`company-lookup` postcode/domain security fix, 2026-08-17 review.** The function originally accepted `{ prospect_id, postcode }` from the client and used the client-supplied `postcode` directly in the Companies House search — an authenticated-but-undomain-checked proxy for arbitrary Companies House searches (same bug class as `003` vs `004`'s RLS history in Section 5: "any authenticated session" isn't a real access boundary on this project, since public email signup is enabled on the Supabase project). Fixed: the request contract is now `{ prospect_id }` only, the postcode is looked up server-side from `prospects` using the service-role key, and the function independently verifies the caller's own JWT (via a second, anon-key Supabase client scoped to the request's `Authorization` header) rejects with `403 Forbidden` unless the email ends `@turbineenergyuk.co.uk` — mirroring `index.html`'s `onAuthenticated()`. `supabase/config.toml` now also pins `verify_jwt = true` on this function explicitly. The previous risk noted here (the module-level `throw` on a missing `COMPANIES_HOUSE_API_KEY` crashing the whole Deno worker before `Deno.serve` registered a handler, so even CORS `OPTIONS` preflight got a misleading 500) is also fixed — `COMPANIES_HOUSE_API_KEY` is no longer asserted at module load; a missing key now returns a clean `503` JSON error instead.
 
 ---
 
