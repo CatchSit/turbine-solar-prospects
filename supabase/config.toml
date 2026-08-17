@@ -1,0 +1,2 @@
+[functions.company-lookup]
+verify_jwt = true

@@ -2,11 +2,21 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const SUPABASE_URL              = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const COMPANIES_HOUSE_API_KEY   = Deno.env.get('COMPANIES_HOUSE_API_KEY')!
+const SUPABASE_ANON_KEY         = Deno.env.get('SUPABASE_ANON_KEY')!
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !COMPANIES_HOUSE_API_KEY) {
-  throw new Error('Missing required secrets — check SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, COMPANIES_HOUSE_API_KEY')
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !SUPABASE_ANON_KEY) {
+  throw new Error('Missing required secrets — check SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY')
 }
+
+// COMPANIES_HOUSE_API_KEY is deliberately NOT asserted at module load — unlike
+// the three secrets above (platform-injected, always present), this one is a
+// human-registered secret that may genuinely be unset mid-rollout. Throwing
+// here would crash the whole Deno worker before Deno.serve ever registers a
+// handler, so even the CORS OPTIONS preflight would get an opaque 500 (which
+// browsers report as a misleading "blocked by CORS policy" error). Instead,
+// checked inside the handler and returned as a clean 503 JSON error — see
+// Deno.serve below.
+const COMPANIES_HOUSE_API_KEY = Deno.env.get('COMPANIES_HOUSE_API_KEY')
 
 const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
@@ -15,17 +25,27 @@ const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 // therefore triggers a CORS preflight OPTIONS request. Every response — including
 // error paths — must carry these headers or the browser blocks the request before
 // the frontend ever sees it.
-const CORS_HEADERS: HeadersInit = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+//
+// Access-Control-Allow-Origin is computed per-request (origin-echo against an
+// allowlist) rather than '*', so it's built fresh for every request rather than
+// being a module-level constant — see corsHeadersFor() and Deno.serve below.
+const PROD_ORIGIN = 'https://catchsit.github.io'
+
+function isAllowedOrigin(origin: string | null): boolean {
+  if (!origin) return false
+  if (origin === PROD_ORIGIN) return true
+  // Local dev testing via `npx serve .` — any localhost port.
+  return /^http:\/\/localhost(:\d+)?$/.test(origin)
 }
 
-function jsonResponse(body: unknown, status: number): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-  })
+function corsHeadersFor(origin: string | null): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Vary': 'Origin',
+  }
+  if (isAllowedOrigin(origin)) headers['Access-Control-Allow-Origin'] = origin as string
+  return headers
 }
 
 // Companies House allows this to be re-checked periodically without ever
@@ -33,6 +53,8 @@ function jsonResponse(body: unknown, status: number): Response {
 // per-prospect-click usage pattern — no monthly cap needed, unlike Solar API.
 const CACHE_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000 // 90 days
 const MAX_ACTIVE_COMPANIES = 5
+
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 type Officer = { name: string; role: string }
 type CompanyMatch = { company_name: string; company_number: string; status: string; officers: Officer[] }
@@ -76,21 +98,68 @@ async function fetchOfficers(companyNumber: string): Promise<Officer[]> {
 }
 
 Deno.serve(async (req) => {
+  const origin = req.headers.get('Origin')
+  const CORS_HEADERS = corsHeadersFor(origin)
+
+  function jsonResponse(body: unknown, status: number): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+    })
+  }
+
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 200, headers: CORS_HEADERS })
   }
 
-  let body: { prospect_id?: string; postcode?: string }
+  if (!COMPANIES_HOUSE_API_KEY) {
+    return jsonResponse({ error: 'Lookup unavailable — COMPANIES_HOUSE_API_KEY not configured' }, 503)
+  }
+
+  // Caller-identity check: this function is invoked from the browser with the
+  // signed-in user's own JWT (not the anon key alone), so verify it here with
+  // an anon-key client scoped to the request's own Authorization header —
+  // never trust "authenticated" as a sufficient boundary (public email signup
+  // is enabled on this Supabase project; see HANDOVER.md's 003->004 RLS
+  // history for the same bug class). Mirrors index.html's onAuthenticated().
+  const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } },
+  })
+  const { data: { user }, error: authErr } = await authClient.auth.getUser()
+  if (authErr || !user || !user.email?.toLowerCase().endsWith('@turbineenergyuk.co.uk')) {
+    return jsonResponse({ error: 'Forbidden' }, 403)
+  }
+
+  let body: { prospect_id?: string }
   try {
     body = await req.json()
   } catch {
     return jsonResponse({ error: 'Invalid JSON body' }, 400)
   }
 
-  const { prospect_id, postcode } = body
-  if (!prospect_id || !postcode) {
-    return jsonResponse({ error: 'prospect_id and postcode are required' }, 400)
+  const { prospect_id } = body
+  if (!prospect_id) {
+    return jsonResponse({ error: 'prospect_id is required' }, 400)
   }
+
+  // The postcode is looked up server-side from the prospects table, never
+  // taken from the request body — otherwise this function is an
+  // authenticated-but-undomain-checked proxy for arbitrary Companies House
+  // searches (any caller could pass any postcode, not just a real prospect's).
+  const { data: prospect, error: prospectErr } = await db
+    .from('prospects')
+    .select('postcode')
+    .eq('id', prospect_id)
+    .maybeSingle()
+
+  if (prospectErr) {
+    console.error('Prospect lookup failed:', JSON.stringify(prospectErr))
+    return jsonResponse({ error: 'Prospect lookup failed' }, 500)
+  }
+  if (!prospect || !prospect.postcode) {
+    return jsonResponse({ error: 'Prospect not found or missing postcode' }, 404)
+  }
+  const postcode = prospect.postcode as string
 
   const { data: cached, error: cacheErr } = await db
     .from('company_lookups')
@@ -118,9 +187,13 @@ Deno.serve(async (req) => {
       r.company_status === 'active'
     ).slice(0, MAX_ACTIVE_COMPANIES)
 
-    for (const r of activeMatches) {
+    for (let i = 0; i < activeMatches.length; i++) {
+      const r = activeMatches[i]
       const officers = await fetchOfficers(r.company_number)
       matches.push({ company_name: r.title, company_number: r.company_number, status: r.company_status, officers })
+      // Courtesy pacing between sequential external API calls, mirrors
+      // solar-enrichment's sleep(150) between Google Solar API calls.
+      if (i < activeMatches.length - 1) await sleep(150)
     }
   } catch (e) {
     if (e instanceof Error && e.message === 'RATE_LIMITED') {
