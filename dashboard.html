@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Turbine Energy — Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg: #f8f9fa; --surface: #ffffff; --surface2: #eef1ec;
+  --border: rgba(17,24,39,0.12); --borderH: rgba(17,24,39,0.18);
+  --text: #111827; --text2: #6b7280; --text3: rgba(17,24,39,0.38);
+  --accent: #2ba45e; --accentDim: rgba(43,164,94,0.12); --accentDk: #1f8a52;
+  --warn: #c08438; --warnSoft: #f3e3cb; --alert: #b85544; --alertSoft: #f0d3ce;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.45; }
+a { color: var(--accent); text-decoration: none; }
+button { font-family: inherit; cursor: pointer; }
+#top-nav { background: var(--surface); border-bottom: 1px solid var(--border); height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; position: sticky; top: 0; }
+.nav-brand { font-weight: 600; font-size: 15px; }
+.nav-brand-sub { font-size: 11.5px; color: var(--text3); margin-left: 6px; }
+#sign-out-btn { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; color: var(--text2); }
+#wrap { max-width: 1100px; margin: 0 auto; padding: 24px; }
+.period-row { display: flex; gap: 8px; margin-bottom: 18px; }
+.period-btn { padding: 6px 14px; border-radius: 100px; border: 1px solid var(--border); background: var(--surface); font-size: 12.5px; color: var(--text2); }
+.period-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+.chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+.chart-card h3 { font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+.table-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.table-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.table-header h2 { font-size: 14px; }
+.filters { display: flex; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.filters select, .filters input { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; background: var(--surface2); }
+#export-btn { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+th { text-align: left; padding: 10px 16px; color: var(--text3); font-weight: 500; border-bottom: 1px solid var(--border); cursor: pointer; white-space: nowrap; }
+td { padding: 10px 16px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.outcome-tag { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px 3px 6px; border-radius: 100px; font-size: 11px; }
+.outcome-tag .dot { width: 6px; height: 6px; border-radius: 50%; }
+#empty-state, #denied-state { text-align: center; padding: 60px 20px; color: var(--text3); }
+</style>
+</head>
+<body>
+
+<div id="top-nav">
+  <div><span class="nav-brand">Turbine Energy</span><span class="nav-brand-sub">Dashboard</span></div>
+  <button id="sign-out-btn">Sign out</button>
+</div>
+
+<div id="wrap" style="display:none">
+  <div class="period-row">
+    <button class="period-btn active" data-period="week">7 days</button>
+    <button class="period-btn" data-period="month">30 days</button>
+    <button class="period-btn" data-period="all">All time</button>
+  </div>
+
+  <div class="charts-row">
+    <div class="chart-card"><h3>Daily activity</h3><canvas id="chart-activity" style="max-height:220px"></canvas></div>
+    <div class="chart-card"><h3>By employee</h3><canvas id="chart-employee" style="max-height:220px"></canvas></div>
+  </div>
+
+  <div class="table-card">
+    <div class="table-header"><h2>Contact log</h2><button id="export-btn">Export CSV</button></div>
+    <div class="filters">
+      <select id="f-employee"><option value="">All employees</option></select>
+      <select id="f-outcome"><option value="">All outcomes</option></select>
+      <input type="text" id="f-search" placeholder="Search prospect address…"/>
+    </div>
+    <table>
+      <thead><tr>
+        <th data-col="contacted_at">Date</th>
+        <th data-col="prospect_address">Prospect</th>
+        <th data-col="employee">Employee</th>
+        <th data-col="outcome">Outcome</th>
+        <th data-col="follow_up_date">Follow-up</th>
+        <th data-col="notes">Notes</th>
+      </tr></thead>
+      <tbody id="table-body"></tbody>
+    </table>
+    <div id="empty-state" style="display:none">No contacts logged yet.</div>
+  </div>
+</div>
+
+<div id="denied-state" style="display:none">This page is restricted to managers.</div>
+
+<script src="shared/escape-html.js"></script>
+<script src="shared/contact-outcome-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+const { createClient } = supabase;
+const db = createClient(
+  'https://gkvropheqktytghmiwgp.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdrdnJvcGhlcWt0eXRnaG1pd2dwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5Mjg2NjAsImV4cCI6MjEwMTUwNDY2MH0.swu4sPPi2X9fS-DQEh-cW-ypWZqbWNHXLnGHaKWMxI8'
+);
+
+const ADMIN_EMAILS = ['greg@turbineenergyuk.co.uk'];
+function isAdmin(user) { return ADMIN_EMAILS.includes((user?.email || '').toLowerCase()); }
+
+let allData = [];
+let prospectNames = {};
+let activePeriod = 'week';
+let activeCharts = {};
+
+async function boot(user) {
+  if (!isAdmin(user)) {
+    document.getElementById('denied-state').style.display = 'block';
+    return;
+  }
+  document.getElementById('wrap').style.display = 'block';
+  await loadData();
+  populateFilters();
+  buildCharts();
+  renderTable();
+}
+
+document.getElementById('sign-out-btn').addEventListener('click', async () => { await db.auth.signOut(); location.href = 'index.html'; });
+
+db.auth.getSession().then(({ data: { session } }) => {
+  if (session?.user) boot(session.user);
+  else location.href = 'index.html';
+});
+
+async function loadData() {
+  const { data: contacts, error } = await db.from('prospect_contacts').select('*').order('contacted_at', { ascending: false });
+  if (error) { console.error('Failed to load prospect_contacts:', error); allData = []; return; }
+  allData = contacts || [];
+
+  const ids = [...new Set(allData.map(c => c.prospect_id))];
+  if (ids.length) {
+    const { data: prospects } = await db.from('prospects').select('id, address, postcode').in('id', ids);
+    (prospects || []).forEach(p => { prospectNames[p.id] = p.address || p.postcode || 'Unknown'; });
+  }
+}
+
+function periodData() {
+  if (activePeriod === 'all') return allData;
+  const days = activePeriod === 'week' ? 7 : 30;
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
+  return allData.filter(c => new Date(c.contacted_at) >= cutoff);
+}
+
+function populateFilters() {
+  const employees = [...new Set(allData.map(c => c.employee))].sort();
+  const empSel = document.getElementById('f-employee');
+  employees.forEach(e => { const opt = document.createElement('option'); opt.value = e; opt.textContent = e; empSel.appendChild(opt); });
+
+  const outSel = document.getElementById('f-outcome');
+  CONTACT_OUTCOME_ORDER.forEach(o => { const opt = document.createElement('option'); opt.value = o; opt.textContent = CONTACT_OUTCOME[o].label; outSel.appendChild(opt); });
+
+  [empSel, outSel].forEach(el => el.addEventListener('change', renderTable));
+  document.getElementById('f-search').addEventListener('input', renderTable);
+  document.querySelectorAll('.period-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activePeriod = btn.dataset.period;
+      document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      buildCharts();
+    });
+  });
+}
+
+function buildCharts() {
+  const pd = periodData();
+
+  const dateKeys = [], labels = [], values = [];
+  if (activePeriod === 'all') {
+    const months = [...new Set(allData.map(c => c.contacted_at.slice(0,7)))].sort();
+    months.forEach(m => { dateKeys.push(m); labels.push(new Date(m + '-02').toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })); values.push(0); });
+    allData.forEach(c => { const i = dateKeys.indexOf(c.contacted_at.slice(0,7)); if (i >= 0) values[i]++; });
+  } else {
+    const days = activePeriod === 'week' ? 7 : 30;
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      dateKeys.push(d.toISOString().slice(0,10));
+      labels.push(d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }));
+      values.push(0);
+    }
+    allData.forEach(c => { const i = dateKeys.indexOf(c.contacted_at.slice(0,10)); if (i >= 0) values[i]++; });
+  }
+
+  if (activeCharts.activity) activeCharts.activity.destroy();
+  activeCharts.activity = new Chart(document.getElementById('chart-activity'), {
+    type: 'bar',
+    data: { labels, datasets: [{ data: values, backgroundColor: '#2ba45e', borderRadius: 4, maxBarThickness: 22 }] },
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 } } } }
+  });
+
+  const empCounts = {};
+  pd.forEach(c => { empCounts[c.employee] = (empCounts[c.employee] || 0) + 1; });
+  const sorted = Object.entries(empCounts).sort((a,b) => b[1] - a[1]);
+  if (activeCharts.employee) activeCharts.employee.destroy();
+  activeCharts.employee = new Chart(document.getElementById('chart-employee'), {
+    type: 'bar',
+    data: { labels: sorted.map(e => e[0]), datasets: [{ data: sorted.map(e => e[1]), backgroundColor: '#1f8a52', borderRadius: 6, maxBarThickness: 20 }] },
+    options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 } } } }
+  });
+}
+
+function filteredRows() {
+  const emp = document.getElementById('f-employee').value;
+  const outcome = document.getElementById('f-outcome').value;
+  const search = document.getElementById('f-search').value.trim().toLowerCase();
+  return allData.filter(c => {
+    if (emp && c.employee !== emp) return false;
+    if (outcome && c.outcome !== outcome) return false;
+    if (search && !(prospectNames[c.prospect_id] || '').toLowerCase().includes(search)) return false;
+    return true;
+  });
+}
+
+function renderTable() {
+  const rows = filteredRows();
+  const tbody = document.getElementById('table-body');
+  tbody.innerHTML = '';
+  document.getElementById('empty-state').style.display = rows.length ? 'none' : 'block';
+
+  rows.forEach(c => {
+    const cfg = CONTACT_OUTCOME[c.outcome] || { color: '#999', label: c.outcome };
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${new Date(c.contacted_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+      <td>${escapeHtml(prospectNames[c.prospect_id] || 'Unknown')}</td>
+      <td>${escapeHtml(c.employee)}</td>
+      <td><span class="outcome-tag" style="background:${cfg.color}22;color:${cfg.color}"><span class="dot" style="background:${cfg.color}"></span>${escapeHtml(cfg.label)}</span></td>
+      <td>${c.follow_up_date ? new Date(c.follow_up_date).toLocaleDateString('en-GB') : ''}</td>
+      <td>${escapeHtml(c.notes || '')}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+document.getElementById('export-btn').addEventListener('click', () => {
+  const rows = filteredRows();
+  const cols = ['contacted_at','prospect_id','employee','outcome','notes','next_action','follow_up_date'];
+  const header = ['Date','Prospect ID','Employee','Outcome','Notes','Next Action','Follow-up Date'];
+  const csvRows = rows.map(r => cols.map(c => `"${(r[c] || '').toString().replace(/"/g,'""')}"`).join(','));
+  const csv = [header.join(','), ...csvRows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  Object.assign(document.createElement('a'), { href: url, download: `turbine-contacts-${new Date().toISOString().slice(0,10)}.csv` }).click();
+  URL.revokeObjectURL(url);
+});
+</script>
+</body>
+</html>
