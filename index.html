@@ -460,6 +460,7 @@
 <script src="shared/solar-status-config.js"></script>
 <script src="shared/epc-rating-config.js"></script>
 <script src="shared/escape-html.js"></script>
+<script src="shared/building-types.js"></script>
 <script src="shared/talking-points.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
@@ -553,46 +554,10 @@ db.auth.onAuthStateChange((event, session) => {
 });
 
 /* ── Building-type bucketing ─────────────────────────────────
-   EPC PROPERTY_TYPE is free text with dozens of literal values.
-   This keyword bucketing is a first pass, NOT verified against a real
-   EPC export yet — tune once real property_type values are seen. */
-const BUILDING_TYPE_BUCKETS = {
-  // Checked in this order — "Retail" must come before "Warehouse/Industrial"
-  // so EPC's "Retail Warehouse" property type lands in Retail, not Industrial.
-  "Retail":               ["retail", "shop", "supermarket", "shopping"],
-  "Warehouse/Industrial": ["warehouse", "industrial", "factory", "distribution", "storage", "workshop", "manufacturing"],
-  "Office":                ["office"],
-  "Hotel/Leisure":        ["hotel", "leisure", "restaurant", "pub", "bar", "sport", "gym", "cinema"],
-  "Healthcare":           ["hospital", "health", "clinic", "surgery", "care home"],
-  "Education":            ["school", "college", "university", "education"],
-};
-const BUILDING_TYPE_ORDER = [...Object.keys(BUILDING_TYPE_BUCKETS), "Other"];
-
-// Word-boundary matching, not plain substring — otherwise short keywords like
-// "bar" or "sport" false-match inside unrelated words ("barn", "transport").
-const BUILDING_TYPE_MATCHERS = Object.fromEntries(
-  Object.entries(BUILDING_TYPE_BUCKETS).map(([bucket, keywords]) => [
-    bucket, keywords.map(k => new RegExp(`\\b${k}s?\\b`, "i")),
-  ])
-);
-
-function bucketPropertyType(pt) {
-  const text = pt || "";
-  for (const [bucket, matchers] of Object.entries(BUILDING_TYPE_MATCHERS)) {
-    if (matchers.some(re => re.test(text))) return bucket;
-  }
-  return "Other";
-}
-
-const BUILDING_TYPE_COLORS = {
-  "Warehouse/Industrial": "#5d8a64",
-  "Retail":               "#c08438",
-  "Office":               "#6f5b94",
-  "Hotel/Leisure":        "#2f5a3d",
-  "Healthcare":           "#b85544",
-  "Education":            "#8e9080",
-  "Other":                "#b9b9a9",
-};
+   BUILDING_TYPE_BUCKETS / BUILDING_TYPE_ORDER / BUILDING_TYPE_MATCHERS /
+   bucketPropertyType / BUILDING_TYPE_COLORS now live in
+   shared/building-types.js (loaded above, before shared/talking-points.js,
+   which depends on bucketPropertyType at runtime). */
 
 const EPC_RATING_ORDER = ["A", "B", "C", "D", "E", "F", "G"];
 const SOLAR_STATUS_ORDER = ["prospect", "has_solar", "no_coverage", "pending", "error"];
@@ -685,11 +650,19 @@ function buildPopup(d) {
 }
 
 /* ── Company lookup ──────────────────────────────────────── */
-function companyMatchFallbackHtml(d) {
+// isError distinguishes "we checked and found nothing" from "the check
+// itself failed" (network error, non-2xx, timeout) — stating a genuine
+// failure as "no registered company" would overstate certainty, out of step
+// with this site's existing "EPC is a proxy, not a measurement" honesty
+// (see the footer copy and Section 2 of HANDOVER.md).
+function companyMatchFallbackHtml(d, isError) {
   const q = encodeURIComponent(d.postcode || d.address || '');
+  const lead = isError
+    ? "Couldn't check Companies House just now. Try:"
+    : "No registered company match found. Try:";
   return `
     <div class="company-match-fallback">
-      No registered company match found. Try:
+      ${lead}
       <div class="company-match-links">
         <a href="https://www.google.com/search?q=${q}" target="_blank" rel="noopener">Google</a>
         <a href="https://find-and-update.company-information.service.gov.uk/search?q=${q}" target="_blank" rel="noopener">Companies House</a>
@@ -698,26 +671,37 @@ function companyMatchFallbackHtml(d) {
     </div>`;
 }
 
+const COMPANY_LOOKUP_TIMEOUT_MS = 10000;
+function timeoutAfter(ms) {
+  return new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), ms));
+}
+
 async function loadCompanyMatch(d) {
   const container = document.getElementById(`company-match-${d.id}`);
   if (!container) return;
 
   if (!d.postcode) {
-    container.querySelector('.company-match-body').innerHTML = companyMatchFallbackHtml(d);
+    container.querySelector('.company-match-body').innerHTML = companyMatchFallbackHtml(d, false);
     return;
   }
 
   try {
-    const { data, error } = await window.db.functions.invoke('company-lookup', {
-      body: { prospect_id: d.id, postcode: d.postcode },
-    });
+    const { data, error } = await Promise.race([
+      window.db.functions.invoke('company-lookup', { body: { prospect_id: d.id } }),
+      timeoutAfter(COMPANY_LOOKUP_TIMEOUT_MS),
+    ]);
 
     // The popup may have closed (or a different one opened) while this was in flight.
     const el = document.getElementById(`company-match-${d.id}`);
     if (!el) return;
 
-    if (error || !data || data.no_match || !data.companies?.length) {
-      el.querySelector('.company-match-body').innerHTML = companyMatchFallbackHtml(d);
+    if (error || !data) {
+      el.querySelector('.company-match-body').innerHTML = companyMatchFallbackHtml(d, true);
+      return;
+    }
+
+    if (data.no_match || !data.companies?.length) {
+      el.querySelector('.company-match-body').innerHTML = companyMatchFallbackHtml(d, false);
       return;
     }
 
@@ -727,8 +711,10 @@ async function loadCompanyMatch(d) {
         ${c.officers?.length ? `<div class="company-officers">${c.officers.map(o => escapeHtml(o.name) + (o.role ? ` (${escapeHtml(o.role)})` : '')).join(', ')}</div>` : ''}
       </div>`).join('');
   } catch (e) {
+    // Includes the Promise.race timeout rejection (TIMEOUT) as well as any
+    // thrown network error — both are "couldn't check", not "no match".
     const el = document.getElementById(`company-match-${d.id}`);
-    if (el) el.querySelector('.company-match-body').innerHTML = companyMatchFallbackHtml(d);
+    if (el) el.querySelector('.company-match-body').innerHTML = companyMatchFallbackHtml(d, true);
   }
 }
 
