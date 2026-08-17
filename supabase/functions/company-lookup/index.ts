@@ -10,6 +10,24 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !COMPANIES_HOUSE_API_KEY) {
 
 const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
+// This function is called cross-origin from the browser (window.db.functions.invoke),
+// which sends a custom Authorization header + Content-Type: application/json and
+// therefore triggers a CORS preflight OPTIONS request. Every response — including
+// error paths — must carry these headers or the browser blocks the request before
+// the frontend ever sees it.
+const CORS_HEADERS: HeadersInit = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
+function jsonResponse(body: unknown, status: number): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+  })
+}
+
 // Companies House allows this to be re-checked periodically without ever
 // exceeding the free rate limit (600 req/5 min) in an on-demand,
 // per-prospect-click usage pattern — no monthly cap needed, unlike Solar API.
@@ -58,16 +76,20 @@ async function fetchOfficers(companyNumber: string): Promise<Officer[]> {
 }
 
 Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 200, headers: CORS_HEADERS })
+  }
+
   let body: { prospect_id?: string; postcode?: string }
   try {
     body = await req.json()
   } catch {
-    return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400 })
+    return jsonResponse({ error: 'Invalid JSON body' }, 400)
   }
 
   const { prospect_id, postcode } = body
   if (!prospect_id || !postcode) {
-    return new Response(JSON.stringify({ error: 'prospect_id and postcode are required' }), { status: 400 })
+    return jsonResponse({ error: 'prospect_id and postcode are required' }, 400)
   }
 
   const { data: cached, error: cacheErr } = await db
@@ -78,11 +100,11 @@ Deno.serve(async (req) => {
 
   if (cacheErr) {
     console.error('Cache read failed:', JSON.stringify(cacheErr))
-    return new Response(JSON.stringify({ error: 'Cache read failed' }), { status: 500 })
+    return jsonResponse({ error: 'Cache read failed' }, 500)
   }
 
   if (cached && Date.now() - new Date(cached.fetched_at).getTime() < CACHE_MAX_AGE_MS) {
-    return new Response(JSON.stringify({ companies: cached.companies, no_match: cached.no_match, cached: true }), { status: 200 })
+    return jsonResponse({ companies: cached.companies, no_match: cached.no_match, cached: true }, 200)
   }
 
   const matches: CompanyMatch[] = []
@@ -102,10 +124,10 @@ Deno.serve(async (req) => {
     }
   } catch (e) {
     if (e instanceof Error && e.message === 'RATE_LIMITED') {
-      return new Response(JSON.stringify({ error: 'Companies House rate limited — try again shortly' }), { status: 429 })
+      return jsonResponse({ error: 'Companies House rate limited — try again shortly' }, 429)
     }
     console.error('Companies House lookup failed:', e)
-    return new Response(JSON.stringify({ error: 'Lookup failed' }), { status: 502 })
+    return jsonResponse({ error: 'Lookup failed' }, 502)
   }
 
   const noMatch = matches.length === 0
@@ -118,5 +140,5 @@ Deno.serve(async (req) => {
     )
   if (upsertErr) console.error('Cache write failed:', JSON.stringify(upsertErr))
 
-  return new Response(JSON.stringify({ companies: matches, no_match: noMatch, cached: false }), { status: 200 })
+  return jsonResponse({ companies: matches, no_match: noMatch, cached: false }, 200)
 })
