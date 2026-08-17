@@ -17,6 +17,19 @@ const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 const BATCH_SIZE = 300
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
+// Self-imposed budget, independent of whatever quota is configured in the
+// Google Cloud console — the app must never rely solely on external config
+// to stay inside the Solar API's 10,000/month free tier. Tracked in the
+// api_usage table (migration 005) and enforced here regardless of what the
+// console quota is set to.
+const MONTHLY_CAP = 9500
+const API_NAME = 'solar_buildingInsights'
+
+function currentPeriod(): string {
+  const now = new Date()
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
 type Prospect = { id: string; lat: number; lng: number }
 
 // ─── Google Solar API ───────────────────────────────────────────────────────
@@ -108,13 +121,37 @@ async function checkBuilding(lat: number, lng: number): Promise<SolarResult> {
 Deno.serve(async () => {
   console.log('=== Solar Enrichment ===')
 
+  const period = currentPeriod()
+  const { data: usageRow, error: usageErr } = await db
+    .from('api_usage')
+    .select('request_count')
+    .eq('api_name', API_NAME)
+    .eq('period', period)
+    .maybeSingle()
+
+  if (usageErr) {
+    console.error('Failed to read api_usage:', JSON.stringify(usageErr))
+    return new Response(JSON.stringify({ error: usageErr }), { status: 500 })
+  }
+
+  let usedThisPeriod = usageRow?.request_count ?? 0
+  if (!usageRow) {
+    await db.from('api_usage').insert({ api_name: API_NAME, period, request_count: 0 })
+  }
+
+  const remainingBudget = MONTHLY_CAP - usedThisPeriod
+  if (remainingBudget <= 0) {
+    console.warn(`Monthly Solar API budget (${MONTHLY_CAP}) exhausted for ${period} — used=${usedThisPeriod}`)
+    return new Response(JSON.stringify({ processed: 0, budgetExhausted: true, period, usedThisPeriod }), { status: 200 })
+  }
+
   const { data: batch, error: fetchErr } = await db
     .from('prospects')
     .select('id, lat, lng')
     .eq('solar_status', 'pending')
     .not('lat', 'is', null)
     .not('lng', 'is', null)
-    .limit(BATCH_SIZE)
+    .limit(Math.min(BATCH_SIZE, remainingBudget))
 
   if (fetchErr) {
     console.error('Failed to fetch batch:', JSON.stringify(fetchErr))
@@ -122,7 +159,7 @@ Deno.serve(async () => {
   }
 
   const rows = (batch ?? []) as Prospect[]
-  console.log(`Batch size: ${rows.length}`)
+  console.log(`Batch size: ${rows.length} (budget remaining this period: ${remainingBudget})`)
 
   const counts = { prospect: 0, has_solar: 0, no_coverage: 0, error: 0, rateLimited: 0 }
 
@@ -131,6 +168,13 @@ Deno.serve(async () => {
     try {
       result = await checkBuilding(row.lat, row.lng)
     } catch (e) {
+      // checkBuilding always issues the fetch before it can throw, so this
+      // attempt still counts against the Solar API budget.
+      usedThisPeriod++
+      await db.from('api_usage').update({
+        request_count: usedThisPeriod, updated_at: new Date().toISOString(),
+      }).eq('api_name', API_NAME).eq('period', period)
+
       if (e instanceof Error && e.message === 'RATE_LIMITED') {
         console.warn(`Rate limited at id=${row.id} — stopping run, remaining rows stay pending`)
         counts.rateLimited++
@@ -144,6 +188,11 @@ Deno.serve(async () => {
       }).eq('id', row.id)
       continue
     }
+
+    usedThisPeriod++
+    await db.from('api_usage').update({
+      request_count: usedThisPeriod, updated_at: new Date().toISOString(),
+    }).eq('api_name', API_NAME).eq('period', period)
 
     counts[result.status]++
     const { error: updErr } = await db.from('prospects').update({
@@ -159,6 +208,6 @@ Deno.serve(async () => {
     await sleep(150) // courtesy pacing on a paid external API, mirrors mcs-scraper's sleep(100)
   }
 
-  console.log(`Done. prospect=${counts.prospect} has_solar=${counts.has_solar} no_coverage=${counts.no_coverage} error=${counts.error} rateLimited=${counts.rateLimited}`)
-  return new Response(JSON.stringify({ processed: rows.length, ...counts }), { status: 200 })
+  console.log(`Done. prospect=${counts.prospect} has_solar=${counts.has_solar} no_coverage=${counts.no_coverage} error=${counts.error} rateLimited=${counts.rateLimited} usedThisPeriod=${usedThisPeriod}/${MONTHLY_CAP}`)
+  return new Response(JSON.stringify({ processed: rows.length, ...counts, period, usedThisPeriod, monthlyCap: MONTHLY_CAP }), { status: 200 })
 })
