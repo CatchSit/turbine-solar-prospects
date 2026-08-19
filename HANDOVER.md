@@ -67,11 +67,13 @@ turbine-solar-prospects/
 │   ├── specs/2026-08-12-azure-ad-auth-design.md
 │   ├── specs/2026-08-17-decision-maker-contact-design.md
 │   ├── specs/2026-08-17-crm-contact-log-design.md
+│   ├── specs/2026-08-19-voa-business-rates-design.md
 │   └── plans/2026-08-12-azure-ad-auth.md
 ├── scripts/                          # Manually-run Node pipeline tooling
 │   ├── ingest-epc.mjs                # CSV -> region+floor-area filter -> dedupe -> upsert `prospects`
 │   ├── geocode-postcodes.mjs         # postcodes.io bulk lookup -> fills lat/lng
-│   └── ingest-epc-recommendations.mjs # recommendations CSV -> LMK_KEY match -> epc_recommends_solar/efficiency flags (optional, additive)
+│   ├── ingest-epc-recommendations.mjs # recommendations CSV -> LMK_KEY match -> epc_recommends_solar/efficiency flags (optional, additive)
+│   └── ingest-business-rates.mjs     # self-downloads VOA compiled rating list (unzipper dep) -> parse -> filter -> upsert `business_rates_matches` (optional, additive)
 └── supabase/
     ├── config.toml                    # Minimal — pins verify_jwt=true for company-lookup only
     ├── migrations/
@@ -83,7 +85,9 @@ turbine-solar-prospects/
     │   ├── 006_company_lookups.sql     # company_lookups table — Companies House cache
     │   ├── 007_prospect_contacts.sql   # prospect_contacts table — CRM contact log, manager-only read RLS
     │   ├── 008_prospect_contacts_insert_domain_check.sql # tightens 007's insert policy to @turbineenergyuk.co.uk + own identity, lowercases the admin-read check
-    │   └── 009_epc_recommendations.sql # epc_recommends_solar/epc_recommends_efficiency nullable boolean columns on `prospects`
+    │   ├── 009_epc_recommendations.sql # epc_recommends_solar/epc_recommends_efficiency nullable boolean columns on `prospects`
+    │   ├── 010_business_rates.sql      # business_rates_matches table (comment superseded by 011, see Section 5/7)
+    │   └── 011_business_rates_rls.sql  # business_rates_matches real SELECT policy — frontend reads this table directly
     └── functions/
         ├── solar-enrichment/
         │   └── index.ts               # Batched, resumable Google Solar API enrichment
@@ -100,7 +104,7 @@ As of the Azure AD login work, `index.html` **does** talk to Supabase directly, 
 Every step is idempotent (upserts on `epc_lmk_key`, `solar-enrichment` only touches `pending` rows), so re-running is always safe.
 
 ### Step 0 — one-time setup
-1. Supabase project `turbine-solar-prospects` is already created. Confirm migrations `001_prospects_schema.sql` through `009_epc_recommendations.sql` (all nine, in order) have been run in its SQL editor — run any that haven't (check with `SELECT * FROM prospects LIMIT 1;`; a "relation does not exist" error means `001`/`002` haven't been run yet). `004` is the one that actually enforces the `@turbineenergyuk.co.uk` restriction at the database level — don't treat `003` alone as sufficient, see Section 5. `005`/`006`/`007` add `api_usage`, `company_lookups`, and `prospect_contacts`, needed by `solar-enrichment`, `company-lookup`, and the Log Contact modal/dashboard respectively. `008` tightens `007`'s `prospect_contacts` insert policy to `@turbineenergyuk.co.uk` accounts inserting under their own identity — see Section 5. `009` adds the `epc_recommends_solar`/`epc_recommends_efficiency` columns needed by `scripts/ingest-epc-recommendations.mjs` (Step 5 below).
+1. Supabase project `turbine-solar-prospects` is already created. Confirm migrations `001_prospects_schema.sql` through `011_business_rates_rls.sql` (all eleven, in order) have been run in its SQL editor — run any that haven't (check with `SELECT * FROM prospects LIMIT 1;`; a "relation does not exist" error means `001`/`002` haven't been run yet). `004` is the one that actually enforces the `@turbineenergyuk.co.uk` restriction at the database level — don't treat `003` alone as sufficient, see Section 5. `005`/`006`/`007` add `api_usage`, `company_lookups`, and `prospect_contacts`, needed by `solar-enrichment`, `company-lookup`, and the Log Contact modal/dashboard respectively. `008` tightens `007`'s `prospect_contacts` insert policy to `@turbineenergyuk.co.uk` accounts inserting under their own identity — see Section 5. `009` adds the `epc_recommends_solar`/`epc_recommends_efficiency` columns needed by `scripts/ingest-epc-recommendations.mjs` (Step 5 below). `010` adds `business_rates_matches`, needed by `scripts/ingest-business-rates.mjs` (Step 6 below); `011` adds its real SELECT policy — don't treat `010` alone as sufficient, same lesson as `003`/`004`, see Section 5 and Section 7.
 2. Register a GOV.UK One Login account (needed to download EPC bulk data — see Section 7).
 3. Get a Google Cloud API key with the Solar API enabled, and set it as the `GOOGLE_SOLAR_API_KEY` secret on the Supabase project (`supabase secrets set GOOGLE_SOLAR_API_KEY=...`).
 4. Register a free Companies House API key (`developer.company-information.service.gov.uk` — no billing/payment method required, unlike the Google keys) and set it as the `COMPANIES_HOUSE_API_KEY` secret (`supabase secrets set COMPANIES_HOUSE_API_KEY=...`). Done — see Section 1, item 4.
@@ -141,7 +145,13 @@ SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm run ingest-recommendations --
 ```
 Reads the separate "recommendations" bulk CSV (Step 1 above), matches rows to existing `prospects` by `LMK_KEY` (only prospects already in the table from Steps 1-2 are touched — a recommendations row for a certificate outside the Yorkshire & Humber/floor-area filter is skipped), and sets `epc_recommends_solar`/`epc_recommends_efficiency` based on whether the assessor's recommendation text matches the solar/efficiency keyword patterns. Entirely optional and additive — the map and CRM work fully without it. Prospects with no matching recommendations data stay `null` on both columns (not `false`) — see `docs/superpowers/specs/2026-08-19-epc-recommendations-design.md`. Full design in that spec and `docs/superpowers/plans/2026-08-19-epc-recommendations.md`.
 
-Repeat steps 1–5 (or just 3–4 if only re-checking solar status) whenever the pilot needs refreshing — no cron is set up yet (see Section 8).
+### Step 6 — VOA business rates enrichment (optional, additive)
+```
+SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm run ingest-business-rates
+```
+Unlike every other source in this pipeline, this step is **fully automated — no manual download**: the script discovers the current VOA compiled non-domestic rating list itself (an unauthenticated Azure blob listing), downloads the ~93MB zip into `data/business-rates/` (gitignored), extracts only the non-historic entries file (~511MB uncompressed, streamed via `unzipper` — never buffered in memory), parses the asterisk-delimited positional CSV, filters to Yorkshire & Humber postcodes already present in `prospects`, and upserts one `business_rates_matches` row per matched prospect listing every hereditament (rated unit) at that postcode. Idempotent — safe to re-run; a re-run just re-upserts the same `prospect_id` rows. Entirely optional and additive — the map and CRM work fully without it. Full design in `docs/superpowers/specs/2026-08-19-voa-business-rates-design.md`.
+
+Repeat steps 1–6 (or just 3–4 if only re-checking solar status) whenever the pilot needs refreshing — no cron is set up yet (see Section 8).
 
 ---
 
@@ -182,16 +192,23 @@ Full rationale in `docs/superpowers/specs/2026-08-17-crm-contact-log-design.md`.
 ### `company_lookups` table (migration `006`)
 `prospect_id` (PK, FK → `prospects.id`) → `companies` (jsonb array of `{ company_name, company_number, status, officers: [{ name, role }], psc: [{ name, natures_of_control, is_corporate }], sic_codes: string[], incorporated_on: string | null }`), `no_match`, `fetched_at`, `source`. Written only by the `company-lookup` Edge Function via the service-role key (RLS enabled, no policies). Caches Companies House results per prospect for 90 days so re-opening the same popup doesn't re-hit the API; `no_match` distinguishes "checked, nothing there" from "never checked" so a genuine no-match doesn't get needlessly re-queried. Full design in `docs/superpowers/specs/2026-08-17-decision-maker-contact-design.md`.
 
+### `business_rates_matches` table (migrations `010`/`011`)
+
+`prospect_id` (PK, FK → `prospects.id`) → `hereditaments` (jsonb array of `{ description, rateable_value, billing_authority_code }`, one entry per rated unit VOA lists at that postcode), `no_match`, `fetched_at`. Written by `scripts/ingest-business-rates.mjs` via the service-role key (Section 4, Step 6). Same three-state absent/`no_match`/matched convention as `company_lookups`: a prospect with no postcode (or one VOA simply has no compiled-list entry for) gets **no row at all**, not a `no_match: true` row — `no_match: true` specifically means "this postcode was checked against the VOA list and nothing matched," not "never checked." Don't conflate the two when reading the table.
+
+**Unlike `company_lookups`/`api_usage`, this table has a real SELECT policy** — migration `011`, added after `010` shipped with the "no policies, service-role only" pattern copied from those two tables. That pattern is wrong here: `index.html` reads `business_rates_matches` directly from the frontend's own `window.db` client (the signed-in user's `authenticated`-role session), not via a server-side Edge Function, so a service-role-only table is unreachable from the browser — PostgREST doesn't error in that case, it silently returns `null`/empty, which is exactly what shipped and went unnoticed until review. `011` mirrors `004`'s domain-restricted read policy (`@turbineenergyuk.co.uk` only). See Section 7 for the generalized lesson.
+
 ---
 
 ## 6. Frontend (`index.html`)
 
 Gated by a Microsoft/Azure AD login screen (`@turbineenergyuk.co.uk` only) — see Section 1 and `docs/superpowers/specs/2026-08-12-azure-ad-auth-design.md`. Once signed in, loads prospect data via a live, paginated Supabase query (`fetchAllProspects()` in `index.html`), not a static file.
 
-- Sidebar filters: search (address/postcode), floor-area min/max, building-type chips, EPC rating chips (A–G, using the standard UK EPC colour band, kept distinct from the app's own Turbine Energy brand palette), solar-status chips.
+- Sidebar filters: search (address/postcode), floor-area min/max, rateable-value min/max (£, VOA business rates — see below), building-type chips, EPC rating chips (A–G, using the standard UK EPC colour band, kept distinct from the app's own Turbine Energy brand palette), solar-status chips.
 - **Solar-status defaults to showing only `prospect`** — that's the point of the tool. A "show all" link reveals `has_solar`/`no_coverage`/etc. for spot-checking.
 - Marker pin colour = `solar_status` (via `shared/solar-status-config.js`), following mcs-map's `makeMarkerIcon`/teardrop-pin pattern.
 - Popup shows address, floor area, property type, local authority, EPC rating, solar status, and (for prospects with data) an estimated panel count / yearly kWh potential pulled from the Solar API response.
+- **Rateable value (£) filter** — a min/max range filter, mirroring the floor-area filter's UI exactly. It compares against the **single highest-value hereditament** at a prospect's postcode (`maxHereditamentValue()`/`d._maxRateable` in `index.html`), not the sum and not "any hereditament in range" — see Section 7 risk 13 and `docs/superpowers/specs/2026-08-19-voa-business-rates-design.md`. The popup's **"Business rates at this postcode"** section (`businessRatesHtml()`) lists every hereditament VOA has at that postcode separately (same postcode-level-not-building-level caveat as the "Companies matched to postcode" section directly below it), sourced from `business_rates_matches` (Section 5), embedded in the same live `fetchAllProspects()` query — no separate popup-open network call, unlike Companies House.
 - `BUILDING_TYPE_BUCKETS` (inline in `index.html`) groups EPC's `property_type` (UK planning Use Classes Order labels, not free text) into ~6 buckets via word-boundary keyword matching — spot-checked against real ingested data, see Section 7 risk 3 for the one known ambiguous case.
 
 No radius circle (no obvious Turbine Energy depot location yet — ask the client).
@@ -230,6 +247,9 @@ Requires the `COMPANIES_HOUSE_API_KEY` secret (free — `developer.company-infor
 10. **`dashboard.html`'s period switcher only affects the two charts — resolved 2026-08-17 (final review).** Switching between "7 days" / "30 days" / "All time" (`periodData()`) used to re-slice only the daily-activity and by-employee charts while the contact-log table and CSV export always rendered the full, unfiltered `prospect_contacts` result set. Fixed: `filteredRows()` now starts from `periodData()` instead of `allData`, and the period button click handler also calls `renderTable()`, so the table and export both now match whichever period is active. `periodData()`'s cutoff was also changed to align to a calendar-day boundary (`cutoff.setHours(0,0,0,0)`), matching the daily-activity chart's calendar-date bucketing exactly, so the two charts sum to the same total for a given period.
 11. **`dashboard.html`'s query doesn't filter out soft-deleted rows — resolved 2026-08-17 (final review).** `prospect_contacts` carries `deleted_at`/`deleted_by` columns (Section 5) so a future delete feature can soft-delete without a migration; there is still no delete UI (Section 8), so this was moot in practice, but the dashboard's `prospect_contacts` query now includes `.is('deleted_at', null)` as cheap insurance ahead of that future feature landing.
 12. **CSV export has no formula-injection sanitization — resolved 2026-08-17 (final review).** `dashboard.html`'s export used to build rows straight from free-text fields (notes, employee name) with only quote-escaping, no check for a leading `=`, `+`, `-`, or `@`. Fixed: a `csvCell()` helper now prefixes any cell whose text starts with `=`, `+`, `-`, `@`, a tab, or a carriage return with a leading `'` before quoting, so it can't be interpreted as a formula when opened in Excel/Google Sheets — this matters for ordinary note-taking (e.g. "- called, no answer"), not just adversarial input. The export's `Prospect ID` column (a raw UUID) was also replaced with a human-readable `Prospect` column (the address/postcode, from the same `prospectNames` map the on-screen table uses).
+13. **VOA business rates — one dated constant, and this project's third occurrence of the same RLS bug class, 2026-08-19 final review.**
+    - `scripts/ingest-business-rates.mjs`'s `LIST_YEAR = '2026'` constant needs updating when VOA compiles its next rating list — **1 April 2029**. The script discovers the current epoch automatically within a list year, but not the list year itself; if the script starts failing to find a baseline zip after that date, this is the first thing to check.
+    - **The RLS gap fixed by migration `011` (Section 5) is the third time this exact bug class has hit this project**: `003`→`004` for `prospects` reads, `007`→`008` for `prospect_contacts` inserts, now `010`→`011` for `business_rates_matches` reads. The reusable rule, worth applying automatically from now on rather than re-discovering: **before copying the "no policies — service-role only" pattern from `company_lookups`/`api_usage` onto a new table, check whether the table will actually be read directly by the frontend's own authenticated session** (as opposed to only via a server-side Edge Function or pipeline script using the service-role key) — if so, it needs a real SELECT policy. This is easy to ship without noticing because **PostgREST fails silently** when a table has RLS enabled and no matching policy: the query returns an empty/`null` result, not an error, so nothing looks broken locally until someone checks the actual data.
 
 ---
 

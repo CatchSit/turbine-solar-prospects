@@ -467,7 +467,7 @@
       <span>–</span>
       <input id="rateable-max" type="number" min="0" step="1000" placeholder="Max"/>
     </div>
-    <div class="range-hint">VOA valuation snapshot — see note below.</div>
+    <div class="range-hint">Filters on the highest-value unit at each postcode — see note below.</div>
   </div>
 
   <div class="section">
@@ -516,7 +516,8 @@
       this data hasn't been checked yet.
       Rateable value is a VOA valuation as of its antecedent valuation date (normally
       around two years before the current list's 1 April 2026 compile date), not a
-      live or current-market figure.
+      live or current-market figure. Absence of a Business Rates section doesn't mean
+      nothing is rated there, just that this data hasn't been checked or matched yet.
     </div>
   </div>
 </div>
@@ -761,7 +762,7 @@ function businessRatesHtml(d) {
   const more = remaining > 0 ? `<div>+ ${remaining.toLocaleString()} more</div>` : '';
   return `
       <div class="business-rates">
-        <div class="popup-section-label">Business rates</div>
+        <div class="popup-section-label">Business rates at this postcode</div>
         ${rows}${more}
       </div>`;
 }
@@ -1005,6 +1006,7 @@ function initMap(data) {
   data.forEach(d => {
     if (!d.lat || !d.lng) return;
     d._bucket = bucketPropertyType(d.property_type);
+    d._maxRateable = maxHereditamentValue(d);
     const marker = L.marker([d.lat, d.lng], { icon: makeMarkerIcon(d) });
     marker.bindTooltip(d.address || d.postcode || 'Unnamed building', { direction: "top", offset: [0, -10], className: 'day-tooltip', opacity: 0.96 });
     marker._d = d;
@@ -1122,7 +1124,8 @@ document.getElementById("solar-status-clear").addEventListener("click", () => {
 function maxHereditamentValue(d) {
   const hereditaments = d.business_rates_matches?.hereditaments;
   if (!hereditaments || !hereditaments.length) return null;
-  return Math.max(...hereditaments.map(h => h.rateable_value));
+  const values = hereditaments.map(h => Number(h.rateable_value)).filter(Number.isFinite);
+  return values.length ? Math.max(...values) : null;
 }
 
 /* ── Filter logic ────────────────────────────────────────── */
@@ -1140,7 +1143,7 @@ function applyFilters() {
     const searchOk = !term || (d.address||'').toLowerCase().includes(term) || (d.postcode||'').toLowerCase().includes(term);
     const minOk    = floorMin == null || (d.floor_area != null && d.floor_area >= floorMin);
     const maxOk    = floorMax == null || (d.floor_area != null && d.floor_area <= floorMax);
-    const rateableValue = maxHereditamentValue(d);
+    const rateableValue = d._maxRateable;
     const rateableMinOk = rateableMin == null || (rateableValue != null && rateableValue >= rateableMin);
     const rateableMaxOk = rateableMax == null || (rateableValue != null && rateableValue <= rateableMax);
 

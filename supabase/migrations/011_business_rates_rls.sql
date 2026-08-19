@@ -11,6 +11,8 @@
 -- edited after being applied — see how 004 superseded 003 and 008
 -- superseded 007).
 
+DROP POLICY IF EXISTS "Turbine staff read" ON business_rates_matches;
+
 create policy "Turbine staff read"
   on business_rates_matches for select
   to authenticated

@@ -8,3 +8,4 @@ create table if not exists business_rates_matches (
 
 alter table business_rates_matches enable row level security;
 -- No policies — service-role only, same pattern as company_lookups/api_usage.
+-- Superseded by 011_business_rates_rls.sql — see that file.
