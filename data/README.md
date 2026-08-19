@@ -6,3 +6,7 @@ GOV.UK One Login account). See the root HANDOVER.md for the full manual pipeline
 `data/recommendations/` holds the separate "recommendations" bulk CSV export(s), used
 by `scripts/ingest-epc-recommendations.mjs` (optional/additive — see HANDOVER.md
 Section 4). Also gitignored (`data/**/*.csv` in `.gitignore` covers this subdirectory).
+
+`data/business-rates/` holds the VOA rating-list baseline zip downloaded automatically
+by `scripts/ingest-business-rates.mjs` — unlike the EPC sources, this one requires no
+manual download step. Gitignored via `data/**/*.zip`.

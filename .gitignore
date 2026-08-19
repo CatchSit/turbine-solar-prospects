@@ -1,6 +1,6 @@
 node_modules/
 data/**/*.csv
-data/*.zip
+data/**/*.zip
 .env
 EPS certs/
 supabase/.temp/

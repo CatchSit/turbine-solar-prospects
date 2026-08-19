@@ -6,10 +6,12 @@
   "scripts": {
     "ingest": "node scripts/ingest-epc.mjs",
     "geocode": "node scripts/geocode-postcodes.mjs",
-    "ingest-recommendations": "node scripts/ingest-epc-recommendations.mjs"
+    "ingest-recommendations": "node scripts/ingest-epc-recommendations.mjs",
+    "ingest-business-rates": "node scripts/ingest-business-rates.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2",
-    "csv-parse": "^5"
+    "csv-parse": "^5",
+    "unzipper": "^0.12"
   }
 }
