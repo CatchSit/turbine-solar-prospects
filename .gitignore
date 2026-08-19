@@ -4,3 +4,5 @@ data/*.zip
 .env
 EPS certs/
 supabase/.temp/
+.claude/
+.playwright-mcp/
