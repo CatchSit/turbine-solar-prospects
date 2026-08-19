@@ -6,3 +6,4 @@ EPS certs/
 supabase/.temp/
 .claude/
 .playwright-mcp/
+.superpowers/
