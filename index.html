@@ -246,6 +246,7 @@
     .company-officers { margin-top: 2px; color: var(--text2); }
     .company-subline { margin-top: 1px; color: var(--text3); font-size: 11.5px; }
     .company-psc { margin-top: 4px; color: var(--text2); }
+    .business-rates { margin: 4px 0 10px; padding: 0 20px; font-size: 12px; color: var(--text2); }
     .company-psc .popup-section-label { display: block; margin: 6px 0 2px; }
     .company-match-fallback { color: var(--text3); }
     .company-match-links { display: flex; gap: 10px; margin-top: 6px; }
@@ -460,6 +461,16 @@
   </div>
 
   <div class="section">
+    <h3>Rateable value (£)</h3>
+    <div class="range-row">
+      <input id="rateable-min" type="number" min="0" step="1000" placeholder="Min"/>
+      <span>–</span>
+      <input id="rateable-max" type="number" min="0" step="1000" placeholder="Max"/>
+    </div>
+    <div class="range-hint">VOA valuation snapshot — see note below.</div>
+  </div>
+
+  <div class="section">
     <h3>Building type</h3>
     <div id="building-type-list" class="chip-list"></div>
   </div>
@@ -503,6 +514,9 @@
       EPC recommendation badges only appear where the assessor's recommendation report
       has been ingested — their absence doesn't mean solar wasn't recommended, just that
       this data hasn't been checked yet.
+      Rateable value is a VOA valuation as of its antecedent valuation date (normally
+      around two years before the current list's 1 April 2026 compile date), not a
+      live or current-market figure.
     </div>
   </div>
 </div>
@@ -717,6 +731,8 @@ let filterEpcEfficiency = false; // opt-in: when true, only show prospects with 
 let searchTerm = "";
 let floorMin = null;
 let floorMax = null;
+let rateableMin = null;
+let rateableMax = null;
 
 /* ── Marker icon ─────────────────────────────────────────── */
 function makeMarkerIcon(d) {
@@ -732,6 +748,18 @@ function makeMarkerIcon(d) {
 }
 
 /* ── Popup builder ───────────────────────────────────────── */
+function businessRatesHtml(d) {
+  const hereditaments = d.business_rates_matches?.hereditaments;
+  if (!hereditaments || !hereditaments.length) return '';
+  const rows = hereditaments.map(h =>
+    `<div>${escapeHtml(h.description || 'Unspecified')} — £${h.rateable_value.toLocaleString()}</div>`
+  ).join('');
+  return `
+      <div class="business-rates">
+        <div class="popup-section-label">Business rates</div>
+        ${rows}
+      </div>`;
+}
 function buildPopup(d) {
   const solarCfg = SOLAR_STATUS[d.solar_status] || { color: '#999', soft: '#eee', label: d.solar_status };
   const epcCfg = EPC_RATING[d.epc_rating] || null;
@@ -771,6 +799,7 @@ function buildPopup(d) {
       </div>
       ${solarEst}
       <div class="popup-facts">${addr}${area}${type}${la}</div>
+      ${businessRatesHtml(d)}
       <div class="company-match" id="company-match-${escapeHtml(d.id)}">
         <div class="popup-section-label">Companies matched to postcode</div>
         <div class="company-match-body">Looking up company registered at this address…</div>
@@ -1085,6 +1114,12 @@ document.getElementById("solar-status-clear").addEventListener("click", () => {
   applyFilters();
 });
 
+function maxHereditamentValue(d) {
+  const hereditaments = d.business_rates_matches?.hereditaments;
+  if (!hereditaments || !hereditaments.length) return null;
+  return Math.max(...hereditaments.map(h => h.rateable_value));
+}
+
 /* ── Filter logic ────────────────────────────────────────── */
 function applyFilters() {
   const term = searchTerm.toLowerCase();
@@ -1100,8 +1135,11 @@ function applyFilters() {
     const searchOk = !term || (d.address||'').toLowerCase().includes(term) || (d.postcode||'').toLowerCase().includes(term);
     const minOk    = floorMin == null || (d.floor_area != null && d.floor_area >= floorMin);
     const maxOk    = floorMax == null || (d.floor_area != null && d.floor_area <= floorMax);
+    const rateableValue = maxHereditamentValue(d);
+    const rateableMinOk = rateableMin == null || (rateableValue != null && rateableValue >= rateableMin);
+    const rateableMaxOk = rateableMax == null || (rateableValue != null && rateableValue <= rateableMax);
 
-    if (typeOk && ratingOk && statusOk && epcSolarOk && epcEfficiencyOk && searchOk && minOk && maxOk) {
+    if (typeOk && ratingOk && statusOk && epcSolarOk && epcEfficiencyOk && searchOk && minOk && maxOk && rateableMinOk && rateableMaxOk) {
       cluster.addLayer(m);
       shown++;
     }
@@ -1123,6 +1161,8 @@ document.getElementById('sidebar-overlay').addEventListener('click', closeSideba
 document.getElementById("search").addEventListener("input", e => { searchTerm = e.target.value; applyFilters(); });
 document.getElementById("floor-min").addEventListener("input", e => { floorMin = e.target.value === '' ? null : Number(e.target.value); applyFilters(); });
 document.getElementById("floor-max").addEventListener("input", e => { floorMax = e.target.value === '' ? null : Number(e.target.value); applyFilters(); });
+document.getElementById("rateable-min").addEventListener("input", e => { rateableMin = e.target.value === '' ? null : Number(e.target.value); applyFilters(); });
+document.getElementById("rateable-max").addEventListener("input", e => { rateableMax = e.target.value === '' ? null : Number(e.target.value); applyFilters(); });
 
 document.getElementById("reset").addEventListener("click", () => {
   activeBuildingTypes = new Set(BUILDING_TYPE_ORDER);
@@ -1130,10 +1170,12 @@ document.getElementById("reset").addEventListener("click", () => {
   activeSolarStatuses = new Set(['prospect']);
   filterEpcSolar = false;
   filterEpcEfficiency = false;
-  searchTerm = ""; floorMin = null; floorMax = null;
+  searchTerm = ""; floorMin = null; floorMax = null; rateableMin = null; rateableMax = null;
   document.getElementById("search").value = "";
   document.getElementById("floor-min").value = "";
   document.getElementById("floor-max").value = "";
+  document.getElementById("rateable-min").value = "";
+  document.getElementById("rateable-max").value = "";
   document.querySelectorAll("#building-type-list input, #epc-rating-list input").forEach(cb => {
     cb.checked = true;
     cb.closest('.chip').classList.add('on');
@@ -1158,7 +1200,7 @@ async function fetchAllProspects() {
   while (true) {
     const { data, error } = await db
       .from('prospects')
-      .select('id, address, postcode, lat, lng, property_type, floor_area:total_floor_area, epc_rating:current_energy_rating, local_authority, solar_status, solar_max_panels, solar_yearly_energy_kwh, current_energy_efficiency, epc_recommends_solar, epc_recommends_efficiency')
+      .select('id, address, postcode, lat, lng, property_type, floor_area:total_floor_area, epc_rating:current_energy_rating, local_authority, solar_status, solar_max_panels, solar_yearly_energy_kwh, current_energy_efficiency, epc_recommends_solar, epc_recommends_efficiency, business_rates_matches(hereditaments, no_match)')
       .not('lat', 'is', null)
       .order('id', { ascending: true })
       .range(from, from + PAGE - 1);
