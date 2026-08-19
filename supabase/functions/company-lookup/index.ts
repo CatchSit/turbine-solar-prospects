@@ -57,7 +57,16 @@ const MAX_ACTIVE_COMPANIES = 5
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 type Officer = { name: string; role: string }
-type CompanyMatch = { company_name: string; company_number: string; status: string; officers: Officer[] }
+type Psc = { name: string; natures_of_control: string[]; is_corporate: boolean }
+type CompanyMatch = {
+  company_name: string
+  company_number: string
+  status: string
+  officers: Officer[]
+  psc: Psc[]
+  sic_codes: string[]
+  incorporated_on: string | null
+}
 
 function normalizePostcode(pc: string): string {
   return pc.trim().toUpperCase().replace(/\s+/g, '')
@@ -95,6 +104,46 @@ async function fetchOfficers(companyNumber: string): Promise<Officer[]> {
     .filter((o: any) => !o.resigned_on)
     // deno-lint-ignore no-explicit-any
     .map((o: any) => ({ name: o.name as string, role: o.officer_role as string }))
+}
+
+async function fetchProfile(companyNumber: string): Promise<{ sic_codes: string[]; incorporated_on: string | null }> {
+  const resp = await fetch(
+    `https://api.company-information.service.gov.uk/company/${companyNumber}`,
+    { headers: authHeader() },
+  )
+  if (!resp.ok) return { sic_codes: [], incorporated_on: null }
+  const json = await resp.json()
+  return {
+    sic_codes: json.sic_codes ?? [],
+    incorporated_on: json.date_of_creation ?? null,
+  }
+}
+
+// deno-lint-ignore no-explicit-any
+async function fetchPsc(companyNumber: string): Promise<Psc[]> {
+  const resp = await fetch(
+    `https://api.company-information.service.gov.uk/company/${companyNumber}/persons-with-significant-control`,
+    { headers: authHeader() },
+  )
+  // Don't fail the whole lookup if PSC can't be fetched — mirrors fetchOfficers.
+  if (!resp.ok) return []
+  const json = await resp.json()
+  // "Statement" items (e.g. "no individual or entity with significant
+  // control") carry a `statement` field instead of `name` — filtering on
+  // `name` presence excludes those without hardcoding Companies House's
+  // exact statement `kind` strings, which aren't stable enough to trust
+  // blindly. Spot-check this filter against a few real responses during
+  // Task 1's verification step below (same caution this project already
+  // applies to solar-enrichment's classifyDetection(), HANDOVER.md
+  // Section 7 risk 4 — an unverified field-path guess that stores the raw
+  // response so it can be corrected later without a second paid call).
+  return (json.items ?? [])
+    .filter((p: any) => typeof p.name === 'string' && !p.ceased_on)
+    .map((p: any) => ({
+      name: p.name as string,
+      natures_of_control: (p.natures_of_control ?? []) as string[],
+      is_corporate: typeof p.kind === 'string' && p.kind !== 'individual-person-with-significant-control',
+    }))
 }
 
 Deno.serve(async (req) => {
@@ -190,7 +239,19 @@ Deno.serve(async (req) => {
     for (let i = 0; i < activeMatches.length; i++) {
       const r = activeMatches[i]
       const officers = await fetchOfficers(r.company_number)
-      matches.push({ company_name: r.title, company_number: r.company_number, status: r.company_status, officers })
+      await sleep(150)
+      const profile = await fetchProfile(r.company_number)
+      await sleep(150)
+      const psc = await fetchPsc(r.company_number)
+      matches.push({
+        company_name: r.title,
+        company_number: r.company_number,
+        status: r.company_status,
+        officers,
+        psc,
+        sic_codes: profile.sic_codes,
+        incorporated_on: profile.incorporated_on,
+      })
       // Courtesy pacing between sequential external API calls, mirrors
       // solar-enrichment's sleep(150) between Google Solar API calls.
       if (i < activeMatches.length - 1) await sleep(150)
