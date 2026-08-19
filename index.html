@@ -236,9 +236,6 @@
       border-radius: 10px; font-size: 12px; line-height: 1.5;
     }
     .popup-section-label { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text3); margin: 0 20px 6px; }
-    .talking-points { margin: 4px 0; padding: 0 20px 14px; }
-    .talking-points ul { margin: 0; padding-left: 16px; font-size: 12px; color: var(--text2); line-height: 1.55; }
-    .talking-points li { padding: 2px 0; }
     .company-match { margin: 4px 0 18px; padding: 0 20px; }
     .company-match-body { font-size: 12px; color: var(--text2); }
     .company-card { padding: 8px 0; border-top: 1px solid var(--border); }
@@ -549,7 +546,6 @@
 <script src="shared/epc-rating-config.js"></script>
 <script src="shared/escape-html.js"></script>
 <script src="shared/building-types.js"></script>
-<script src="shared/talking-points.js"></script>
 <script src="shared/contact-outcome-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
@@ -646,8 +642,7 @@ db.auth.onAuthStateChange((event, session) => {
 /* ── Building-type bucketing ─────────────────────────────────
    BUILDING_TYPE_BUCKETS / BUILDING_TYPE_ORDER / BUILDING_TYPE_MATCHERS /
    bucketPropertyType / BUILDING_TYPE_COLORS now live in
-   shared/building-types.js (loaded above, before shared/talking-points.js,
-   which depends on bucketPropertyType at runtime). */
+   shared/building-types.js (loaded above). */
 
 const EPC_RATING_ORDER = ["A", "B", "C", "D", "E", "F", "G"];
 const SOLAR_STATUS_ORDER = ["prospect", "has_solar", "no_coverage", "pending", "error"];
@@ -716,8 +711,6 @@ function buildPopup(d) {
     ? `<div class="solar-est">☀ Estimated roof potential: ${d.solar_max_panels ? `up to <strong>${d.solar_max_panels}</strong> panels` : ''}${d.solar_max_panels && d.solar_yearly_energy_kwh ? ' · ' : ''}${d.solar_yearly_energy_kwh ? `~<strong>${Math.round(d.solar_yearly_energy_kwh).toLocaleString()}</strong> kWh/year` : ''}</div>`
     : '';
 
-  const talkingPointsHtml = buildTalkingPoints(d).map(p => `<li>${p}</li>`).join('');
-
   return `
     <div class="popup">
       <div class="popup-header">
@@ -728,12 +721,8 @@ function buildPopup(d) {
       </div>
       ${solarEst}
       <div class="popup-facts">${addr}${area}${type}${la}</div>
-      <div class="talking-points">
-        <div class="popup-section-label">Talking points</div>
-        <ul>${talkingPointsHtml}</ul>
-      </div>
       <div class="company-match" id="company-match-${escapeHtml(d.id)}">
-        <div class="popup-section-label">Company match</div>
+        <div class="popup-section-label">Companies matched to postcode</div>
         <div class="company-match-body">Looking up company registered at this address…</div>
       </div>
       <button class="log-contact-btn" onclick="openContactModal('${escapeHtml(d.id)}', ${escapeHtml(JSON.stringify(d.address || d.postcode || 'Unnamed building'))})">Log contact</button>
