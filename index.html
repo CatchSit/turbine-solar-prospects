@@ -748,16 +748,21 @@ function makeMarkerIcon(d) {
 }
 
 /* ── Popup builder ───────────────────────────────────────── */
+const BUSINESS_RATES_DISPLAY_LIMIT = 10; // some postcodes (e.g. self-storage sites) carry 1,000+ hereditaments
 function businessRatesHtml(d) {
   const hereditaments = d.business_rates_matches?.hereditaments;
   if (!hereditaments || !hereditaments.length) return '';
-  const rows = hereditaments.map(h =>
-    `<div>${escapeHtml(h.description || 'Unspecified')} — £${h.rateable_value.toLocaleString()}</div>`
+  const sorted = [...hereditaments].sort((a, b) => Number(b.rateable_value ?? 0) - Number(a.rateable_value ?? 0));
+  const shown = sorted.slice(0, BUSINESS_RATES_DISPLAY_LIMIT);
+  const remaining = sorted.length - shown.length;
+  const rows = shown.map(h =>
+    `<div>${escapeHtml(h.description || 'Unspecified')} — £${Number(h.rateable_value ?? 0).toLocaleString()}</div>`
   ).join('');
+  const more = remaining > 0 ? `<div>+ ${remaining.toLocaleString()} more</div>` : '';
   return `
       <div class="business-rates">
         <div class="popup-section-label">Business rates</div>
-        ${rows}
+        ${rows}${more}
       </div>`;
 }
 function buildPopup(d) {
