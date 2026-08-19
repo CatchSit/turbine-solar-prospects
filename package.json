@@ -5,7 +5,8 @@
   "engines": { "node": ">=18" },
   "scripts": {
     "ingest": "node scripts/ingest-epc.mjs",
-    "geocode": "node scripts/geocode-postcodes.mjs"
+    "geocode": "node scripts/geocode-postcodes.mjs",
+    "ingest-recommendations": "node scripts/ingest-epc-recommendations.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2",
