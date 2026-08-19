@@ -474,6 +474,22 @@
     <div id="solar-status-list" class="chip-list"></div>
   </div>
 
+  <div class="section">
+    <h3>EPC recommendations</h3>
+    <div class="chip-list">
+      <label class="chip" id="epc-solar-chip">
+        <input type="checkbox" id="epc-solar-filter"/>
+        <span class="dot" style="background:#c07a2b"></span>
+        EPC recommends solar<span class="chip-n" id="epc-solar-count"></span>
+      </label>
+      <label class="chip" id="epc-efficiency-chip">
+        <input type="checkbox" id="epc-efficiency-filter"/>
+        <span class="dot" style="background:#7a8a7d"></span>
+        EPC recommends efficiency improvements<span class="chip-n" id="epc-efficiency-count"></span>
+      </label>
+    </div>
+  </div>
+
   <button id="reset">Reset filters</button>
 
   <div id="footer">
@@ -550,6 +566,7 @@
 <script src="shared/escape-html.js"></script>
 <script src="shared/building-types.js"></script>
 <script src="shared/sic-codes.js"></script>
+<script src="shared/epc-recommendation-config.js"></script>
 <script src="shared/contact-outcome-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
@@ -692,6 +709,8 @@ let allMarkers = [];
 let activeBuildingTypes = new Set(BUILDING_TYPE_ORDER);
 let activeRatings = new Set(EPC_RATING_ORDER);
 let activeSolarStatuses = new Set(['prospect']); // default: only show fresh prospects
+let filterEpcSolar = false;      // opt-in: when true, only show prospects with epc_recommends_solar
+let filterEpcEfficiency = false; // opt-in: when true, only show prospects with epc_recommends_efficiency
 let searchTerm = "";
 let floorMin = null;
 let floorMax = null;
@@ -720,6 +739,12 @@ function buildPopup(d) {
     ? `<span class="tag"><span class="tag-dot" style="background:${epcCfg.color}"></span>EPC ${epcCfg.label}</span>`
     : '';
   const typeTag = `<span class="tag"><span class="tag-dot" style="background:${BUILDING_TYPE_COLORS[bucket]}"></span>${escapeHtml(bucket)}</span>`;
+  const solarRecTag = d.epc_recommends_solar
+    ? `<span class="tag"><span class="tag-dot" style="background:${EPC_RECOMMENDATION.solar.color}"></span>${escapeHtml(EPC_RECOMMENDATION.solar.label)}</span>`
+    : '';
+  const efficiencyRecTag = d.epc_recommends_efficiency
+    ? `<span class="tag"><span class="tag-dot" style="background:${EPC_RECOMMENDATION.efficiency.color}"></span>${escapeHtml(EPC_RECOMMENDATION.efficiency.label)}</span>`
+    : '';
 
   const maps = d.postcode
     ? `https://www.google.com/maps/search/${encodeURIComponent(d.postcode)}`
@@ -739,7 +764,7 @@ function buildPopup(d) {
         <div class="popup-eyebrow">Commercial prospect</div>
         <div class="popup-name">${escapeHtml(d.address ? d.address.split(',')[0] : (d.postcode || 'Unnamed building'))}</div>
         ${d.postcode ? `<div class="popup-meta">${escapeHtml(d.postcode)}</div>` : ''}
-        <div class="tags">${statusPill}${epcTag}${typeTag}</div>
+        <div class="tags">${statusPill}${epcTag}${typeTag}${solarRecTag}${efficiencyRecTag}</div>
       </div>
       ${solarEst}
       <div class="popup-facts">${addr}${area}${type}${la}</div>
@@ -955,6 +980,7 @@ function initMap(data) {
   buildBuildingTypeChips(data);
   buildEpcRatingChips(data);
   buildSolarStatusChips(data);
+  buildEpcRecommendationCounts(data);
 }
 
 /* ── Chip builders ───────────────────────────────────────── */
@@ -1017,6 +1043,24 @@ function buildSolarStatusChips(data) {
   });
 }
 
+function buildEpcRecommendationCounts(data) {
+  const solarCount = data.filter(d => d.epc_recommends_solar === true).length;
+  const efficiencyCount = data.filter(d => d.epc_recommends_efficiency === true).length;
+  document.getElementById('epc-solar-count').textContent = solarCount.toLocaleString();
+  document.getElementById('epc-efficiency-count').textContent = efficiencyCount.toLocaleString();
+}
+
+document.getElementById('epc-solar-filter').addEventListener('change', e => {
+  filterEpcSolar = e.target.checked;
+  document.getElementById('epc-solar-chip').classList.toggle('on', filterEpcSolar);
+  applyFilters();
+});
+document.getElementById('epc-efficiency-filter').addEventListener('change', e => {
+  filterEpcEfficiency = e.target.checked;
+  document.getElementById('epc-efficiency-chip').classList.toggle('on', filterEpcEfficiency);
+  applyFilters();
+});
+
 document.getElementById("solar-status-clear").addEventListener("click", () => {
   activeSolarStatuses = new Set(SOLAR_STATUS_ORDER);
   document.querySelectorAll("#solar-status-list input").forEach(cb => {
@@ -1036,11 +1080,13 @@ function applyFilters() {
     const typeOk   = activeBuildingTypes.has(d._bucket);
     const ratingOk = !d.epc_rating || activeRatings.has(d.epc_rating);
     const statusOk = activeSolarStatuses.has(d.solar_status);
+    const epcSolarOk = !filterEpcSolar || d.epc_recommends_solar === true;
+    const epcEfficiencyOk = !filterEpcEfficiency || d.epc_recommends_efficiency === true;
     const searchOk = !term || (d.address||'').toLowerCase().includes(term) || (d.postcode||'').toLowerCase().includes(term);
     const minOk    = floorMin == null || (d.floor_area != null && d.floor_area >= floorMin);
     const maxOk    = floorMax == null || (d.floor_area != null && d.floor_area <= floorMax);
 
-    if (typeOk && ratingOk && statusOk && searchOk && minOk && maxOk) {
+    if (typeOk && ratingOk && statusOk && epcSolarOk && epcEfficiencyOk && searchOk && minOk && maxOk) {
       cluster.addLayer(m);
       shown++;
     }
@@ -1067,6 +1113,8 @@ document.getElementById("reset").addEventListener("click", () => {
   activeBuildingTypes = new Set(BUILDING_TYPE_ORDER);
   activeRatings = new Set(EPC_RATING_ORDER);
   activeSolarStatuses = new Set(['prospect']);
+  filterEpcSolar = false;
+  filterEpcEfficiency = false;
   searchTerm = ""; floorMin = null; floorMax = null;
   document.getElementById("search").value = "";
   document.getElementById("floor-min").value = "";
@@ -1080,6 +1128,10 @@ document.getElementById("reset").addEventListener("click", () => {
     cb.checked = isProspect;
     cb.closest('.chip').classList.toggle('on', isProspect);
   });
+  document.getElementById('epc-solar-filter').checked = false;
+  document.getElementById('epc-solar-chip').classList.remove('on');
+  document.getElementById('epc-efficiency-filter').checked = false;
+  document.getElementById('epc-efficiency-chip').classList.remove('on');
   applyFilters();
 });
 
@@ -1091,7 +1143,7 @@ async function fetchAllProspects() {
   while (true) {
     const { data, error } = await db
       .from('prospects')
-      .select('id, address, postcode, lat, lng, property_type, floor_area:total_floor_area, epc_rating:current_energy_rating, local_authority, solar_status, solar_max_panels, solar_yearly_energy_kwh, current_energy_efficiency')
+      .select('id, address, postcode, lat, lng, property_type, floor_area:total_floor_area, epc_rating:current_energy_rating, local_authority, solar_status, solar_max_panels, solar_yearly_energy_kwh, current_energy_efficiency, epc_recommends_solar, epc_recommends_efficiency')
       .not('lat', 'is', null)
       .order('id', { ascending: true })
       .range(from, from + PAGE - 1);
