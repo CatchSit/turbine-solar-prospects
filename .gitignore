@@ -1,5 +1,5 @@
 node_modules/
-data/*.csv
+data/**/*.csv
 data/*.zip
 .env
 EPS certs/

@@ -62,10 +62,14 @@ function buildColumnResolver(headers) {
 // (excess unshaded-glazing heat gain warning) — the patterns below require
 // "solar" alongside "photovoltaic"/"water heating"/"pv", never bare "solar".
 
-const SOLAR_PATTERNS = [/solar\s+photovoltaic/i, /solar\s+water\s+heating/i, /\bsolar\s+pv\b/i];
+const SOLAR_PATTERNS = [
+  /solar\s+photovoltaic/i, /solar\s+water\s+heating/i, /\bsolar\s+pv\b/i,
+  /\bphotovoltaic\b/i, /\bpv\s+panel/i,
+];
 const EFFICIENCY_PATTERNS = [
-  /loft\s+insulation/i, /cavity\s+wall\s+insulation/i,
+  /\b(roof|wall|loft|cavity)\s+insulation/i,
   /optimum\s+start\s*\/?\s*stop/i, /weather\s+compensation/i,
+  /(time|zone|thermostatic)\s+control/i,
 ];
 
 function classify(summaryText) {
@@ -87,6 +91,33 @@ async function parseCsvFile(filePath, onRow) {
   }
 }
 
+// ─── Fetch the set of LMK_KEYs already present in `prospects` — updates
+// below are only ever attempted for keys in this set, matching how
+// ingest-epc.mjs's region/floor-area filter already narrows what's written
+// (a recommendations row for a certificate outside that filter has no
+// prospect row to update, and at real scale is the vast majority of rows —
+// see HANDOVER.md's ingest risk notes). Paginated the same way
+// scripts/geocode-postcodes.mjs pages `prospects` (PostgREST's default
+// max-rows cap requires paging past it explicitly). ─────────────────────
+
+async function fetchExistingLmkKeys() {
+  const keys = new Set();
+  const PAGE = 1000; // PostgREST's default max-rows cap — must page past it explicitly
+  let from = 0;
+  while (true) {
+    const { data, error } = await db
+      .from('prospects')
+      .select('epc_lmk_key')
+      .not('epc_lmk_key', 'is', null)
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(JSON.stringify(error));
+    for (const row of data) keys.add(row.epc_lmk_key);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return keys;
+}
+
 // ─── Supabase update (grouped by exact flag combination — at most 4
 // combinations exist, so this is 4 bulk `.in()` updates total per chunk
 // rather than one HTTP request per building) ───────────────────────────
@@ -99,7 +130,12 @@ async function applyFlags(flagsByKey) {
     groups.get(comboKey).push(lmkKey);
   }
 
-  const CHUNK = 500;
+  // CHUNK sizes an `.in('epc_lmk_key', chunk)` filter, which PostgREST
+  // serializes into the PATCH request's URL query string (unlike
+  // ingest-epc.mjs's CHUNK=500, which sizes an `.upsert()` request body —
+  // no practical length limit there). EPC LMK_KEYs are ~24 chars each, so
+  // keep this well under typical gateway URL-length limits (8-16KB).
+  const CHUNK = 150;
   let totalMatched = 0;
   for (const [comboKey, lmkKeys] of groups) {
     const [solar, efficiency] = comboKey.split('|').map(v => v === 'true');
@@ -132,9 +168,20 @@ async function main() {
     process.exit(1);
   }
 
+  console.log('Fetching existing prospect LMK_KEYs...');
+  const existingKeys = await fetchExistingLmkKeys();
+  console.log(`Existing prospects with an epc_lmk_key: ${existingKeys.size}`);
+
   let rawCount = 0;
-  const perKeyRows = new Map(); // lmk_key -> array of summary texts
-  const unclassified = new Set();
+  let skippedNoMatch = 0;
+  // lmk_key -> { solar, efficiency } — classified inline as each row is
+  // read and OR-accumulated across multiple rows for the same key, so the
+  // raw IMPROVEMENT_SUMMARY_TEXT strings are never retained past the row
+  // they came from (at real scale, potentially 1M+ rows collapsing to two
+  // booleans — retaining every string until a second pass would be a real
+  // memory problem). Only keys already in `prospects` are kept at all.
+  const flagsByKey = new Map();
+  const unclassified = new Set(); // bounded by distinct unmatched strings, not row count
 
   for (const file of files) {
     console.log(`Reading ${file}...`);
@@ -143,25 +190,20 @@ async function main() {
       const lmkKey = String(row[col.lmk_key] ?? '').trim();
       const summary = String(row[col.improvement_summary] ?? '').trim();
       if (!lmkKey) return;
-      if (!perKeyRows.has(lmkKey)) perKeyRows.set(lmkKey, []);
-      perKeyRows.get(lmkKey).push(summary);
+      if (!existingKeys.has(lmkKey)) { skippedNoMatch++; return; }
+      const c = classify(summary);
+      if (!c.solar && !c.efficiency) unclassified.add(summary);
+      const prev = flagsByKey.get(lmkKey);
+      flagsByKey.set(lmkKey, {
+        solar: (prev?.solar ?? false) || c.solar,
+        efficiency: (prev?.efficiency ?? false) || c.efficiency,
+      });
     });
   }
 
-  const flagsByKey = new Map();
-  for (const [lmkKey, summaries] of perKeyRows) {
-    let solar = false, efficiency = false;
-    for (const summary of summaries) {
-      const c = classify(summary);
-      if (c.solar) solar = true;
-      if (c.efficiency) efficiency = true;
-      if (!c.solar && !c.efficiency) unclassified.add(summary);
-    }
-    flagsByKey.set(lmkKey, { solar, efficiency });
-  }
-
   console.log(`Raw rows: ${rawCount}`);
-  console.log(`Distinct LMK_KEYs: ${perKeyRows.size}`);
+  console.log(`Rows skipped (LMK_KEY not an existing prospect): ${skippedNoMatch}`);
+  console.log(`Distinct LMK_KEYs matched to an existing prospect: ${flagsByKey.size}`);
   console.log(`Flagged solar: ${[...flagsByKey.values()].filter(f => f.solar).length}`);
   console.log(`Flagged efficiency: ${[...flagsByKey.values()].filter(f => f.efficiency).length}`);
   console.log(`Unclassified distinct summary texts (first 20): ${[...unclassified].slice(0, 20).join(' | ') || '(none)'}`);

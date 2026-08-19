@@ -479,13 +479,13 @@
     <div class="chip-list">
       <label class="chip" id="epc-solar-chip">
         <input type="checkbox" id="epc-solar-filter"/>
-        <span class="dot" style="background:#c07a2b"></span>
-        EPC recommends solar<span class="chip-n" id="epc-solar-count"></span>
+        <span class="dot" id="epc-solar-dot"></span>
+        <span id="epc-solar-label"></span><span class="chip-n" id="epc-solar-count"></span>
       </label>
       <label class="chip" id="epc-efficiency-chip">
         <input type="checkbox" id="epc-efficiency-filter"/>
-        <span class="dot" style="background:#7a8a7d"></span>
-        EPC recommends efficiency improvements<span class="chip-n" id="epc-efficiency-count"></span>
+        <span class="dot" id="epc-efficiency-dot"></span>
+        <span id="epc-efficiency-label"></span><span class="chip-n" id="epc-efficiency-count"></span>
       </label>
     </div>
   </div>
@@ -500,6 +500,9 @@
       not a measurement — there's no public per-building consumption data in the UK.
       Solar status reflects Google's aerial-imagery detection and may be wrong,
       especially where "no imagery coverage" is shown.
+      EPC recommendation badges only appear where the assessor's recommendation report
+      has been ingested — their absence doesn't mean solar wasn't recommended, just that
+      this data hasn't been checked yet.
     </div>
   </div>
 </div>
@@ -980,7 +983,19 @@ function initMap(data) {
   buildBuildingTypeChips(data);
   buildEpcRatingChips(data);
   buildSolarStatusChips(data);
+  applyEpcRecommendationConfig();
   buildEpcRecommendationCounts(data);
+}
+
+// Sidebar's "EPC recommendations" chips are static markup (unlike the other
+// three chip groups, which are built entirely from data) — source their
+// color/label from EPC_RECOMMENDATION (shared/epc-recommendation-config.js)
+// once at startup instead of hardcoding them a second time in the HTML.
+function applyEpcRecommendationConfig() {
+  document.getElementById('epc-solar-dot').style.background = EPC_RECOMMENDATION.solar.color;
+  document.getElementById('epc-solar-label').textContent = EPC_RECOMMENDATION.solar.label;
+  document.getElementById('epc-efficiency-dot').style.background = EPC_RECOMMENDATION.efficiency.color;
+  document.getElementById('epc-efficiency-label').textContent = EPC_RECOMMENDATION.efficiency.label;
 }
 
 /* ── Chip builders ───────────────────────────────────────── */

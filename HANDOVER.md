@@ -58,6 +58,7 @@ turbine-solar-prospects/
 │   ├── escape-html.js                # Copied verbatim from mcs-map
 │   ├── solar-status-config.js        # solar_status -> {color, label}
 │   ├── epc-rating-config.js          # EPC A-G -> {color, label}
+│   ├── epc-recommendation-config.js  # epc_recommends_solar/efficiency -> {color, soft, label}
 │   ├── contact-outcome-config.js     # prospect_contacts.outcome -> {color, soft, label, requiresDate}
 │   ├── building-types.js             # BUILDING_TYPE_BUCKETS/bucketPropertyType/etc. — loads before talking-points.js
 │   └── talking-points.js             # buildTalkingPoints() — client-side "why this building" summary
@@ -69,7 +70,8 @@ turbine-solar-prospects/
 │   └── plans/2026-08-12-azure-ad-auth.md
 ├── scripts/                          # Manually-run Node pipeline tooling
 │   ├── ingest-epc.mjs                # CSV -> region+floor-area filter -> dedupe -> upsert `prospects`
-│   └── geocode-postcodes.mjs         # postcodes.io bulk lookup -> fills lat/lng
+│   ├── geocode-postcodes.mjs         # postcodes.io bulk lookup -> fills lat/lng
+│   └── ingest-epc-recommendations.mjs # recommendations CSV -> LMK_KEY match -> epc_recommends_solar/efficiency flags (optional, additive)
 └── supabase/
     ├── config.toml                    # Minimal — pins verify_jwt=true for company-lookup only
     ├── migrations/
@@ -80,7 +82,8 @@ turbine-solar-prospects/
     │   ├── 005_api_usage_tracking.sql  # api_usage table — Solar API monthly-cap tracking
     │   ├── 006_company_lookups.sql     # company_lookups table — Companies House cache
     │   ├── 007_prospect_contacts.sql   # prospect_contacts table — CRM contact log, manager-only read RLS
-    │   └── 008_prospect_contacts_insert_domain_check.sql # tightens 007's insert policy to @turbineenergyuk.co.uk + own identity, lowercases the admin-read check
+    │   ├── 008_prospect_contacts_insert_domain_check.sql # tightens 007's insert policy to @turbineenergyuk.co.uk + own identity, lowercases the admin-read check
+    │   └── 009_epc_recommendations.sql # epc_recommends_solar/epc_recommends_efficiency nullable boolean columns on `prospects`
     └── functions/
         ├── solar-enrichment/
         │   └── index.ts               # Batched, resumable Google Solar API enrichment
@@ -97,14 +100,16 @@ As of the Azure AD login work, `index.html` **does** talk to Supabase directly, 
 Every step is idempotent (upserts on `epc_lmk_key`, `solar-enrichment` only touches `pending` rows), so re-running is always safe.
 
 ### Step 0 — one-time setup
-1. Supabase project `turbine-solar-prospects` is already created. Confirm migrations `001_prospects_schema.sql` through `008_prospect_contacts_insert_domain_check.sql` (all eight, in order) have been run in its SQL editor — run any that haven't (check with `SELECT * FROM prospects LIMIT 1;`; a "relation does not exist" error means `001`/`002` haven't been run yet). `004` is the one that actually enforces the `@turbineenergyuk.co.uk` restriction at the database level — don't treat `003` alone as sufficient, see Section 5. `005`/`006`/`007` add `api_usage`, `company_lookups`, and `prospect_contacts`, needed by `solar-enrichment`, `company-lookup`, and the Log Contact modal/dashboard respectively. `008` tightens `007`'s `prospect_contacts` insert policy to `@turbineenergyuk.co.uk` accounts inserting under their own identity — see Section 5.
+1. Supabase project `turbine-solar-prospects` is already created. Confirm migrations `001_prospects_schema.sql` through `009_epc_recommendations.sql` (all nine, in order) have been run in its SQL editor — run any that haven't (check with `SELECT * FROM prospects LIMIT 1;`; a "relation does not exist" error means `001`/`002` haven't been run yet). `004` is the one that actually enforces the `@turbineenergyuk.co.uk` restriction at the database level — don't treat `003` alone as sufficient, see Section 5. `005`/`006`/`007` add `api_usage`, `company_lookups`, and `prospect_contacts`, needed by `solar-enrichment`, `company-lookup`, and the Log Contact modal/dashboard respectively. `008` tightens `007`'s `prospect_contacts` insert policy to `@turbineenergyuk.co.uk` accounts inserting under their own identity — see Section 5. `009` adds the `epc_recommends_solar`/`epc_recommends_efficiency` columns needed by `scripts/ingest-epc-recommendations.mjs` (Step 5 below).
 2. Register a GOV.UK One Login account (needed to download EPC bulk data — see Section 7).
 3. Get a Google Cloud API key with the Solar API enabled, and set it as the `GOOGLE_SOLAR_API_KEY` secret on the Supabase project (`supabase secrets set GOOGLE_SOLAR_API_KEY=...`).
 4. Register a free Companies House API key (`developer.company-information.service.gov.uk` — no billing/payment method required, unlike the Google keys) and set it as the `COMPANIES_HOUSE_API_KEY` secret (`supabase secrets set COMPANIES_HOUSE_API_KEY=...`). Done — see Section 1, item 4.
 5. `npm install` in the repo root.
 
 ### Step 1 — download EPC data (manual, human-gated)
-Go to https://get-energy-performance-data.communities.gov.uk/, sign in, download the **non-domestic certificates** bulk CSV per year (England & Wales) — not "recommendations", that's a different, unused dataset (see Section 7, risk 1). Save into `data/` (gitignored).
+Go to https://get-energy-performance-data.communities.gov.uk/, sign in, download the **non-domestic certificates** bulk CSV per year (England & Wales) — this is the primary/required download, everything in Steps 2-4 below depends on it. Save into `data/` (gitignored).
+
+The portal also offers a separate **recommendations** bulk CSV per year — a different dataset (the specific improvement measures an assessor recommended per certificate), now also used, optionally, by `scripts/ingest-epc-recommendations.mjs` (Step 5 below) to flag solar/efficiency recommendations. Not required for the core pipeline (Steps 1-4); download it only if you want those extra flags. Save into `data/recommendations/` (gitignored — see Section 7, risk 1).
 
 `scripts/ingest-epc.mjs`'s `COLUMN_CANDIDATES` map has been verified against a real 2011–2026 export (Section 7, risk 2) — a first run shouldn't need any changes. If the portal changes its schema again in the future, the script still fails loudly and lists the actual headers found, rather than silently mis-mapping columns.
 
@@ -130,7 +135,13 @@ Requires the `GOOGLE_SOLAR_API_KEY` secret set on the Supabase project. Watch th
 
 There is no separate export step — `index.html` queries the `prospects` table live (Section 6), gated by the Azure AD login and RLS, so once Steps 1–4 have run, the data is already visible in the map on next load. (The old `npm run export` script that pushed a static `prospects.json` to GitHub was retired when live Supabase queries replaced it — see `docs/superpowers/specs/2026-08-12-azure-ad-auth-design.md`.)
 
-Repeat steps 1–4 (or just 3–4 if only re-checking solar status) whenever the pilot needs refreshing — no cron is set up yet (see Section 8).
+### Step 5 — EPC recommendations enrichment (optional, additive)
+```
+SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm run ingest-recommendations -- data/recommendations/your-export.csv
+```
+Reads the separate "recommendations" bulk CSV (Step 1 above), matches rows to existing `prospects` by `LMK_KEY` (only prospects already in the table from Steps 1-2 are touched — a recommendations row for a certificate outside the Yorkshire & Humber/floor-area filter is skipped), and sets `epc_recommends_solar`/`epc_recommends_efficiency` based on whether the assessor's recommendation text matches the solar/efficiency keyword patterns. Entirely optional and additive — the map and CRM work fully without it. Prospects with no matching recommendations data stay `null` on both columns (not `false`) — see `docs/superpowers/specs/2026-08-19-epc-recommendations-design.md`. Full design in that spec and `docs/superpowers/plans/2026-08-19-epc-recommendations.md`.
+
+Repeat steps 1–5 (or just 3–4 if only re-checking solar status) whenever the pilot needs refreshing — no cron is set up yet (see Section 8).
 
 ---
 
@@ -150,6 +161,7 @@ Repeat steps 1–4 (or just 3–4 if only re-checking solar status) whenever the
 | `lat`, `lng`, `geocode_source` | numeric, numeric, text | Filled by `geocode-postcodes.mjs` |
 | `solar_status` | text | `pending` \| `prospect` \| `has_solar` \| `no_coverage` \| `error` |
 | `solar_checked_at`, `solar_detection_status`, `solar_max_panels`, `solar_yearly_energy_kwh`, `solar_raw` | — | Filled by `solar-enrichment`; `solar_raw` keeps the full API response so reclassification doesn't need a second paid call |
+| `epc_recommends_solar`, `epc_recommends_efficiency` | boolean, nullable | Filled by `scripts/ingest-epc-recommendations.mjs` (migration `009`, optional/additive — Section 4 Step 5); `null` means no recommendations data found for that `LMK_KEY`, `true`/`false` means a match was found and did/didn't fall in that bucket — see `docs/superpowers/specs/2026-08-19-epc-recommendations-design.md` |
 
 RLS: authenticated `SELECT` only, further restricted to `@turbineenergyuk.co.uk` accounts at the database level (migration `004_prospects_domain_rls.sql` supersedes `003_prospects_auth_rls.sql`'s "any authenticated session" policy — `003` alone was found in review to be bypassable by anyone who self-registers via the exposed anon key, since public email signup is enabled on the project; `004` closes that by checking `auth.jwt() ->> 'email'` in the policy itself). No client insert/update/delete policies — all writes are server-side via the service-role key.
 
@@ -206,7 +218,7 @@ Requires the `COMPANIES_HOUSE_API_KEY` secret (free — `developer.company-infor
 
 ## 7. Known Risks / Open Items
 
-1. **EPC portal — resolved.** `epc.opendatacommunities.org` redirects to `get-energy-performance-data.communities.gov.uk`, which requires a GOV.UK One Login account. Confirmed via a real walkthrough: the portal offers separate **certificates** and **recommendations** downloads per year — only **certificates** is needed (recommendations is retrofit-suggestion data, unused by this pipeline). Certificates are available per-year back to 2011; header schema is identical across all years 2011–2026.
+1. **EPC portal — resolved.** `epc.opendatacommunities.org` redirects to `get-energy-performance-data.communities.gov.uk`, which requires a GOV.UK One Login account. Confirmed via a real walkthrough: the portal offers separate **certificates** and **recommendations** downloads per year — **certificates** is the required download for the core pipeline (Section 4, Steps 1–4); **recommendations** (retrofit-suggestion data per certificate) is now also used, optionally, by `scripts/ingest-epc-recommendations.mjs` (Section 4, Step 5) to set the `epc_recommends_solar`/`epc_recommends_efficiency` flags — see `docs/superpowers/specs/2026-08-19-epc-recommendations-design.md`. Certificates are available per-year back to 2011; header schema is identical across all years 2011–2026.
 2. **EPC CSV column names — verified against a real export, and fixed.** `scripts/ingest-epc.mjs`'s `COLUMN_CANDIDATES` map was a guess based on the historical (`opendatacommunities`) schema; the real bulk export uses different names for two fields the script needs: `LMK_KEY` → `certificate_number`, and `TOTAL_FLOOR_AREA` → `floor_area`. Both are now in `COLUMN_CANDIDATES` alongside the original guesses, and a full 2011–2026 ingest (1,059,502 raw rows) ran clean. The script still fails loudly and lists real headers if a future export changes again.
 3. **`BUILDING_TYPE_BUCKETS` bucketing — spot-checked against real data, works for observed categories.** Real `property_type` values follow the UK planning Use Classes Order format (e.g. `"A1/A2 Retail and Financial/Professional services"`, `"B1 Offices and Workshop businesses"`, `"B2 to B7 General Industrial and Special Industrial Groups"`, `"B8 Storage or Distribution"`, `"C2 Residential Institutions - Hospitals and Care Homes"`), not free-text descriptions. The keyword matching correctly buckets all of these seen so far. One ambiguous case worth knowing: `"B1 Offices and Workshop businesses"` matches Warehouse/Industrial (via `"workshop"`) rather than Office, because Warehouse/Industrial is checked first and B1 is a genuinely mixed-use category — this is an order-dependent judgment call, not a bug, but worth revisiting if the sales team finds B1 buildings miscategorized. C1 (Hotels) and D1/D2 (Institutions/Assembly and Leisure) categories haven't been directly observed yet.
 4. **Google Solar API `detectionStatus` field path is unverified.** `supabase/functions/solar-enrichment/index.ts`'s `classifyDetection()` checks a few plausible JSON paths and always stores the raw response in `solar_raw` specifically so this can be corrected by reprocessing stored data, without a second paid API call, once a real response is seen. **Do this check early in the pilot**, before trusting the `prospect`/`has_solar` split at any scale.
