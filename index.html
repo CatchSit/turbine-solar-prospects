@@ -244,6 +244,8 @@
     .company-name { font-weight: 500; color: var(--text); }
     .company-status { font-weight: 400; color: var(--text3); }
     .company-officers { margin-top: 2px; color: var(--text2); }
+    .company-subline { margin-top: 1px; color: var(--text3); font-size: 11.5px; }
+    .company-psc { margin-top: 4px; color: var(--text2); }
     .company-match-fallback { color: var(--text3); }
     .company-match-links { display: flex; gap: 10px; margin-top: 6px; }
     .company-match-links a { color: var(--accent); }
@@ -546,6 +548,7 @@
 <script src="shared/epc-rating-config.js"></script>
 <script src="shared/escape-html.js"></script>
 <script src="shared/building-types.js"></script>
+<script src="shared/sic-codes.js"></script>
 <script src="shared/contact-outcome-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
@@ -646,6 +649,24 @@ db.auth.onAuthStateChange((event, session) => {
 
 const EPC_RATING_ORDER = ["A", "B", "C", "D", "E", "F", "G"];
 const SOLAR_STATUS_ORDER = ["prospect", "has_solar", "no_coverage", "pending", "error"];
+
+/* ── Companies House nature-of-control labels ────────────────
+   Real enum keys per Companies House's api-enumerations
+   psc_descriptions.yml (verified 2026-08-19); labels are this
+   project's own short paraphrase for popup display. */
+const NATURE_OF_CONTROL_LABELS = {
+  'ownership-of-shares-25-to-50-percent': '25-50% shares',
+  'ownership-of-shares-50-to-75-percent': '50-75% shares',
+  'ownership-of-shares-75-to-100-percent': '75-100% shares',
+  'voting-rights-25-to-50-percent': '25-50% voting rights',
+  'voting-rights-50-to-75-percent': '50-75% voting rights',
+  'voting-rights-75-to-100-percent': '75-100% voting rights',
+  'right-to-appoint-and-remove-directors': 'can appoint/remove directors',
+  'significant-influence-or-control': 'significant influence or control',
+};
+function natureOfControlLabel(value) {
+  return NATURE_OF_CONTROL_LABELS[value] || value.replace(/-/g, ' ');
+}
 
 /* ── Map setup ───────────────────────────────────────────── */
 const map = L.map("map", { center: [53.85, -1.3], zoom: 9, zoomControl: false });
@@ -785,11 +806,23 @@ async function loadCompanyMatch(d) {
       return;
     }
 
-    el.querySelector('.company-match-body').innerHTML = data.companies.map(c => `
+    el.querySelector('.company-match-body').innerHTML = data.companies.map(c => {
+      const sicDesc = (c.sic_codes || []).map(code => SIC_CODES[code]).filter(Boolean).join(', ');
+      const tradingSince = c.incorporated_on ? `Trading since ${new Date(c.incorporated_on).getFullYear()}` : '';
+      const subline = [sicDesc, tradingSince].filter(Boolean).join(' · ');
+      const pscHtml = (c.psc || []).length
+        ? `<div class="company-psc"><span class="popup-section-label" style="margin:6px 0 2px">Significant control</span>${c.psc.map(p =>
+            `${escapeHtml(p.name)}${p.is_corporate ? ' (company)' : ''}${p.natures_of_control?.length ? ` — ${p.natures_of_control.map(n => escapeHtml(natureOfControlLabel(n))).join(', ')}` : ''}`
+          ).join('<br>')}</div>`
+        : '';
+      return `
       <div class="company-card ${c.status !== 'active' ? 'dissolved' : ''}">
         <div class="company-name">${escapeHtml(c.company_name)}${c.status !== 'active' ? ` <span class="company-status">· ${escapeHtml(c.status)} — likely not trading</span>` : ''}</div>
+        ${subline ? `<div class="company-subline">${escapeHtml(subline)}</div>` : ''}
         ${c.officers?.length ? `<div class="company-officers">${c.officers.map(o => escapeHtml(o.name) + (o.role ? ` (${escapeHtml(o.role)})` : '')).join(', ')}</div>` : ''}
-      </div>`).join('');
+        ${pscHtml}
+      </div>`;
+    }).join('');
   } catch (e) {
     // Includes the Promise.race timeout rejection (TIMEOUT) as well as any
     // thrown network error — both are "couldn't check", not "no match".
