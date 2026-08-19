@@ -90,43 +90,50 @@ async function searchCompaniesHouse(postcode: string): Promise<any[]> {
   return json.items ?? []
 }
 
-async function fetchOfficers(companyNumber: string): Promise<Officer[]> {
+async function fetchOfficers(companyNumber: string): Promise<{ items: Officer[]; ok: boolean }> {
   const resp = await fetch(
     `https://api.company-information.service.gov.uk/company/${companyNumber}/officers`,
     { headers: authHeader() },
   )
   // Don't fail the whole lookup if one company's officers can't be fetched —
-  // an empty officers list is still a useful company-name match.
-  if (!resp.ok) return []
+  // an empty officers list is still a useful company-name match. The `ok`
+  // flag lets the caller distinguish "genuinely no officers" from "this
+  // particular call degraded", so a transient failure doesn't get cached as
+  // if it were a complete result — see the matches-building loop below.
+  if (!resp.ok) return { items: [], ok: false }
   const json = await resp.json()
-  // deno-lint-ignore no-explicit-any
-  return (json.items ?? [])
-    .filter((o: any) => !o.resigned_on)
+  return {
     // deno-lint-ignore no-explicit-any
-    .map((o: any) => ({ name: o.name as string, role: o.officer_role as string }))
+    items: (json.items ?? [])
+      .filter((o: any) => !o.resigned_on)
+      // deno-lint-ignore no-explicit-any
+      .map((o: any) => ({ name: o.name as string, role: o.officer_role as string })),
+    ok: true,
+  }
 }
 
-async function fetchProfile(companyNumber: string): Promise<{ sic_codes: string[]; incorporated_on: string | null }> {
+async function fetchProfile(companyNumber: string): Promise<{ sic_codes: string[]; incorporated_on: string | null; ok: boolean }> {
   const resp = await fetch(
     `https://api.company-information.service.gov.uk/company/${companyNumber}`,
     { headers: authHeader() },
   )
-  if (!resp.ok) return { sic_codes: [], incorporated_on: null }
+  if (!resp.ok) return { sic_codes: [], incorporated_on: null, ok: false }
   const json = await resp.json()
   return {
     sic_codes: json.sic_codes ?? [],
     incorporated_on: json.date_of_creation ?? null,
+    ok: true,
   }
 }
 
 // deno-lint-ignore no-explicit-any
-async function fetchPsc(companyNumber: string): Promise<Psc[]> {
+async function fetchPsc(companyNumber: string): Promise<{ items: Psc[]; ok: boolean }> {
   const resp = await fetch(
     `https://api.company-information.service.gov.uk/company/${companyNumber}/persons-with-significant-control`,
     { headers: authHeader() },
   )
   // Don't fail the whole lookup if PSC can't be fetched — mirrors fetchOfficers.
-  if (!resp.ok) return []
+  if (!resp.ok) return { items: [], ok: false }
   const json = await resp.json()
   // "Statement" items (e.g. "no individual or entity with significant
   // control") carry a `statement` field instead of `name` — filtering on
@@ -137,13 +144,16 @@ async function fetchPsc(companyNumber: string): Promise<Psc[]> {
   // applies to solar-enrichment's classifyDetection(), HANDOVER.md
   // Section 7 risk 4 — an unverified field-path guess that stores the raw
   // response so it can be corrected later without a second paid call).
-  return (json.items ?? [])
-    .filter((p: any) => typeof p.name === 'string' && !p.ceased_on)
-    .map((p: any) => ({
-      name: p.name as string,
-      natures_of_control: (p.natures_of_control ?? []) as string[],
-      is_corporate: typeof p.kind === 'string' && p.kind !== 'individual-person-with-significant-control',
-    }))
+  return {
+    items: (json.items ?? [])
+      .filter((p: any) => typeof p.name === 'string' && !p.ceased_on)
+      .map((p: any) => ({
+        name: p.name as string,
+        natures_of_control: (p.natures_of_control ?? []) as string[],
+        is_corporate: typeof p.kind === 'string' && /^(corporate-entity|legal-person)/.test(p.kind),
+      })),
+    ok: true,
+  }
 }
 
 Deno.serve(async (req) => {
@@ -226,6 +236,10 @@ Deno.serve(async (req) => {
   }
 
   const matches: CompanyMatch[] = []
+  // Set true if any per-company call (officers/profile/psc) returns its
+  // empty/default value because of a non-OK HTTP response rather than a
+  // genuinely empty result — see the `if (!anyDegraded)` cache guard below.
+  let anyDegraded = false
   try {
     const normalizedTarget = normalizePostcode(postcode)
     const results = await searchCompaniesHouse(postcode)
@@ -243,12 +257,13 @@ Deno.serve(async (req) => {
       const profile = await fetchProfile(r.company_number)
       await sleep(150)
       const psc = await fetchPsc(r.company_number)
+      if (!officers.ok || !profile.ok || !psc.ok) anyDegraded = true
       matches.push({
         company_name: r.title,
         company_number: r.company_number,
         status: r.company_status,
-        officers,
-        psc,
+        officers: officers.items,
+        psc: psc.items,
         sic_codes: profile.sic_codes,
         incorporated_on: profile.incorporated_on,
       })
@@ -266,13 +281,21 @@ Deno.serve(async (req) => {
 
   const noMatch = matches.length === 0
 
-  const { error: upsertErr } = await db
-    .from('company_lookups')
-    .upsert(
-      { prospect_id, companies: matches, no_match: noMatch, fetched_at: new Date().toISOString() },
-      { onConflict: 'prospect_id' },
-    )
-  if (upsertErr) console.error('Cache write failed:', JSON.stringify(upsertErr))
+  // Skip the cache write when any per-company call degraded — a transient
+  // Companies House failure (429/5xx) must not get persisted for 90 days as
+  // if it were a complete, genuine result. The (partial) data is still
+  // returned to the frontend this one time; it just isn't cached, so the
+  // next lookup re-fetches fresh instead of trusting the stale/incomplete
+  // snapshot.
+  if (!anyDegraded) {
+    const { error: upsertErr } = await db
+      .from('company_lookups')
+      .upsert(
+        { prospect_id, companies: matches, no_match: noMatch, fetched_at: new Date().toISOString() },
+        { onConflict: 'prospect_id' },
+      )
+    if (upsertErr) console.error('Cache write failed:', JSON.stringify(upsertErr))
+  }
 
   return jsonResponse({ companies: matches, no_match: noMatch, cached: false }, 200)
 })

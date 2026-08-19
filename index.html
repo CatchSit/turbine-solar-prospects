@@ -246,6 +246,7 @@
     .company-officers { margin-top: 2px; color: var(--text2); }
     .company-subline { margin-top: 1px; color: var(--text3); font-size: 11.5px; }
     .company-psc { margin-top: 4px; color: var(--text2); }
+    .company-psc .popup-section-label { display: block; margin: 6px 0 2px; }
     .company-match-fallback { color: var(--text3); }
     .company-match-links { display: flex; gap: 10px; margin-top: 6px; }
     .company-match-links a { color: var(--accent); }
@@ -772,7 +773,7 @@ function companyMatchFallbackHtml(d, isError) {
     </div>`;
 }
 
-const COMPANY_LOOKUP_TIMEOUT_MS = 10000;
+const COMPANY_LOOKUP_TIMEOUT_MS = 20000;
 function timeoutAfter(ms) {
   return new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), ms));
 }
@@ -811,7 +812,7 @@ async function loadCompanyMatch(d) {
       const tradingSince = c.incorporated_on ? `Trading since ${new Date(c.incorporated_on).getFullYear()}` : '';
       const subline = [sicDesc, tradingSince].filter(Boolean).join(' · ');
       const pscHtml = (c.psc || []).length
-        ? `<div class="company-psc"><span class="popup-section-label" style="margin:6px 0 2px">Significant control</span>${c.psc.map(p =>
+        ? `<div class="company-psc"><span class="popup-section-label">Significant control</span>${c.psc.map(p =>
             `${escapeHtml(p.name)}${p.is_corporate ? ' (company)' : ''}${p.natures_of_control?.length ? ` — ${p.natures_of_control.map(n => escapeHtml(natureOfControlLabel(n))).join(', ')}` : ''}`
           ).join('<br>')}</div>`
         : '';
