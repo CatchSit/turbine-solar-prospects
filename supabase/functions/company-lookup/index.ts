@@ -52,7 +52,7 @@ function corsHeadersFor(origin: string | null): Record<string, string> {
 // exceeding the free rate limit (600 req/5 min) in an on-demand,
 // per-prospect-click usage pattern — no monthly cap needed, unlike Solar API.
 const CACHE_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000 // 90 days
-const MAX_ACTIVE_COMPANIES = 5
+const MAX_ACTIVE_COMPANIES = 8
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
@@ -66,10 +66,41 @@ type CompanyMatch = {
   psc: Psc[]
   sic_codes: string[]
   incorporated_on: string | null
+  address_match: boolean
 }
 
 function normalizePostcode(pc: string): string {
   return pc.trim().toUpperCase().replace(/\s+/g, '')
+}
+
+// deno-lint-ignore no-explicit-any
+function leadingNumber(text: any): number | null {
+  const m = typeof text === 'string' ? text.match(/\d+/) : null
+  return m ? parseInt(m[0], 10) : null
+}
+
+// A building-number match is the only signal trusted here — it's discrete
+// and unambiguous, unlike word-overlap on shared site/street names (see
+// docs/superpowers/specs/2026-08-20-popup-relevance-and-tabs-design.md,
+// "Non-goals", for why fuzzy full-text similarity was rejected).
+// deno-lint-ignore no-explicit-any
+function isAddressMatch(prospectAddress: string, candidate: any): boolean {
+  const prospectToken = prospectAddress.split(',')[0]
+  const chToken = candidate.address?.premises || candidate.address?.address_line_1
+  const prospectNumber = leadingNumber(prospectToken)
+  const chNumber = leadingNumber(chToken)
+  return prospectNumber !== null && chNumber !== null && prospectNumber === chNumber
+}
+
+// Reorders candidates so likely building matches sort first. Never drops a
+// candidate — every item passed in comes back out, just reordered, so a
+// caller applying a cap afterwards keeps every match it would have kept
+// before, plus promotes real matches ahead of the cap.
+// deno-lint-ignore no-explicit-any
+function rankByAddressMatch(prospectAddress: string, candidates: any[]): any[] {
+  return candidates
+    .map(c => ({ ...c, address_match: isAddressMatch(prospectAddress, c) }))
+    .sort((a, b) => Number(b.address_match) - Number(a.address_match))
 }
 
 function authHeader(): HeadersInit {
@@ -207,7 +238,7 @@ Deno.serve(async (req) => {
   // searches (any caller could pass any postcode, not just a real prospect's).
   const { data: prospect, error: prospectErr } = await db
     .from('prospects')
-    .select('postcode')
+    .select('address, postcode')
     .eq('id', prospect_id)
     .maybeSingle()
 
@@ -219,6 +250,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Prospect not found or missing postcode' }, 404)
   }
   const postcode = prospect.postcode as string
+  const address = (prospect.address as string) || ''
 
   const { data: cached, error: cacheErr } = await db
     .from('company_lookups')
@@ -244,11 +276,15 @@ Deno.serve(async (req) => {
     const normalizedTarget = normalizePostcode(postcode)
     const results = await searchCompaniesHouse(postcode)
     // deno-lint-ignore no-explicit-any
-    const activeMatches = results.filter((r: any) =>
+    const postcodeMatches = results.filter((r: any) =>
       r.address?.postal_code &&
       normalizePostcode(r.address.postal_code) === normalizedTarget &&
       r.company_status === 'active'
-    ).slice(0, MAX_ACTIVE_COMPANIES)
+    )
+    // Rank before slicing — a real building match must not lose its spot to
+    // an unrelated company that Companies House's own search happened to
+    // rank higher. See rankByAddressMatch above.
+    const activeMatches = rankByAddressMatch(address, postcodeMatches).slice(0, MAX_ACTIVE_COMPANIES)
 
     for (let i = 0; i < activeMatches.length; i++) {
       const r = activeMatches[i]
@@ -266,6 +302,7 @@ Deno.serve(async (req) => {
         psc: psc.items,
         sic_codes: profile.sic_codes,
         incorporated_on: profile.incorporated_on,
+        address_match: r.address_match,
       })
       // Courtesy pacing between sequential external API calls, mirrors
       // solar-enrichment's sleep(150) between Google Solar API calls.
