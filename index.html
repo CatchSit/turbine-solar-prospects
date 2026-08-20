@@ -212,7 +212,7 @@
       border-radius: 14px !important; background: var(--surface) !important;
       box-shadow: 0 12px 32px rgba(0,0,0,.12), 0 0 0 1px var(--border) !important; padding: 0 !important;
     }
-    .leaflet-popup-content { margin: 0 !important; width: 320px !important; }
+    .leaflet-popup-content { margin: 0 !important; width: 360px !important; }
     .leaflet-popup-tip { background: var(--surface) !important; box-shadow: 0 0 0 1px var(--border) !important; }
     .leaflet-popup-close-button { color: var(--text3) !important; padding: 8px 10px !important; font-size: 18px !important; }
     .leaflet-popup-close-button:hover { color: var(--text) !important; background: transparent !important; }
@@ -1027,7 +1027,7 @@ function initMap(data) {
     marker.bindTooltip(d.address || d.postcode || 'Unnamed building', { direction: "top", offset: [0, -10], className: 'day-tooltip', opacity: 0.96 });
     marker._d = d;
     marker.on('click', () => {
-      marker.bindPopup(buildPopup(d), { maxWidth: 320, autoPan: true }).openPopup();
+      marker.bindPopup(buildPopup(d), { maxWidth: 360, autoPan: true }).openPopup();
       loadCompanyMatch(d);
     });
     allMarkers.push(marker);
