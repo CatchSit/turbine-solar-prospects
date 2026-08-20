@@ -45,10 +45,25 @@ function postcodeOutcodeArea(postcode) {
 // 28-field layout; only these four are needed here.
 const FIELD = {
   BILLING_AUTHORITY_CODE: 1,
+  BA_REFERENCE_NUMBER: 3,
   DESCRIPTION_TEXT: 5,
+  ADDRESS_COMBINED: 7,
   POSTCODE: 14,
   RATEABLE_VALUE: 17,
 };
+
+// New prospects seeded from VOA data need a size-equivalent floor since
+// floor area isn't available from VOA — calibrated against the real
+// rateable-value distribution of prospects that already qualify today
+// (p05=£11,750, p10=£19,750 among 19,050 matched prospects, checked
+// 2026-08-20). See
+// docs/superpowers/specs/2026-08-20-voa-primary-prospect-source-design.md.
+const MIN_VOA_RATEABLE_VALUE = 15000;
+
+// Set DRY_RUN=1 to report how many new prospects this would create without
+// writing anything — no prospects inserted, no business_rates_matches
+// touched. Always run this first after changing MIN_VOA_RATEABLE_VALUE.
+const DRY_RUN = process.env.DRY_RUN === '1';
 
 // ─── Step 1: discover the current baseline zip URL ────────────────────────
 
@@ -120,9 +135,15 @@ async function fetchExistingPostcodes() {
 
 // ─── Step 5: stream-parse, filter, group by postcode ───────────────────────
 
-async function collectHereditamentsByPostcode(stream, existingPostcodes) {
+// Collects every Yorkshire & Humber hereditament (region-bounded — that's
+// what keeps this tractable against a 2-million-row national file, same as
+// before), regardless of whether its postcode already has a prospect. The
+// "already a known prospect" filter that used to live here moved to
+// selectNewProspectCandidates() below, since we now need this same data for
+// two different purposes: enriching existing prospects AND seeding new ones.
+async function collectHereditamentsByPostcode(stream) {
   const byPostcode = new Map(); // normalized postcode -> hereditament[]
-  let rawCount = 0, yhCount = 0, matchedCount = 0;
+  let rawCount = 0, yhCount = 0;
 
   const parser = stream.pipe(parse({ delimiter: '*', relax_column_count: true, bom: true }));
   for await (const row of parser) {
@@ -133,17 +154,17 @@ async function collectHereditamentsByPostcode(stream, existingPostcodes) {
     if (!YORKSHIRE_HUMBER_OUTCODES.has(outcode)) continue;
     yhCount++;
 
-    const norm = postcode.toUpperCase().replace(/\s+/g, '');
-    if (!existingPostcodes.has(norm)) continue;
-    matchedCount++;
-
     const rateableValue = parseInt(row[FIELD.RATEABLE_VALUE], 10);
     if (!Number.isFinite(rateableValue)) continue;
 
+    const norm = postcode.toUpperCase().replace(/\s+/g, '');
     const hereditament = {
       description: String(row[FIELD.DESCRIPTION_TEXT] || '').trim(),
       rateable_value: rateableValue,
       billing_authority_code: String(row[FIELD.BILLING_AUTHORITY_CODE] || '').trim(),
+      ba_reference: String(row[FIELD.BA_REFERENCE_NUMBER] || '').trim(),
+      address: String(row[FIELD.ADDRESS_COMBINED] || '').trim(),
+      postcode,
     };
     if (!byPostcode.has(norm)) byPostcode.set(norm, []);
     byPostcode.get(norm).push(hereditament);
@@ -151,8 +172,54 @@ async function collectHereditamentsByPostcode(stream, existingPostcodes) {
 
   console.log(`Raw rows: ${rawCount}`);
   console.log(`Yorkshire & Humber rows (by postcode outcode): ${yhCount}`);
-  console.log(`Matched to an existing prospect postcode: ${matchedCount}`);
+  console.log(`Distinct Yorkshire & Humber postcodes: ${byPostcode.size}`);
   return byPostcode;
+}
+
+// ─── Step 5b: identify postcodes with no existing prospect that qualify as
+// new VOA-sourced prospects ─────────────────────────────────────────────
+
+function selectNewProspectCandidates(byPostcode, existingPostcodes) {
+  const candidates = [];
+  for (const [norm, hereditaments] of byPostcode) {
+    if (existingPostcodes.has(norm)) continue;
+    const top = hereditaments.reduce(
+      (best, h) => (h.rateable_value > (best?.rateable_value ?? -1) ? h : best),
+      null,
+    );
+    if (!top || top.rateable_value < MIN_VOA_RATEABLE_VALUE) continue;
+    candidates.push({
+      voa_ba_reference: top.ba_reference,
+      address: top.address,
+      postcode: top.postcode,
+      property_type: top.description,
+      source: 'voa',
+      region: 'yorkshire-humber',
+    });
+  }
+  console.log(`New-prospect candidate postcodes (no existing prospect, top hereditament >= £${MIN_VOA_RATEABLE_VALUE.toLocaleString()}): ${candidates.length}`);
+  return candidates;
+}
+
+// ─── Step 5c: insert new VOA-sourced prospects ─────────────────────────────
+
+async function insertNewProspects(candidates) {
+  const inserted = new Map(); // normalized postcode -> Set<prospect id>
+  const CHUNK = 500;
+  for (let i = 0; i < candidates.length; i += CHUNK) {
+    const chunk = candidates.slice(i, i + CHUNK);
+    const { data, error } = await db.from('prospects')
+      .upsert(chunk, { onConflict: 'voa_ba_reference' })
+      .select('id, postcode');
+    if (error) throw new Error(`New-prospect insert failed at row ${i}: ${JSON.stringify(error)}`);
+    for (const row of data) {
+      const norm = row.postcode.toUpperCase().replace(/\s+/g, '');
+      if (!inserted.has(norm)) inserted.set(norm, new Set());
+      inserted.get(norm).add(row.id);
+    }
+    console.log(`  inserted ${Math.min(i + CHUNK, candidates.length)}/${candidates.length} new prospects`);
+  }
+  return inserted;
 }
 
 // ─── Step 6: upsert into business_rates_matches ────────────────────────────
@@ -196,7 +263,23 @@ async function main() {
   const existingPostcodes = await fetchExistingPostcodes();
   console.log(`Distinct prospect postcodes: ${existingPostcodes.size}`);
 
-  const byPostcode = await collectHereditamentsByPostcode(stream, existingPostcodes);
+  const byPostcode = await collectHereditamentsByPostcode(stream);
+  const matchedExistingCount = [...existingPostcodes.keys()].filter(norm => byPostcode.has(norm)).length;
+  console.log(`Existing prospect postcodes with at least one hereditament match: ${matchedExistingCount}`);
+
+  const newCandidates = selectNewProspectCandidates(byPostcode, existingPostcodes);
+
+  if (DRY_RUN) {
+    console.log('DRY_RUN=1 set — no writes made. Re-run without it to apply.');
+    return;
+  }
+
+  const newlyInserted = await insertNewProspects(newCandidates);
+  for (const [norm, ids] of newlyInserted) {
+    if (!existingPostcodes.has(norm)) existingPostcodes.set(norm, new Set());
+    for (const id of ids) existingPostcodes.get(norm).add(id);
+  }
+
   await upsertMatches(byPostcode, existingPostcodes);
   console.log('Done.');
 }
