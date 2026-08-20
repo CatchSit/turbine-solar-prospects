@@ -797,6 +797,12 @@ function buildPopup(d) {
   const efficiencyRecTag = d.epc_recommends_efficiency
     ? `<span class="tag"><span class="tag-dot" style="background:${EPC_RECOMMENDATION.efficiency.color}"></span>${escapeHtml(EPC_RECOMMENDATION.efficiency.label)}</span>`
     : '';
+  const sectorTag = (d._sicSector && d._sicSector !== 'Other')
+    ? `<span class="tag"><span class="tag-dot" style="background:${SIC_SECTOR_COLORS[d._sicSector]}"></span>${escapeHtml(d._sicSector)}</span>`
+    : '';
+  const maturityTag = d._maturity
+    ? `<span class="tag"><span class="tag-dot" style="background:${MATURITY_COLORS[d._maturity]}"></span>${escapeHtml(d._maturity)}</span>`
+    : '';
 
   const maps = d.postcode
     ? `https://www.google.com/maps/search/${encodeURIComponent(d.postcode)}`
@@ -819,7 +825,7 @@ function buildPopup(d) {
         <div class="popup-eyebrow">Commercial prospect</div>
         <div class="popup-name">${escapeHtml(d.address ? d.address.split(',')[0] : (d.postcode || 'Unnamed building'))}</div>
         ${d.postcode ? `<div class="popup-meta">${escapeHtml(d.postcode)}</div>` : ''}
-        <div class="tags">${statusPill}${epcTag}${typeTag}${solarRecTag}${efficiencyRecTag}</div>
+        <div class="tags">${statusPill}${epcTag}${typeTag}${solarRecTag}${efficiencyRecTag}${sectorTag}${maturityTag}</div>
       </div>
       ${solarEst}
       <div class="popup-facts">${addr}${facts}</div>
@@ -901,6 +907,14 @@ async function loadCompanyMatch(d) {
       const sicDesc = (c.sic_codes || []).map(code => SIC_CODES[code]).filter(Boolean).join(', ');
       const tradingSince = c.incorporated_on ? `Trading since ${new Date(c.incorporated_on).getFullYear()}` : '';
       const subline = [sicDesc, tradingSince].filter(Boolean).join(' · ');
+      const companySector = bucketSicSector(c.sic_codes);
+      const companyMaturity = bucketCompanyMaturity(c);
+      const sectorBadge = (companySector && companySector !== 'Other')
+        ? `<span class="company-match-badge" style="color:${SIC_SECTOR_COLORS[companySector]};background:transparent;border:1px solid ${SIC_SECTOR_COLORS[companySector]}">${escapeHtml(companySector)}</span>`
+        : '';
+      const maturityBadge = companyMaturity
+        ? `<span class="company-match-badge" style="color:${MATURITY_COLORS[companyMaturity]};background:transparent;border:1px solid ${MATURITY_COLORS[companyMaturity]}">${escapeHtml(companyMaturity)}</span>`
+        : '';
       const pscHtml = (c.psc || []).length
         ? `<div class="company-psc"><span class="popup-section-label">Significant control</span>${c.psc.map(p =>
             `${escapeHtml(p.name)}${p.is_corporate ? ' (company)' : ''}${p.natures_of_control?.length ? ` — ${p.natures_of_control.map(n => escapeHtml(natureOfControlLabel(n))).join(', ')}` : ''}`
@@ -908,7 +922,7 @@ async function loadCompanyMatch(d) {
         : '';
       return `
       <div class="company-card ${c.status !== 'active' ? 'dissolved' : ''}">
-        <div class="company-name">${escapeHtml(c.company_name)}${c.address_match ? '<span class="company-match-badge">Likely this building</span>' : ''}${c.status !== 'active' ? ` <span class="company-status">· ${escapeHtml(c.status)} — likely not trading</span>` : ''}</div>
+        <div class="company-name">${escapeHtml(c.company_name)}${c.address_match ? '<span class="company-match-badge">Likely this building</span>' : ''}${sectorBadge}${maturityBadge}${c.status !== 'active' ? ` <span class="company-status">· ${escapeHtml(c.status)} — likely not trading</span>` : ''}</div>
         ${subline ? `<div class="company-subline">${escapeHtml(subline)}</div>` : ''}
         ${c.officers?.length ? `<div class="company-officers">${c.officers.map(o => escapeHtml(o.name) + (o.role ? ` (${escapeHtml(o.role)})` : '')).join(', ')}</div>` : ''}
         ${pscHtml}
