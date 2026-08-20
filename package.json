@@ -2,7 +2,9 @@
   "name": "turbine-solar-prospects",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "ingest": "node scripts/ingest-epc.mjs",
     "geocode": "node scripts/geocode-postcodes.mjs",
@@ -13,6 +15,6 @@
   "dependencies": {
     "@supabase/supabase-js": "^2",
     "csv-parse": "^5",
-    "unzipper": "^0.12"
+    "unzipper": "^0.12.5"
   }
 }

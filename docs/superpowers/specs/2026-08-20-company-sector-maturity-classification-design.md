@@ -88,7 +88,7 @@ Same three-state convention as `company_lookups`/`business_rates_matches`: no ro
   | Hospitality & Leisure | 55, 56, 93 |
   | Laundries & Industrial Cleaning | 96010, 8122x |
 
-- `shared/company-maturity-config.js` — `bucketCompanyMaturity({ incorporated_on, accounts_type })`: returns `null` if `incorporated_on` is missing; `"Dormant/Minimal"` if `accounts_type` is `dormant` or `micro-entity`; else `"Established"` if incorporated 5+ years ago (tunable constant), otherwise `"Newer"`. Plus `MATURITY_ORDER` and `MATURITY_COLORS`.
+- `shared/company-maturity-config.js` — `bucketCompanyMaturity({ incorporated_on, accounts_type })`: returns `null` if `incorporated_on` is missing; `"Dormant/Minimal"` if `accounts_type` is `dormant` or `micro-entity`; else `"Established"` if incorporated 3+ years ago (tunable constant), otherwise `"Newer"`. Plus `MATURITY_ORDER` and `MATURITY_COLORS`.
 
 Both files load alongside `shared/building-types.js` in `index.html`'s shared-script block.
 
