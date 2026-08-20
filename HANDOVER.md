@@ -59,6 +59,7 @@ turbine-solar-prospects/
 │   ├── solar-status-config.js        # solar_status -> {color, label}
 │   ├── epc-rating-config.js          # EPC A-G -> {color, label}
 │   ├── epc-recommendation-config.js  # epc_recommends_solar/efficiency -> {color, soft, label}
+│   ├── sic-codes.js                  # UK SIC 2007 code -> description (Companies House sector text)
 │   ├── contact-outcome-config.js     # prospect_contacts.outcome -> {color, soft, label, requiresDate}
 │   ├── building-types.js             # BUILDING_TYPE_BUCKETS/bucketPropertyType/etc. — loads before talking-points.js
 │   └── talking-points.js             # buildTalkingPoints() — client-side "why this building" summary
@@ -67,8 +68,15 @@ turbine-solar-prospects/
 │   ├── specs/2026-08-12-azure-ad-auth-design.md
 │   ├── specs/2026-08-17-decision-maker-contact-design.md
 │   ├── specs/2026-08-17-crm-contact-log-design.md
+│   ├── specs/2026-08-19-companies-house-enrichment-design.md
+│   ├── specs/2026-08-19-epc-recommendations-design.md
 │   ├── specs/2026-08-19-voa-business-rates-design.md
-│   └── plans/2026-08-12-azure-ad-auth.md
+│   ├── plans/2026-08-12-azure-ad-auth.md
+│   ├── plans/2026-08-17-crm-contact-log.md
+│   ├── plans/2026-08-17-decision-maker-contact.md
+│   ├── plans/2026-08-19-companies-house-enrichment.md
+│   ├── plans/2026-08-19-epc-recommendations.md
+│   └── plans/2026-08-19-voa-business-rates.md
 ├── scripts/                          # Manually-run Node pipeline tooling
 │   ├── ingest-epc.mjs                # CSV -> region+floor-area filter -> dedupe -> upsert `prospects`
 │   ├── geocode-postcodes.mjs         # postcodes.io bulk lookup -> fills lat/lng
@@ -139,11 +147,13 @@ Requires the `GOOGLE_SOLAR_API_KEY` secret set on the Supabase project. Watch th
 
 There is no separate export step — `index.html` queries the `prospects` table live (Section 6), gated by the Azure AD login and RLS, so once Steps 1–4 have run, the data is already visible in the map on next load. (The old `npm run export` script that pushed a static `prospects.json` to GitHub was retired when live Supabase queries replaced it — see `docs/superpowers/specs/2026-08-12-azure-ad-auth-design.md`.)
 
-### Step 5 — EPC recommendations enrichment (optional, additive)
+### Step 5 — EPC recommendations enrichment (optional, additive — **not yet run against real data as of 2026-08-20**)
 ```
 SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm run ingest-recommendations -- data/recommendations/your-export.csv
 ```
-Reads the separate "recommendations" bulk CSV (Step 1 above), matches rows to existing `prospects` by `LMK_KEY` (only prospects already in the table from Steps 1-2 are touched — a recommendations row for a certificate outside the Yorkshire & Humber/floor-area filter is skipped), and sets `epc_recommends_solar`/`epc_recommends_efficiency` based on whether the assessor's recommendation text matches the solar/efficiency keyword patterns. Entirely optional and additive — the map and CRM work fully without it. Prospects with no matching recommendations data stay `null` on both columns (not `false`) — see `docs/superpowers/specs/2026-08-19-epc-recommendations-design.md`. Full design in that spec and `docs/superpowers/plans/2026-08-19-epc-recommendations.md`.
+Reads the separate "recommendations" bulk CSV (Step 1 above — save it into `data/recommendations/`, which doesn't exist on disk yet), matches rows to existing `prospects` by `LMK_KEY` (only prospects already in the table from Steps 1-2 are touched — a recommendations row for a certificate outside the Yorkshire & Humber/floor-area filter is skipped), and sets `epc_recommends_solar`/`epc_recommends_efficiency` based on whether the assessor's recommendation text matches the solar/efficiency keyword patterns. Entirely optional and additive — the map and CRM work fully without it. Prospects with no matching recommendations data stay `null` on both columns (not `false`) — see `docs/superpowers/specs/2026-08-19-epc-recommendations-design.md`. Full design in that spec and `docs/superpowers/plans/2026-08-19-epc-recommendations.md`.
+
+**Status: built and tested (against a synthetic CSV, since the real download is human-gated — same limitation as Step 1), but never actually run against a real downloaded file.** Every real prospect currently has `null` for both flags, so the "EPC recommends solar"/"EPC recommends efficiency improvements" sidebar filters will correctly show a count of 0 until this step is actually run. This is expected, not a bug — see Section 7, risk 1.
 
 ### Step 6 — VOA business rates enrichment (optional, additive)
 ```
@@ -267,11 +277,15 @@ Requires the `COMPANIES_HOUSE_API_KEY` secret (free — `developer.company-infor
 ## 9. How to Continue Development
 
 **Already done:**
-- Repo created and pushed to `main` (https://github.com/CatchSit/turbine-solar-prospects); Supabase project `turbine-solar-prospects` created, migrations 001–004 applied.
+- Repo created and pushed to `main` (https://github.com/CatchSit/turbine-solar-prospects); Supabase project `turbine-solar-prospects` created, migrations 001–011 applied.
 - `npm install`, GOV.UK One Login registered, full 2011–2026 non-domestic EPC bulk certificates downloaded and ingested (Section 4, Steps 1–2) — **21,808 Yorkshire & Humber prospects** in the table.
 - Geocoding run (Section 4, Step 3) — **21,265 of those (96.6%) have lat/lng**; the remaining ~750 failed to match in postcodes.io (expected background noise, Section 7 risk 7).
 - Turbine Energy's real brand palette applied (pulled from the `turbine-homepage` marketing site build) and the `BUILDING_TYPE_BUCKETS` keyword matching spot-checked against the real ingested data (Section 7, risk 3).
 - Azure AD login gate built: Microsoft/Azure AD sign-in via Supabase Auth, restricted to `@turbineenergyuk.co.uk` both client-side and via RLS (migrations 003–004, live-verified against the real project — see `docs/superpowers/specs/2026-08-12-azure-ad-auth-design.md`).
+- CRM contact-logging layer (Log Contact modal + manager-only `dashboard.html`, migrations 007–008, Section 5/6).
+- Companies House enrichment (`company-lookup` Edge Function, migration 006) shipped, then extended with PSC/SIC/incorporation-date data (Section 6) — key registered, live-verified against real Companies House data.
+- EPC recommendations pipeline built (migration 009, `scripts/ingest-epc-recommendations.mjs`, popup badges + sidebar filters) — **code is done and tested, but not yet run against a real downloaded file** (Section 4, Step 5) — every real prospect currently shows `null` for both flags.
+- VOA business rates enrichment built AND run for real (migrations 010–011, `scripts/ingest-business-rates.mjs`) — fully automated download/parse, no manual step. **19,050 of 21,808 prospects have real rateable-value data live now.**
 
 **Next steps:**
 1. **Get billing enabled on the Google Cloud project** (#380039802064) that both API keys belong to — this is the main blocker right now (Section 1, item 1). `GOOGLE_SOLAR_API_KEY` is already set as a Supabase secret and `solar-enrichment` is deployed with the 9,500/month self-cap (migration `005`); it's ready to run the moment billing is on. Don't invoke it again before then — a call while billing is off still counts against the self-imposed cap for a guaranteed failure.
@@ -280,3 +294,4 @@ Requires the `COMPANIES_HOUSE_API_KEY` secret (free — `developer.company-infor
 4. Test at the live URL (`https://catchsit.github.io/turbine-solar-prospects/`) — exercise every filter against the real live data once Step 2 above has populated `solar_status` beyond `pending`.
 5. ~~Confirm Azure AD works end-to-end before announcing the URL~~ — **done**. The remaining launch gate is purely the empty-map problem from Step 2 (solar enrichment hasn't run) — see Section 1.
 6. Once billing is confirmed on, embed the Google Maps JavaScript API key (already received, restricted to `https://catchsit.github.io/*` and Maps JavaScript API only — Section 1 item 3, Section 6) and wire up the satellite-imagery toggle via a Leaflet-Google bridge. Test against the live Pages URL, not localhost (the key has no localhost origin). Non-blocking for launch — the map works without it.
+7. Download the EPC "recommendations" bulk CSV (Section 4, Step 5) into `data/recommendations/` and run `npm run ingest-recommendations` — the only remaining reason the "EPC recommends solar/efficiency" filters show 0. Same human-gated download pattern as certificates.
