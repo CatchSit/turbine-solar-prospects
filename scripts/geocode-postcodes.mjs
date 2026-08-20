@@ -42,7 +42,7 @@ async function fetchPendingRows() {
   while (true) {
     const { data, error } = await db
       .from('prospects')
-      .select('id, postcode')
+      .select('id, postcode, local_authority')
       .is('lat', null)
       .not('postcode', 'is', null)
       .range(from, from + PAGE - 1);
@@ -72,7 +72,14 @@ async function main() {
     results.forEach((entry, idx) => {
       const row = batch[idx];
       if (entry.result) {
-        updates.push({ id: row.id, lat: entry.result.latitude, lng: entry.result.longitude });
+        const update = { id: row.id, lat: entry.result.latitude, lng: entry.result.longitude };
+        // Only backfill when the row has no local_authority already — never
+        // overwrite an EPC-sourced value with postcodes.io's naming, which
+        // may not match (e.g. "Leeds" vs whatever EPC's own label was).
+        if (!row.local_authority && entry.result.admin_district) {
+          update.local_authority = entry.result.admin_district;
+        }
+        updates.push(update);
         geocoded++;
       } else {
         failed++;
@@ -81,9 +88,11 @@ async function main() {
     });
 
     for (const u of updates) {
+      const patch = { lat: u.lat, lng: u.lng, geocode_source: 'postcodes.io' };
+      if (u.local_authority) patch.local_authority = u.local_authority;
       const { error: updErr } = await db
         .from('prospects')
-        .update({ lat: u.lat, lng: u.lng, geocode_source: 'postcodes.io' })
+        .update(patch)
         .eq('id', u.id);
       if (updErr) console.error(`  update failed for ${u.id}:`, JSON.stringify(updErr));
     }
