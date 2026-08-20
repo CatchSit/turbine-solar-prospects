@@ -1220,8 +1220,16 @@ function applyFilters() {
     const d = m._d;
     const typeOk   = activeBuildingTypes.has(d._bucket);
     const ratingOk = !d.epc_rating || activeRatings.has(d.epc_rating);
-    const sectorOk = !d._sicSector || activeSicSectors.has(d._sicSector);
-    const maturityOk = !d._maturity || activeMaturities.has(d._maturity);
+    // Full selection (untouched default) passes everything through, including
+    // unclassified prospects. As soon as a rep deselects even one chip, the
+    // filter goes strict — unclassified prospects (d._sicSector/d._maturity
+    // null) drop out too, since null is never a member of these Sets. Unlike
+    // EPC Rating's null-passthrough (a rare edge case there, since almost
+    // every prospect has a real rating), "not yet classified" is the majority
+    // case for sector/maturity, so silently passing it through made the
+    // filter look broken — see chat 2026-08-20.
+    const sectorOk = activeSicSectors.size === SIC_SECTOR_ORDER.length || activeSicSectors.has(d._sicSector);
+    const maturityOk = activeMaturities.size === MATURITY_ORDER.length || activeMaturities.has(d._maturity);
     const statusOk = activeSolarStatuses.has(d.solar_status);
     const epcSolarOk = !filterEpcSolar || d.epc_recommends_solar === true;
     const epcEfficiencyOk = !filterEpcEfficiency || d.epc_recommends_efficiency === true;
