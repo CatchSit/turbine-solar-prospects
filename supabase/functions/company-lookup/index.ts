@@ -66,6 +66,7 @@ type CompanyMatch = {
   psc: Psc[]
   sic_codes: string[]
   incorporated_on: string | null
+  accounts_type: string | null
   address_match: boolean
 }
 
@@ -143,16 +144,23 @@ async function fetchOfficers(companyNumber: string): Promise<{ items: Officer[];
   }
 }
 
-async function fetchProfile(companyNumber: string): Promise<{ sic_codes: string[]; incorporated_on: string | null; ok: boolean }> {
+async function fetchProfile(companyNumber: string): Promise<{ sic_codes: string[]; incorporated_on: string | null; accounts_type: string | null; ok: boolean }> {
   const resp = await fetch(
     `https://api.company-information.service.gov.uk/company/${companyNumber}`,
     { headers: authHeader() },
   )
-  if (!resp.ok) return { sic_codes: [], incorporated_on: null, ok: false }
+  if (!resp.ok) return { sic_codes: [], incorporated_on: null, accounts_type: null, ok: false }
   const json = await resp.json()
   return {
     sic_codes: json.sic_codes ?? [],
     incorporated_on: json.date_of_creation ?? null,
+    // Unverified field path — Companies House's own docs describe this shape,
+    // but confirm against a real profile response early (see Task 7 of
+    // docs/superpowers/plans/2026-08-20-company-sector-maturity-classification.md)
+    // before trusting it broadly. Same caution already applied to
+    // classifyDetection() (solar-enrichment) and the PSC statement-filtering
+    // logic just below in this same file.
+    accounts_type: json.accounts?.last_accounts?.type ?? null,
     ok: true,
   }
 }
@@ -302,6 +310,7 @@ Deno.serve(async (req) => {
         psc: psc.items,
         sic_codes: profile.sic_codes,
         incorporated_on: profile.incorporated_on,
+        accounts_type: profile.accounts_type,
         address_match: r.address_match,
       })
       // Courtesy pacing between sequential external API calls, mirrors
