@@ -486,6 +486,16 @@
   </div>
 
   <div class="section">
+    <h3>Business sector</h3>
+    <div id="sic-sector-list" class="chip-list"></div>
+  </div>
+
+  <div class="section">
+    <h3>Company maturity</h3>
+    <div id="maturity-list" class="chip-list"></div>
+  </div>
+
+  <div class="section">
     <h3>Solar status <span class="clear" id="solar-status-clear">show all</span></h3>
     <div id="solar-status-list" class="chip-list"></div>
   </div>
@@ -731,6 +741,8 @@ map.addLayer(cluster);
 let allMarkers = [];
 let activeBuildingTypes = new Set(BUILDING_TYPE_ORDER);
 let activeRatings = new Set(EPC_RATING_ORDER);
+let activeSicSectors = new Set(SIC_SECTOR_ORDER);
+let activeMaturities = new Set(MATURITY_ORDER);
 let activeSolarStatuses = new Set(['prospect']); // default: only show fresh prospects
 let filterEpcSolar = false;      // opt-in: when true, only show prospects with epc_recommends_solar
 let filterEpcEfficiency = false; // opt-in: when true, only show prospects with epc_recommends_efficiency
@@ -1022,6 +1034,8 @@ function initMap(data) {
     if (!d.lat || !d.lng) return;
     d._bucket = bucketPropertyType(d.property_type);
     d._maxRateable = maxHereditamentValue(d);
+    d._sicSector = bucketSicSector(d.company_classifications?.sic_codes);
+    d._maturity = bucketCompanyMaturity(d.company_classifications || {});
     const marker = L.marker([d.lat, d.lng], { icon: makeMarkerIcon(d) });
     marker.bindTooltip(d.address || d.postcode || 'Unnamed building', { direction: "top", offset: [0, -10], className: 'day-tooltip', opacity: 0.96 });
     marker._d = d;
@@ -1033,6 +1047,8 @@ function initMap(data) {
   });
   buildBuildingTypeChips(data);
   buildEpcRatingChips(data);
+  buildSicSectorChips(data);
+  buildMaturityChips(data);
   buildSolarStatusChips(data);
   applyEpcRecommendationConfig();
   buildEpcRecommendationCounts(data);
@@ -1082,6 +1098,44 @@ function buildEpcRatingChips(data) {
       ${cfg.label}<span class="chip-n">${counts[rating].toLocaleString()}</span>`;
     row.querySelector("input").addEventListener("change", e => {
       e.target.checked ? activeRatings.add(rating) : activeRatings.delete(rating);
+      row.classList.toggle('on', e.target.checked);
+      applyFilters();
+    });
+    el.appendChild(row);
+  });
+}
+
+function buildSicSectorChips(data) {
+  const counts = {};
+  data.forEach(d => { if (d._sicSector) counts[d._sicSector] = (counts[d._sicSector] || 0) + 1; });
+  const el = document.getElementById("sic-sector-list");
+  SIC_SECTOR_ORDER.filter(s => counts[s]).forEach(sector => {
+    const row = document.createElement("label");
+    row.className = "chip on";
+    row.innerHTML = `<input type="checkbox" checked data-sector="${sector}"/>
+      <span class="dot" style="background:${SIC_SECTOR_COLORS[sector]}"></span>
+      ${escapeHtml(sector)}<span class="chip-n">${counts[sector].toLocaleString()}</span>`;
+    row.querySelector("input").addEventListener("change", e => {
+      e.target.checked ? activeSicSectors.add(sector) : activeSicSectors.delete(sector);
+      row.classList.toggle('on', e.target.checked);
+      applyFilters();
+    });
+    el.appendChild(row);
+  });
+}
+
+function buildMaturityChips(data) {
+  const counts = {};
+  data.forEach(d => { if (d._maturity) counts[d._maturity] = (counts[d._maturity] || 0) + 1; });
+  const el = document.getElementById("maturity-list");
+  MATURITY_ORDER.filter(m => counts[m]).forEach(maturity => {
+    const row = document.createElement("label");
+    row.className = "chip on";
+    row.innerHTML = `<input type="checkbox" checked data-maturity="${maturity}"/>
+      <span class="dot" style="background:${MATURITY_COLORS[maturity]}"></span>
+      ${escapeHtml(maturity)}<span class="chip-n">${counts[maturity].toLocaleString()}</span>`;
+    row.querySelector("input").addEventListener("change", e => {
+      e.target.checked ? activeMaturities.add(maturity) : activeMaturities.delete(maturity);
       row.classList.toggle('on', e.target.checked);
       applyFilters();
     });
@@ -1152,6 +1206,8 @@ function applyFilters() {
     const d = m._d;
     const typeOk   = activeBuildingTypes.has(d._bucket);
     const ratingOk = !d.epc_rating || activeRatings.has(d.epc_rating);
+    const sectorOk = !d._sicSector || activeSicSectors.has(d._sicSector);
+    const maturityOk = !d._maturity || activeMaturities.has(d._maturity);
     const statusOk = activeSolarStatuses.has(d.solar_status);
     const epcSolarOk = !filterEpcSolar || d.epc_recommends_solar === true;
     const epcEfficiencyOk = !filterEpcEfficiency || d.epc_recommends_efficiency === true;
@@ -1162,7 +1218,7 @@ function applyFilters() {
     const rateableMinOk = rateableMin == null || (rateableValue != null && rateableValue >= rateableMin);
     const rateableMaxOk = rateableMax == null || (rateableValue != null && rateableValue <= rateableMax);
 
-    if (typeOk && ratingOk && statusOk && epcSolarOk && epcEfficiencyOk && searchOk && minOk && maxOk && rateableMinOk && rateableMaxOk) {
+    if (typeOk && ratingOk && sectorOk && maturityOk && statusOk && epcSolarOk && epcEfficiencyOk && searchOk && minOk && maxOk && rateableMinOk && rateableMaxOk) {
       cluster.addLayer(m);
       shown++;
     }
@@ -1190,6 +1246,8 @@ document.getElementById("rateable-max").addEventListener("input", e => { rateabl
 document.getElementById("reset").addEventListener("click", () => {
   activeBuildingTypes = new Set(BUILDING_TYPE_ORDER);
   activeRatings = new Set(EPC_RATING_ORDER);
+  activeSicSectors = new Set(SIC_SECTOR_ORDER);
+  activeMaturities = new Set(MATURITY_ORDER);
   activeSolarStatuses = new Set(['prospect']);
   filterEpcSolar = false;
   filterEpcEfficiency = false;
@@ -1199,7 +1257,7 @@ document.getElementById("reset").addEventListener("click", () => {
   document.getElementById("floor-max").value = "";
   document.getElementById("rateable-min").value = "";
   document.getElementById("rateable-max").value = "";
-  document.querySelectorAll("#building-type-list input, #epc-rating-list input").forEach(cb => {
+  document.querySelectorAll("#building-type-list input, #epc-rating-list input, #sic-sector-list input, #maturity-list input").forEach(cb => {
     cb.checked = true;
     cb.closest('.chip').classList.add('on');
   });
@@ -1223,7 +1281,7 @@ async function fetchAllProspects() {
   while (true) {
     const { data, error } = await db
       .from('prospects')
-      .select('id, address, postcode, lat, lng, property_type, floor_area:total_floor_area, epc_rating:current_energy_rating, local_authority, solar_status, solar_max_panels, solar_yearly_energy_kwh, current_energy_efficiency, epc_recommends_solar, epc_recommends_efficiency, business_rates_matches(hereditaments, no_match)')
+      .select('id, address, postcode, lat, lng, property_type, floor_area:total_floor_area, epc_rating:current_energy_rating, local_authority, solar_status, solar_max_panels, solar_yearly_energy_kwh, current_energy_efficiency, epc_recommends_solar, epc_recommends_efficiency, business_rates_matches(hereditaments, no_match), company_classifications(company_name, sic_codes, incorporated_on, accounts_type, no_match)')
       .not('lat', 'is', null)
       .order('id', { ascending: true })
       .range(from, from + PAGE - 1);
