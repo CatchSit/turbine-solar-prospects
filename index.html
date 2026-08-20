@@ -1219,7 +1219,11 @@ function applyFilters() {
   allMarkers.forEach(m => {
     const d = m._d;
     const typeOk   = activeBuildingTypes.has(d._bucket);
-    const ratingOk = !d.epc_rating || activeRatings.has(d.epc_rating);
+    // Full selection (untouched default) passes everything through,
+    // including prospects with no rating. Deselecting even one chip goes
+    // strict — same fix already applied to sectorOk/maturityOk, needed here
+    // too now that VOA-sourced prospects (no EPC data at all) exist.
+    const ratingOk = activeRatings.size === EPC_RATING_ORDER.length || activeRatings.has(d.epc_rating);
     // Full selection (untouched default) passes everything through, including
     // unclassified prospects. As soon as a rep deselects even one chip, the
     // filter goes strict — unclassified prospects (d._sicSector/d._maturity
