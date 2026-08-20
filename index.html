@@ -227,7 +227,7 @@
     .tag .tag-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
     .status-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px 4px 9px; font-size: 11.5px; font-weight: 500; border-radius: 100px; }
     .status-pill .pill-dot { width: 6px; height: 6px; border-radius: 50%; }
-    .popup-facts { padding: 4px 20px 18px; font-size: 12.5px; color: var(--text2); }
+    .popup-facts { padding: 4px 20px 14px; font-size: 12.5px; color: var(--text2); }
     .popup-facts p { padding: 5px 0; }
     .popup-facts p a { color: var(--accent); }
     .solar-est {
@@ -251,6 +251,12 @@
     .company-match-fallback { color: var(--text3); }
     .company-match-links { display: flex; gap: 10px; margin-top: 6px; }
     .company-match-links a { color: var(--accent); }
+    .popup-tabs { display: flex; gap: 4px; padding: 0 20px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+    .popup-tab { background: none; border: none; font: inherit; font-size: 12px; font-weight: 500; color: var(--text3); padding: 8px 4px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+    .popup-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+    .popup-tab-panel { display: none; }
+    .popup-tab-panel.active { display: block; }
+    .company-match-badge { display: inline-block; font-size: 10.5px; font-weight: 500; color: var(--accentDk); background: var(--accentDim); padding: 1px 7px; border-radius: 100px; margin-left: 6px; vertical-align: middle; }
 
     /* ── Log Contact modal ──────────────────────────────────── */
     #contact-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(17,24,39,0.4); z-index: 2000; align-items: center; justify-content: center; }
@@ -752,7 +758,9 @@ function makeMarkerIcon(d) {
 const BUSINESS_RATES_DISPLAY_LIMIT = 10; // some postcodes (e.g. self-storage sites) carry 1,000+ hereditaments
 function businessRatesHtml(d) {
   const hereditaments = d.business_rates_matches?.hereditaments;
-  if (!hereditaments || !hereditaments.length) return '';
+  if (!hereditaments || !hereditaments.length) {
+    return `<div class="company-match-fallback">No business rates data for this postcode.</div>`;
+  }
   const sorted = [...hereditaments].sort((a, b) => Number(b.rateable_value ?? 0) - Number(a.rateable_value ?? 0));
   const shown = sorted.slice(0, BUSINESS_RATES_DISPLAY_LIMIT);
   const remaining = sorted.length - shown.length;
@@ -760,11 +768,7 @@ function businessRatesHtml(d) {
     `<div>${escapeHtml(h.description || 'Unspecified')} — £${Number(h.rateable_value ?? 0).toLocaleString()}</div>`
   ).join('');
   const more = remaining > 0 ? `<div>+ ${remaining.toLocaleString()} more</div>` : '';
-  return `
-      <div class="business-rates">
-        <div class="popup-section-label">Business rates at this postcode</div>
-        ${rows}${more}
-      </div>`;
+  return `${rows}${more}`;
 }
 function buildPopup(d) {
   const solarCfg = SOLAR_STATUS[d.solar_status] || { color: '#999', soft: '#eee', label: d.solar_status };
@@ -787,9 +791,12 @@ function buildPopup(d) {
     ? `https://www.google.com/maps/search/${encodeURIComponent(d.postcode)}`
     : `https://www.google.com/maps/search/${encodeURIComponent(d.address || '')}`;
   const addr = `<p>📍 <a href="${maps}" target="_blank" rel="noopener">${escapeHtml(d.address || d.postcode || 'Address not listed')}</a></p>`;
-  const area = d.floor_area ? `<p>📐 ${Math.round(d.floor_area).toLocaleString()} m² floor area</p>` : '';
-  const type = d.property_type ? `<p>🏢 ${escapeHtml(d.property_type)}</p>` : '';
-  const la = d.local_authority ? `<p>📍 ${escapeHtml(d.local_authority)}</p>` : '';
+  const factParts = [
+    d.floor_area ? `${Math.round(d.floor_area).toLocaleString()} m²` : '',
+    d.property_type ? escapeHtml(d.property_type) : '',
+    d.local_authority ? escapeHtml(d.local_authority) : '',
+  ].filter(Boolean);
+  const facts = factParts.length ? `<p>${factParts.join(' · ')}</p>` : '';
 
   const solarEst = (d.solar_status === 'prospect' && (d.solar_max_panels || d.solar_yearly_energy_kwh))
     ? `<div class="solar-est">☀ Estimated roof potential: ${d.solar_max_panels ? `up to <strong>${d.solar_max_panels}</strong> panels` : ''}${d.solar_max_panels && d.solar_yearly_energy_kwh ? ' · ' : ''}${d.solar_yearly_energy_kwh ? `~<strong>${Math.round(d.solar_yearly_energy_kwh).toLocaleString()}</strong> kWh/year` : ''}</div>`
@@ -804,14 +811,23 @@ function buildPopup(d) {
         <div class="tags">${statusPill}${epcTag}${typeTag}${solarRecTag}${efficiencyRecTag}</div>
       </div>
       ${solarEst}
-      <div class="popup-facts">${addr}${area}${type}${la}</div>
-      ${businessRatesHtml(d)}
-      <div class="company-match" id="company-match-${escapeHtml(d.id)}">
-        <div class="popup-section-label">Companies matched to postcode</div>
+      <div class="popup-facts">${addr}${facts}</div>
+      <div class="popup-tabs">
+        <button class="popup-tab active" type="button" onclick="switchPopupTab(this, 'rates')">Business rates</button>
+        <button class="popup-tab" type="button" onclick="switchPopupTab(this, 'companies')">Companies</button>
+      </div>
+      <div class="business-rates popup-tab-panel active" data-panel="rates">${businessRatesHtml(d)}</div>
+      <div class="company-match popup-tab-panel" data-panel="companies" id="company-match-${escapeHtml(d.id)}">
         <div class="company-match-body">Looking up company registered at this address…</div>
       </div>
       <button class="log-contact-btn" onclick="openContactModal('${escapeHtml(d.id)}', ${escapeHtml(JSON.stringify(d.address || d.postcode || 'Unnamed building'))})">Log contact</button>
     </div>`;
+}
+
+function switchPopupTab(btn, tab) {
+  const popup = btn.closest('.popup');
+  popup.querySelectorAll('.popup-tab').forEach(t => t.classList.toggle('active', t === btn));
+  popup.querySelectorAll('.popup-tab-panel').forEach(p => p.classList.toggle('active', p.dataset.panel === tab));
 }
 
 /* ── Company lookup ──────────────────────────────────────── */
@@ -881,7 +897,7 @@ async function loadCompanyMatch(d) {
         : '';
       return `
       <div class="company-card ${c.status !== 'active' ? 'dissolved' : ''}">
-        <div class="company-name">${escapeHtml(c.company_name)}${c.status !== 'active' ? ` <span class="company-status">· ${escapeHtml(c.status)} — likely not trading</span>` : ''}</div>
+        <div class="company-name">${escapeHtml(c.company_name)}${c.address_match ? '<span class="company-match-badge">Likely this building</span>' : ''}${c.status !== 'active' ? ` <span class="company-status">· ${escapeHtml(c.status)} — likely not trading</span>` : ''}</div>
         ${subline ? `<div class="company-subline">${escapeHtml(subline)}</div>` : ''}
         ${c.officers?.length ? `<div class="company-officers">${c.officers.map(o => escapeHtml(o.name) + (o.role ? ` (${escapeHtml(o.role)})` : '')).join(', ')}</div>` : ''}
         ${pscHtml}
