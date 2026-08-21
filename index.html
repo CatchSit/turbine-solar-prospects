@@ -256,6 +256,18 @@
     .popup-tab.active { color: var(--text); border-bottom-color: var(--accent); }
     .popup-tab-panel { display: none; max-height: 240px; overflow-y: auto; }
     .popup-tab-panel.active { display: block; }
+    .proposals-list { padding: 0 20px; }
+    .proposal-item { padding: 8px 0; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .proposal-item:first-child { border-top: none; }
+    .proposal-name { font-weight: 500; color: var(--text); font-size: 12.5px; }
+    .proposal-meta { color: var(--text3); font-size: 11px; margin-top: 1px; }
+    .proposal-open-link { color: var(--accent); font-size: 12px; white-space: nowrap; cursor: pointer; }
+    .proposals-empty { color: var(--text3); font-size: 12px; padding: 4px 0; }
+    .proposals-upload { display: flex; gap: 8px; align-items: center; padding: 10px 20px 0; border-top: 1px solid var(--border); margin-top: 8px; }
+    .proposals-file-input { font-size: 11.5px; flex: 1; min-width: 0; }
+    .proposals-upload-btn { padding: 5px 12px; background: var(--accentDim); color: var(--accentDk); border: none; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit; }
+    .proposals-upload-status { padding: 4px 20px 0; font-size: 11.5px; color: var(--text3); }
+    .proposals-upload-status.error { color: #c0392b; }
     .company-match-badge { display: inline-block; font-size: 10.5px; font-weight: 500; color: var(--accentDk); background: var(--accentDim); padding: 1px 7px; border-radius: 100px; margin-left: 6px; vertical-align: middle; }
 
     /* ── Log Contact modal ──────────────────────────────────── */
@@ -787,6 +799,12 @@ function formatMonthYear(dateStr) {
   if (isNaN(d)) return '';
   return d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
 }
+function formatShortDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d)) return '';
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
 function buildPopup(d) {
   const solarCfg = SOLAR_STATUS[d.solar_status] || { color: '#999', soft: '#eee', label: d.solar_status };
   const epcCfg = EPC_RATING[d.epc_rating] || null;
@@ -839,10 +857,19 @@ function buildPopup(d) {
       <div class="popup-tabs">
         <button class="popup-tab active" type="button" onclick="switchPopupTab(this, 'rates')">Business rates</button>
         <button class="popup-tab" type="button" onclick="switchPopupTab(this, 'companies')">Companies</button>
+        <button class="popup-tab" type="button" onclick="switchPopupTab(this, 'proposals')">Proposals</button>
       </div>
       <div class="business-rates popup-tab-panel active" data-panel="rates">${businessRatesHtml(d)}</div>
       <div class="company-match popup-tab-panel" data-panel="companies" id="company-match-${escapeHtml(d.id)}">
         <div class="company-match-body">Looking up company registered at this address…</div>
+      </div>
+      <div class="proposals-panel popup-tab-panel" data-panel="proposals" id="proposals-panel-${escapeHtml(d.id)}">
+        <div class="proposals-list">Loading…</div>
+        <div class="proposals-upload">
+          <input type="file" accept="application/pdf" class="proposals-file-input" id="proposals-file-${escapeHtml(d.id)}">
+          <button type="button" class="proposals-upload-btn" onclick="uploadProposal(${escapeHtml(JSON.stringify(d.id))})">Upload</button>
+        </div>
+        <div class="proposals-upload-status"></div>
       </div>
       <button class="log-contact-btn" onclick="openContactModal('${escapeHtml(d.id)}', ${escapeHtml(JSON.stringify(d.address || d.postcode || 'Unnamed building'))})">Log contact</button>
     </div>`;
@@ -879,6 +906,45 @@ function companyMatchFallbackHtml(d, isError) {
 const COMPANY_LOOKUP_TIMEOUT_MS = 20000;
 function timeoutAfter(ms) {
   return new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), ms));
+}
+
+function proposalsEmptyHtml() {
+  return `<div class="proposals-empty">No proposals attached yet.</div>`;
+}
+
+function renderProposalsList(rows) {
+  if (!rows.length) return proposalsEmptyHtml();
+  return rows.map(p => `
+    <div class="proposal-item">
+      <div>
+        <div class="proposal-name">${escapeHtml(p.file_name)}</div>
+        <div class="proposal-meta">${escapeHtml(p.uploaded_by)} · ${formatShortDate(p.uploaded_at)}</div>
+      </div>
+      <span class="proposal-open-link" data-storage-path="${escapeHtml(p.storage_path)}" onclick="openProposal(this)">Open</span>
+    </div>`).join('');
+}
+
+async function loadProposals(d) {
+  const container = document.getElementById(`proposals-panel-${d.id}`);
+  if (!container) return;
+  const listEl = container.querySelector('.proposals-list');
+
+  const { data, error } = await window.db
+    .from('prospect_proposals')
+    .select('file_name, storage_path, uploaded_by, uploaded_at')
+    .eq('prospect_id', d.id)
+    .order('uploaded_at', { ascending: false });
+
+  // The popup may have closed (or a different one opened) while this was in flight.
+  const el = document.getElementById(`proposals-panel-${d.id}`);
+  if (!el) return;
+  const list = el.querySelector('.proposals-list');
+
+  if (error) {
+    list.innerHTML = `<div class="proposals-empty">Couldn't load proposals. <span class="proposal-open-link" onclick="loadProposals({id: '${escapeHtml(d.id)}'})">Retry</span></div>`;
+    return;
+  }
+  list.innerHTML = renderProposalsList(data || []);
 }
 
 async function loadCompanyMatch(d) {
@@ -1063,6 +1129,7 @@ function initMap(data) {
     marker.on('click', () => {
       marker.bindPopup(buildPopup(d), { maxWidth: 360, autoPan: true }).openPopup();
       loadCompanyMatch(d);
+      loadProposals(d);
     });
     allMarkers.push(marker);
   });
