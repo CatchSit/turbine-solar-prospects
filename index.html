@@ -1384,6 +1384,7 @@ function applyFilters() {
   const term = searchTerm.toLowerCase();
   cluster.clearLayers();
   let shown = 0;
+  const toShow = [];
   allMarkers.forEach(m => {
     const d = m._d;
     const typeOk   = activeBuildingTypes.has(d._bucket);
@@ -1413,10 +1414,15 @@ function applyFilters() {
     const rateableMaxOk = rateableMax == null || (rateableValue != null && rateableValue <= rateableMax);
 
     if (typeOk && ratingOk && sectorOk && maturityOk && statusOk && epcSolarOk && epcEfficiencyOk && searchOk && minOk && maxOk && rateableMinOk && rateableMaxOk) {
-      cluster.addLayer(m);
+      toShow.push(m);
       shown++;
     }
   });
+  // addLayers (bulk) rebuilds the cluster spatial index in one pass — calling
+  // addLayer per-marker in a loop was recalculating it on every single
+  // insertion, the dominant cost once the prospect count reached tens of
+  // thousands (VOA seeding, 2026-08-20).
+  cluster.addLayers(toShow);
   document.getElementById("shown").textContent = shown.toLocaleString();
 }
 
