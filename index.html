@@ -508,6 +508,11 @@
   </div>
 
   <div class="section">
+    <h3>Solar recommendation year</h3>
+    <div id="recommendation-year-list" class="chip-list"></div>
+  </div>
+
+  <div class="section">
     <h3>Solar status <span class="clear" id="solar-status-clear">show all</span></h3>
     <div id="solar-status-list" class="chip-list"></div>
   </div>
@@ -755,6 +760,8 @@ let activeBuildingTypes = new Set(BUILDING_TYPE_ORDER);
 let activeRatings = new Set(EPC_RATING_ORDER);
 let activeSicSectors = new Set(SIC_SECTOR_ORDER);
 let activeMaturities = new Set(MATURITY_ORDER);
+let activeRecommendationYears = new Set(); // populated once buildRecommendationYearChips runs (years are data-driven, not a fixed enum)
+let recommendationYearOrder = []; // set alongside activeRecommendationYears
 let activeSolarStatuses = new Set(['prospect']); // default: only show fresh prospects
 let filterEpcSolar = false;      // opt-in: when true, only show prospects with epc_recommends_solar
 let filterEpcEfficiency = false; // opt-in: when true, only show prospects with epc_recommends_efficiency
@@ -764,10 +771,38 @@ let floorMax = null;
 let rateableMin = null;
 let rateableMax = null;
 
+// Real spread of solar-recommendation dates in the loaded data, computed
+// once in initMap() before markers are created — bright green = newest,
+// red = oldest, scaled to what's actually present, never a fixed calendar
+// range (2026-08-21, docs/superpowers/specs/2026-08-21-solar-recommendation-recency-design.md).
+let recDateMin = null, recDateMax = null;
+
+const RECENCY_COLOR_OLD = '#c0392b'; // this app's existing alert/error red
+const RECENCY_COLOR_NEW = '#22c55e'; // bright green
+
+function interpolateColor(hexA, hexB, t) {
+  const a = [1, 3, 5].map(i => parseInt(hexA.slice(i, i + 2), 16));
+  const b = [1, 3, 5].map(i => parseInt(hexB.slice(i, i + 2), 16));
+  const c = a.map((v, i) => Math.round(v + (b[i] - v) * t));
+  return `#${c.map(v => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
+// Returns a gradient color for a solar-recommended prospect with a real
+// date, or null to signal "use the normal solar_status color" — every
+// other prospect (no recommendation, or missing date) falls through to
+// today's existing behavior unchanged.
+function recencyColor(d) {
+  if (!d.epc_recommends_solar || !d.lodgement_date) return null;
+  const t = new Date(d.lodgement_date).getTime();
+  if (recDateMin === null || recDateMax === null || recDateMin === recDateMax) return RECENCY_COLOR_NEW;
+  const ratio = (t - recDateMin) / (recDateMax - recDateMin);
+  return interpolateColor(RECENCY_COLOR_OLD, RECENCY_COLOR_NEW, ratio);
+}
+
 /* ── Marker icon ─────────────────────────────────────────── */
 function makeMarkerIcon(d) {
   const cfg = SOLAR_STATUS[d.solar_status];
-  const color = cfg ? cfg.color : '#000000';
+  const color = recencyColor(d) || (cfg ? cfg.color : '#000000');
   const size = 16;
   const height = Math.round(size * 1.45);
   const path = `M${size/2} 0 C ${size*0.86} 0, ${size} ${size*0.26}, ${size} ${size*0.5} C ${size} ${size*0.78}, ${size/2} ${height}, ${size/2} ${height} C ${size/2} ${height}, 0 ${size*0.78}, 0 ${size*0.5} C 0 ${size*0.26}, ${size*0.14} 0, ${size/2} 0 Z`;
@@ -1212,11 +1247,19 @@ document.getElementById('cm-submit').addEventListener('click', async () => {
 function initMap(data) {
   document.getElementById("total").textContent = data.length.toLocaleString();
   data.forEach(d => {
+    if (d.epc_recommends_solar && d.lodgement_date) {
+      const t = new Date(d.lodgement_date).getTime();
+      if (recDateMin === null || t < recDateMin) recDateMin = t;
+      if (recDateMax === null || t > recDateMax) recDateMax = t;
+    }
+  });
+  data.forEach(d => {
     if (!d.lat || !d.lng) return;
     d._bucket = bucketPropertyType(d.property_type);
     d._maxRateable = maxHereditamentValue(d);
     d._sicSector = bucketSicSector(d.company_classifications?.sic_codes);
     d._maturity = bucketCompanyMaturity(d.company_classifications || {});
+    d._recommendationYear = (d.epc_recommends_solar && d.lodgement_date) ? new Date(d.lodgement_date).getFullYear() : null;
     const marker = L.marker([d.lat, d.lng], { icon: makeMarkerIcon(d) });
     marker.bindTooltip(d.address || d.postcode || 'Unnamed building', { direction: "top", offset: [0, -10], className: 'day-tooltip', opacity: 0.96 });
     marker._d = d;
@@ -1231,6 +1274,7 @@ function initMap(data) {
   buildEpcRatingChips(data);
   buildSicSectorChips(data);
   buildMaturityChips(data);
+  buildRecommendationYearChips(data);
   buildSolarStatusChips(data);
   applyEpcRecommendationConfig();
   buildEpcRecommendationCounts(data);
@@ -1325,6 +1369,28 @@ function buildMaturityChips(data) {
   });
 }
 
+function buildRecommendationYearChips(data) {
+  const counts = {};
+  data.forEach(d => { if (d._recommendationYear) counts[d._recommendationYear] = (counts[d._recommendationYear] || 0) + 1; });
+  recommendationYearOrder = Object.keys(counts).map(Number).sort((a, b) => b - a); // newest first
+  activeRecommendationYears = new Set(recommendationYearOrder);
+  const el = document.getElementById("recommendation-year-list");
+  el.innerHTML = '';
+  recommendationYearOrder.forEach(year => {
+    const row = document.createElement("label");
+    row.className = "chip on";
+    row.innerHTML = `<input type="checkbox" checked data-year="${year}"/>
+      <span class="dot" style="background:${RECENCY_COLOR_NEW}"></span>
+      ${year}<span class="chip-n">${counts[year].toLocaleString()}</span>`;
+    row.querySelector("input").addEventListener("change", e => {
+      e.target.checked ? activeRecommendationYears.add(year) : activeRecommendationYears.delete(year);
+      row.classList.toggle('on', e.target.checked);
+      applyFilters();
+    });
+    el.appendChild(row);
+  });
+}
+
 function buildSolarStatusChips(data) {
   const counts = {};
   data.forEach(d => { counts[d.solar_status] = (counts[d.solar_status] || 0) + 1; });
@@ -1403,6 +1469,8 @@ function applyFilters() {
     // filter look broken — see chat 2026-08-20.
     const sectorOk = activeSicSectors.size === SIC_SECTOR_ORDER.length || activeSicSectors.has(d._sicSector);
     const maturityOk = activeMaturities.size === MATURITY_ORDER.length || activeMaturities.has(d._maturity);
+    const recommendationYearOk = activeRecommendationYears.size === recommendationYearOrder.length
+      || (d._recommendationYear !== null && activeRecommendationYears.has(d._recommendationYear));
     const statusOk = activeSolarStatuses.has(d.solar_status);
     const epcSolarOk = !filterEpcSolar || d.epc_recommends_solar === true;
     const epcEfficiencyOk = !filterEpcEfficiency || d.epc_recommends_efficiency === true;
@@ -1413,7 +1481,7 @@ function applyFilters() {
     const rateableMinOk = rateableMin == null || (rateableValue != null && rateableValue >= rateableMin);
     const rateableMaxOk = rateableMax == null || (rateableValue != null && rateableValue <= rateableMax);
 
-    if (typeOk && ratingOk && sectorOk && maturityOk && statusOk && epcSolarOk && epcEfficiencyOk && searchOk && minOk && maxOk && rateableMinOk && rateableMaxOk) {
+    if (typeOk && ratingOk && sectorOk && maturityOk && recommendationYearOk && statusOk && epcSolarOk && epcEfficiencyOk && searchOk && minOk && maxOk && rateableMinOk && rateableMaxOk) {
       toShow.push(m);
       shown++;
     }
@@ -1448,6 +1516,7 @@ document.getElementById("reset").addEventListener("click", () => {
   activeRatings = new Set(EPC_RATING_ORDER);
   activeSicSectors = new Set(SIC_SECTOR_ORDER);
   activeMaturities = new Set(MATURITY_ORDER);
+  activeRecommendationYears = new Set(recommendationYearOrder);
   activeSolarStatuses = new Set(['prospect']);
   filterEpcSolar = false;
   filterEpcEfficiency = false;
@@ -1457,7 +1526,7 @@ document.getElementById("reset").addEventListener("click", () => {
   document.getElementById("floor-max").value = "";
   document.getElementById("rateable-min").value = "";
   document.getElementById("rateable-max").value = "";
-  document.querySelectorAll("#building-type-list input, #epc-rating-list input, #sic-sector-list input, #maturity-list input").forEach(cb => {
+  document.querySelectorAll("#building-type-list input, #epc-rating-list input, #sic-sector-list input, #maturity-list input, #recommendation-year-list input").forEach(cb => {
     cb.checked = true;
     cb.closest('.chip').classList.add('on');
   });
