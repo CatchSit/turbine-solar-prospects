@@ -947,6 +947,69 @@ async function loadProposals(d) {
   list.innerHTML = renderProposalsList(data || []);
 }
 
+const MAX_PROPOSAL_BYTES = 20 * 1024 * 1024; // 20 MB
+
+function isPdfFile(file) {
+  return file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+}
+
+async function uploadProposal(prospectId) {
+  const panel = document.getElementById(`proposals-panel-${prospectId}`);
+  if (!panel) return;
+  const fileInput = panel.querySelector('.proposals-file-input');
+  const statusEl = panel.querySelector('.proposals-upload-status');
+  const file = fileInput.files[0];
+
+  statusEl.classList.remove('error');
+  statusEl.textContent = '';
+
+  if (!file) {
+    statusEl.textContent = 'Choose a PDF first.';
+    statusEl.classList.add('error');
+    return;
+  }
+  if (!isPdfFile(file)) {
+    statusEl.textContent = 'Only PDF files are accepted.';
+    statusEl.classList.add('error');
+    return;
+  }
+  if (file.size > MAX_PROPOSAL_BYTES) {
+    statusEl.textContent = 'File is too large (max 20 MB).';
+    statusEl.classList.add('error');
+    return;
+  }
+
+  statusEl.textContent = 'Uploading…';
+  const storagePath = `${prospectId}/${Date.now()}-${file.name}`;
+
+  const { error: uploadError } = await window.db.storage
+    .from('proposals')
+    .upload(storagePath, file, { contentType: 'application/pdf' });
+  if (uploadError) {
+    statusEl.textContent = `Upload failed: ${uploadError.message || 'try again'}`;
+    statusEl.classList.add('error');
+    return;
+  }
+
+  const { error: insertError } = await window.db.from('prospect_proposals').insert({
+    prospect_id: prospectId,
+    file_name: file.name,
+    storage_path: storagePath,
+    file_size_bytes: file.size,
+    uploaded_by: currentUser ? getUserName(currentUser) : 'Unknown',
+    uploaded_by_email: currentUser ? currentUser.email : null,
+  });
+  if (insertError) {
+    statusEl.textContent = `Saved file but failed to record it: ${insertError.message || 'try again'}`;
+    statusEl.classList.add('error');
+    return;
+  }
+
+  statusEl.textContent = 'Uploaded.';
+  fileInput.value = '';
+  loadProposals({ id: prospectId });
+}
+
 async function loadCompanyMatch(d) {
   const container = document.getElementById(`company-match-${d.id}`);
   if (!container) return;
