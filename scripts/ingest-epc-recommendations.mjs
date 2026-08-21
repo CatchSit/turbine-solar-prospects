@@ -10,11 +10,16 @@
 //   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/ingest-epc-recommendations.mjs [csv-files...]
 // If no files are given, every *.csv under data/recommendations/ is used.
 //
-// IMPORTANT: only LMK_KEY and IMPROVEMENT_SUMMARY_TEXT are confirmed real
-// column names (verified against public GOV.UK guidance text, 2026-08-19).
-// This script fails loudly, listing the actual headers found, if it can't
-// match the columns it needs — check against a real downloaded file before
-// trusting a silent success, same discipline as scripts/ingest-epc.mjs.
+// Column names and the EPC-R3/EPC-R4 code mapping below are verified
+// against real downloaded files (data/recommendations/, 2026-08-21) —
+// headers are certificate_number/recommendation_code/recommendation, not
+// the LMK_KEY/IMPROVEMENT_SUMMARY_TEXT guessed from GOV.UK guidance text
+// on 2026-08-19, and free-text phrasing ("Consider installing PV.") is
+// terser than the original text patterns assumed, which is why the first
+// live run classified zero rows. Same discipline as scripts/ingest-epc.mjs:
+// this still fails loudly, listing the actual headers found, if a future
+// export doesn't match — check against a real downloaded file before
+// trusting a silent success.
 
 import { createReadStream, readdirSync, existsSync } from 'node:fs';
 import { parse } from 'csv-parse';
@@ -31,7 +36,8 @@ const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 const COLUMN_CANDIDATES = {
   lmk_key:             ['LMK_KEY', 'lmk-key', 'certificate_number'],
-  improvement_summary: ['IMPROVEMENT_SUMMARY_TEXT', 'improvement-summary-text', 'IMPROVEMENT_SUMMARY'],
+  improvement_summary: ['IMPROVEMENT_SUMMARY_TEXT', 'improvement-summary-text', 'IMPROVEMENT_SUMMARY', 'recommendation'],
+  recommendation_code: ['recommendation_code', 'improvement_id_text', 'improvement-id-text'],
 };
 
 function normalizeHeader(h) {
@@ -58,25 +64,41 @@ function buildColumnResolver(headers) {
 }
 
 // ─── Classification ─────────────────────────────────────────────────────
-// "Solar gain limit exceeded" is a real, different-meaning recommendation
-// (excess unshaded-glazing heat gain warning) — the patterns below require
-// "solar" alongside "photovoltaic"/"water heating"/"pv", never bare "solar".
+// Primary signal is recommendation_code — verified stable across all 16
+// downloaded years (2011-2026, data/recommendations/): EPC-R3 is always
+// "Consider installing solar water heating.", EPC-R4 is always "Consider
+// installing PV." Text patterns are a fallback for rows with a missing or
+// unrecognized code, not the primary path — the free text is terser than
+// domestic-EPC guidance text suggested ("Consider installing PV." has no
+// "photovoltaic"/"solar" in it at all), which is why the first live run,
+// keyed on text alone, classified zero rows.
+// "Solar gain limit exceeded" (EPC-V1) is a real, different-meaning
+// recommendation (excess unshaded-glazing heat gain warning) — the
+// fallback patterns below require "solar" alongside "photovoltaic"/"water
+// heating"/"pv", never bare "solar", so they don't false-positive on it.
 
+const SOLAR_CODES = new Set(['EPC-R3', 'EPC-R4']);
 const SOLAR_PATTERNS = [
   /solar\s+photovoltaic/i, /solar\s+water\s+heating/i, /\bsolar\s+pv\b/i,
-  /\bphotovoltaic\b/i, /\bpv\s+panel/i,
+  /\bphotovoltaic\b/i, /\bpv\s+panel/i, /\bconsider\s+installing\s+pv\b/i,
 ];
+const EFFICIENCY_CODES = new Set([
+  'EPC-E1', 'EPC-E2', 'EPC-E3', 'EPC-E4', 'EPC-E6', // floor/roof/wall/cavity/loft insulation
+  'EPC-H2', 'EPC-H5', 'EPC-H7', 'EPC-H8',           // heating time/optimum-start/weather-compensation controls
+  'EPC-W3', 'EPC-W4',                               // hot water storage/circulation controls
+]);
 const EFFICIENCY_PATTERNS = [
-  /\b(roof|wall|loft|cavity)\s+insulation/i,
+  /\b(roof|wall|loft|cavity|floor)\s+insulation/i, /insulat/i,
   /optimum\s+start\s*\/?\s*stop/i, /weather\s+compensation/i,
   /(time|zone|thermostatic)\s+control/i,
 ];
 
-function classify(summaryText) {
+function classify(summaryText, recommendationCode) {
   const text = String(summaryText || '');
+  const code = String(recommendationCode || '').trim();
   return {
-    solar: SOLAR_PATTERNS.some(p => p.test(text)),
-    efficiency: EFFICIENCY_PATTERNS.some(p => p.test(text)),
+    solar: SOLAR_CODES.has(code) || SOLAR_PATTERNS.some(p => p.test(text)),
+    efficiency: EFFICIENCY_CODES.has(code) || EFFICIENCY_PATTERNS.some(p => p.test(text)),
   };
 }
 
@@ -189,10 +211,11 @@ async function main() {
       rawCount++;
       const lmkKey = String(row[col.lmk_key] ?? '').trim();
       const summary = String(row[col.improvement_summary] ?? '').trim();
+      const code = String(row[col.recommendation_code] ?? '').trim();
       if (!lmkKey) return;
       if (!existingKeys.has(lmkKey)) { skippedNoMatch++; return; }
-      const c = classify(summary);
-      if (!c.solar && !c.efficiency) unclassified.add(summary);
+      const c = classify(summary, code);
+      if (!c.solar && !c.efficiency) unclassified.add(`${code}: ${summary}`);
       const prev = flagsByKey.get(lmkKey);
       flagsByKey.set(lmkKey, {
         solar: (prev?.solar ?? false) || c.solar,
