@@ -555,7 +555,7 @@
 <!-- ── Loading ───────────────────────────────────────────── -->
 <div id="loading">
   <div class="spinner"></div>
-  <span>Loading prospect data…</span>
+  <span id="loading-text">Loading prospect data…</span>
 </div>
 
 <!-- ── Log Contact modal ─────────────────────────────────── -->
@@ -1474,46 +1474,75 @@ document.getElementById("reset").addEventListener("click", () => {
 });
 
 /* ── Bootstrap ───────────────────────────────────────────── */
-async function fetchAllProspects() {
+// Keyset (cursor) pagination, not offset — `.range(from, to)` translates to
+// SQL OFFSET, which Postgres can only satisfy by computing the full merge
+// join across the whole table (now ~35k rows x 2 joined tables) and then
+// discarding the skipped rows, since OFFSET is applied after the join.
+// Verified live: a deep page (offset ~34000) took 5.9s under that plan.
+// `id > lastId ORDER BY id LIMIT 1000` lets Postgres seek via the primary-key
+// index instead — the equivalent deep page dropped to 13ms (EXPLAIN ANALYZE,
+// same live data).
+//
+// Each individual page request still costs ~0.5-7s end-to-end in the real
+// browser (network/serialization overhead well above the 13ms DB-side cost —
+// live-measured 2026-08-21, 36 sequential pages totalled ~90s), so pages are
+// fetched concurrently. That needs page boundary ids known upfront — a
+// live cursor loop can't start page N+1 before page N resolves — so this
+// fetches the ordered id list first (a single cheap index-only scan, no
+// joins, ~1.4s for the full ~35k, EXPLAIN ANALYZE-verified) and uses it to
+// compute each page's lower-bound id, then runs a small worker pool of
+// `id > boundary LIMIT 1000` requests (same cheap indexed-seek plan as the
+// sequential version, just self-contained per page instead of chained).
+async function fetchAllProspects(onProgress) {
   const PAGE = 1000; // PostgREST's default max-rows cap — must page past it explicitly
+  const PAGE_CONCURRENCY = 6;
   const PROSPECT_COLUMNS = 'id, address, postcode, lat, lng, property_type, floor_area:total_floor_area, epc_rating:current_energy_rating, local_authority, solar_status, solar_max_panels, solar_yearly_energy_kwh, current_energy_efficiency, epc_recommends_solar, epc_recommends_efficiency, lodgement_date, business_rates_matches(hereditaments, no_match), company_classifications(company_name, sic_codes, incorporated_on, accounts_type, no_match)';
 
-  // Keyset (cursor) pagination, not offset — `.range(from, to)` translates to
-  // SQL OFFSET, which Postgres can only satisfy by computing the full merge
-  // join across the whole table (now ~35k rows x 2 joined tables) and then
-  // discarding the skipped rows, since OFFSET is applied after the join.
-  // Verified live: a deep page (offset ~34000) took 5.9s under that plan —
-  // both the original sequential version and yesterday's parallelized
-  // attempt were built on top of this same slow query, which is why
-  // bounding concurrency (2026-08-21) didn't actually fix the statement
-  // timeouts. `id > lastId ORDER BY id LIMIT 1000` lets Postgres seek via
-  // the primary-key index instead — the equivalent deep page dropped to
-  // 13ms (EXPLAIN ANALYZE, same live data). Sequential is plenty fast now;
-  // no concurrency needed.
-  const rows = [];
-  let lastId = null;
-  while (true) {
-    let query = db
-      .from('prospects')
-      .select(PROSPECT_COLUMNS)
-      .not('lat', 'is', null)
-      .order('id', { ascending: true })
-      .limit(PAGE);
-    if (lastId) query = query.gt('id', lastId);
-    const { data, error } = await query;
-    if (error) throw new Error(JSON.stringify(error));
-    rows.push(...data);
-    if (data.length < PAGE) break;
-    lastId = data[data.length - 1].id;
+  const { data: idRows, error: idError } = await db
+    .from('prospects')
+    .select('id')
+    .not('lat', 'is', null)
+    .order('id', { ascending: true });
+  if (idError) throw new Error(JSON.stringify(idError));
+
+  const total = idRows.length;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE));
+  const pages = new Array(pageCount);
+  let fetched = 0;
+  let nextPage = 0;
+
+  async function worker() {
+    while (nextPage < pageCount) {
+      const i = nextPage++;
+      const lowerId = i > 0 ? idRows[i * PAGE - 1].id : null;
+      let query = db
+        .from('prospects')
+        .select(PROSPECT_COLUMNS)
+        .not('lat', 'is', null)
+        .order('id', { ascending: true })
+        .limit(PAGE);
+      if (lowerId) query = query.gt('id', lowerId);
+      const { data, error } = await query;
+      if (error) throw new Error(JSON.stringify(error));
+      pages[i] = data;
+      fetched += data.length;
+      if (onProgress) onProgress(fetched, total);
+    }
   }
-  return rows;
+  await Promise.all(
+    Array.from({ length: Math.min(PAGE_CONCURRENCY, pageCount) }, worker)
+  );
+  return pages.flat();
 }
 
 let dataLoaded = false;
 function bootstrapData() {
   if (dataLoaded) return;
   dataLoaded = true;
-  fetchAllProspects()
+  const loadingText = document.getElementById('loading-text');
+  fetchAllProspects((fetched, total) => {
+    loadingText.textContent = `Loading prospect data… (${fetched.toLocaleString()} / ${total.toLocaleString()})`;
+  })
     .then(data => {
       document.getElementById("loading").style.display = "none";
       initMap(data);
