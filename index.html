@@ -1308,22 +1308,35 @@ document.getElementById("reset").addEventListener("click", () => {
 
 /* ── Bootstrap ───────────────────────────────────────────── */
 async function fetchAllProspects() {
-  const rows = [];
   const PAGE = 1000; // PostgREST's default max-rows cap — must page past it explicitly
-  let from = 0;
-  while (true) {
-    const { data, error } = await db
-      .from('prospects')
-      .select('id, address, postcode, lat, lng, property_type, floor_area:total_floor_area, epc_rating:current_energy_rating, local_authority, solar_status, solar_max_panels, solar_yearly_energy_kwh, current_energy_efficiency, epc_recommends_solar, epc_recommends_efficiency, lodgement_date, business_rates_matches(hereditaments, no_match), company_classifications(company_name, sic_codes, incorporated_on, accounts_type, no_match)')
-      .not('lat', 'is', null)
-      .order('id', { ascending: true })
-      .range(from, from + PAGE - 1);
-    if (error) throw new Error(JSON.stringify(error));
-    rows.push(...data);
-    if (data.length < PAGE) break;
-    from += PAGE;
-  }
-  return rows;
+  const PROSPECT_COLUMNS = 'id, address, postcode, lat, lng, property_type, floor_area:total_floor_area, epc_rating:current_energy_rating, local_authority, solar_status, solar_max_panels, solar_yearly_energy_kwh, current_energy_efficiency, epc_recommends_solar, epc_recommends_efficiency, lodgement_date, business_rates_matches(hereditaments, no_match), company_classifications(company_name, sic_codes, incorporated_on, accounts_type, no_match)';
+
+  const { count, error: countError } = await db
+    .from('prospects')
+    .select('id', { count: 'exact', head: true })
+    .not('lat', 'is', null);
+  if (countError) throw new Error(JSON.stringify(countError));
+
+  // Pages are independent range requests (stable order by id), so fire them
+  // all in parallel instead of awaiting one at a time — with ~35k rows that's
+  // ~36 sequential round trips otherwise, which is where the slow load comes from.
+  const pageCount = Math.max(1, Math.ceil(count / PAGE));
+  const pages = await Promise.all(
+    Array.from({ length: pageCount }, (_, i) => {
+      const from = i * PAGE;
+      return db
+        .from('prospects')
+        .select(PROSPECT_COLUMNS)
+        .not('lat', 'is', null)
+        .order('id', { ascending: true })
+        .range(from, from + PAGE - 1)
+        .then(({ data, error }) => {
+          if (error) throw new Error(JSON.stringify(error));
+          return data;
+        });
+    })
+  );
+  return pages.flat();
 }
 
 let dataLoaded = false;
