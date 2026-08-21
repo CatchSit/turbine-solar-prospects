@@ -781,6 +781,12 @@ function businessRatesHtml(d) {
   const more = remaining > 0 ? `<div>+ ${remaining.toLocaleString()} more</div>` : '';
   return `${rows}${more}`;
 }
+function formatMonthYear(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d)) return '';
+  return d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+}
 function buildPopup(d) {
   const solarCfg = SOLAR_STATUS[d.solar_status] || { color: '#999', soft: '#eee', label: d.solar_status };
   const epcCfg = EPC_RATING[d.epc_rating] || null;
@@ -791,11 +797,12 @@ function buildPopup(d) {
     ? `<span class="tag"><span class="tag-dot" style="background:${epcCfg.color}"></span>EPC ${epcCfg.label}</span>`
     : '';
   const typeTag = `<span class="tag"><span class="tag-dot" style="background:${BUILDING_TYPE_COLORS[bucket]}"></span>${escapeHtml(bucket)}</span>`;
+  const recDate = formatMonthYear(d.lodgement_date);
   const solarRecTag = d.epc_recommends_solar
-    ? `<span class="tag"><span class="tag-dot" style="background:${EPC_RECOMMENDATION.solar.color}"></span>${escapeHtml(EPC_RECOMMENDATION.solar.label)}</span>`
+    ? `<span class="tag"><span class="tag-dot" style="background:${EPC_RECOMMENDATION.solar.color}"></span>${escapeHtml(EPC_RECOMMENDATION.solar.label)}${recDate ? ` · ${recDate}` : ''}</span>`
     : '';
   const efficiencyRecTag = d.epc_recommends_efficiency
-    ? `<span class="tag"><span class="tag-dot" style="background:${EPC_RECOMMENDATION.efficiency.color}"></span>${escapeHtml(EPC_RECOMMENDATION.efficiency.label)}</span>`
+    ? `<span class="tag"><span class="tag-dot" style="background:${EPC_RECOMMENDATION.efficiency.color}"></span>${escapeHtml(EPC_RECOMMENDATION.efficiency.label)}${recDate ? ` · ${recDate}` : ''}</span>`
     : '';
   const sectorTag = (d._sicSector && d._sicSector !== 'Other')
     ? `<span class="tag"><span class="tag-dot" style="background:${SIC_SECTOR_COLORS[d._sicSector]}"></span>${escapeHtml(d._sicSector)}</span>`
@@ -1307,7 +1314,7 @@ async function fetchAllProspects() {
   while (true) {
     const { data, error } = await db
       .from('prospects')
-      .select('id, address, postcode, lat, lng, property_type, floor_area:total_floor_area, epc_rating:current_energy_rating, local_authority, solar_status, solar_max_panels, solar_yearly_energy_kwh, current_energy_efficiency, epc_recommends_solar, epc_recommends_efficiency, business_rates_matches(hereditaments, no_match), company_classifications(company_name, sic_codes, incorporated_on, accounts_type, no_match)')
+      .select('id, address, postcode, lat, lng, property_type, floor_area:total_floor_area, epc_rating:current_energy_rating, local_authority, solar_status, solar_max_panels, solar_yearly_energy_kwh, current_energy_efficiency, epc_recommends_solar, epc_recommends_efficiency, lodgement_date, business_rates_matches(hereditaments, no_match), company_classifications(company_name, sic_codes, incorporated_on, accounts_type, no_match)')
       .not('lat', 'is', null)
       .order('id', { ascending: true })
       .range(from, from + PAGE - 1);
