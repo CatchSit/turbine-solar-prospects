@@ -927,7 +927,6 @@ function renderProposalsList(rows) {
 async function loadProposals(d) {
   const container = document.getElementById(`proposals-panel-${d.id}`);
   if (!container) return;
-  const listEl = container.querySelector('.proposals-list');
 
   const { data, error } = await window.db
     .from('prospect_proposals')
@@ -980,34 +979,41 @@ async function uploadProposal(prospectId) {
   }
 
   statusEl.textContent = 'Uploading…';
-  const storagePath = `${prospectId}/${Date.now()}-${file.name}`;
+  const safeFileName = file.name.replace(/[^\w.\- ]+/g, '_').slice(-120);
+  const storagePath = `${prospectId}/${Date.now()}-${safeFileName}`;
 
-  const { error: uploadError } = await window.db.storage
-    .from('proposals')
-    .upload(storagePath, file, { contentType: 'application/pdf' });
-  if (uploadError) {
-    statusEl.textContent = `Upload failed: ${uploadError.message || 'try again'}`;
-    statusEl.classList.add('error');
-    return;
+  const btn = panel.querySelector('.proposals-upload-btn');
+  btn.disabled = true;
+  try {
+    const { error: uploadError } = await window.db.storage
+      .from('proposals')
+      .upload(storagePath, file, { contentType: 'application/pdf' });
+    if (uploadError) {
+      statusEl.textContent = `Upload failed: ${uploadError.message || 'try again'}`;
+      statusEl.classList.add('error');
+      return;
+    }
+
+    const { error: insertError } = await window.db.from('prospect_proposals').insert({
+      prospect_id: prospectId,
+      file_name: file.name,
+      storage_path: storagePath,
+      file_size_bytes: file.size,
+      uploaded_by: currentUser ? getUserName(currentUser) : 'Unknown',
+      uploaded_by_email: currentUser ? currentUser.email : null,
+    });
+    if (insertError) {
+      statusEl.textContent = `Saved file but failed to record it: ${insertError.message || 'try again'}`;
+      statusEl.classList.add('error');
+      return;
+    }
+
+    statusEl.textContent = 'Uploaded.';
+    fileInput.value = '';
+    loadProposals({ id: prospectId });
+  } finally {
+    btn.disabled = false;
   }
-
-  const { error: insertError } = await window.db.from('prospect_proposals').insert({
-    prospect_id: prospectId,
-    file_name: file.name,
-    storage_path: storagePath,
-    file_size_bytes: file.size,
-    uploaded_by: currentUser ? getUserName(currentUser) : 'Unknown',
-    uploaded_by_email: currentUser ? currentUser.email : null,
-  });
-  if (insertError) {
-    statusEl.textContent = `Saved file but failed to record it: ${insertError.message || 'try again'}`;
-    statusEl.classList.add('error');
-    return;
-  }
-
-  statusEl.textContent = 'Uploaded.';
-  fileInput.value = '';
-  loadProposals({ id: prospectId });
 }
 
 async function openProposal(linkEl) {
@@ -1015,16 +1021,24 @@ async function openProposal(linkEl) {
   const originalText = linkEl.textContent;
   linkEl.textContent = 'Opening…';
 
+  const newTab = window.open('', '_blank', 'noopener');
+
   const { data, error } = await window.db.storage
     .from('proposals')
     .createSignedUrl(path, 300);
 
   linkEl.textContent = originalText;
   if (error || !data?.signedUrl) {
+    if (newTab) newTab.close();
     alert("Couldn't open this proposal. Try again in a moment.");
     return;
   }
-  window.open(data.signedUrl, '_blank', 'noopener');
+  if (newTab) {
+    newTab.location = data.signedUrl;
+  } else {
+    // Popup blocker prevented even the synchronous open.
+    alert("Your browser blocked the new tab. Please allow pop-ups for this site and try again.");
+  }
 }
 
 async function loadCompanyMatch(d) {
