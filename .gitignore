@@ -7,3 +7,4 @@ supabase/.temp/
 .claude/
 .playwright-mcp/
 .superpowers/
+.worktrees/
