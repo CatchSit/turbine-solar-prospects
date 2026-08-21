@@ -1565,68 +1565,46 @@ document.getElementById("reset").addEventListener("click", () => {
 // index instead — the equivalent deep page dropped to 13ms (EXPLAIN ANALYZE,
 // same live data).
 //
-// Each individual page request still costs ~0.5-7s end-to-end in the real
-// browser (network/serialization overhead well above the 13ms DB-side cost —
-// live-measured 2026-08-21, 36 sequential pages totalled ~90s), so pages are
-// fetched concurrently. That needs page boundary ids known upfront — a
-// live cursor loop can't start page N+1 before page N resolves — so this
-// fetches the ordered id list first (a single cheap index-only scan, no
-// joins, ~1.4s for the full ~35k, EXPLAIN ANALYZE-verified) and uses it to
-// compute each page's lower-bound id, then runs a small worker pool of
-// `id > boundary LIMIT 1000` requests (same cheap indexed-seek plan as the
-// sequential version, just self-contained per page instead of chained).
+// Deliberately sequential, not concurrent: two earlier attempts today at
+// parallelizing this (a bounded worker pool, both offset-based and
+// keyset-based) each caused live 57014 "statement timeout" failures under
+// real load, even though every individual query is fast in isolation —
+// `authenticated`'s statement_timeout is only 8s, and something about
+// multiple concurrent joined queries against this table set pushes past
+// that. Slower but reliable beats fast but occasionally broken; revisit
+// concurrency only with a safer mechanism (e.g. a server-side view) if the
+// ~90s sequential load time becomes a real problem again.
 async function fetchAllProspects(onProgress) {
   const PAGE = 1000; // PostgREST's default max-rows cap — must page past it explicitly
-  const PAGE_CONCURRENCY = 6;
   const PROSPECT_COLUMNS = 'id, address, postcode, lat, lng, property_type, floor_area:total_floor_area, epc_rating:current_energy_rating, local_authority, solar_status, solar_max_panels, solar_yearly_energy_kwh, current_energy_efficiency, epc_recommends_solar, epc_recommends_efficiency, lodgement_date, business_rates_matches(hereditaments, no_match), company_classifications(company_name, sic_codes, incorporated_on, accounts_type, no_match)';
 
-  // PostgREST's default max-rows cap applies here too — a plain .select('id')
-  // with no .range() silently truncated this to 1000 ids total (live
-  // incident, 2026-08-21), which then made the whole fetch believe there
-  // was only one page. id-only rows are tiny, so paginating this is cheap.
-  const idRows = [];
-  let idFrom = 0;
+  // head:true returns only a count, no rows — safe from the max-rows cap
+  // that bit the id-list fetch (2026-08-21 live incident), and cheap since
+  // it never fetches or joins any actual row data.
+  const { count: total, error: countError } = await db
+    .from('prospects')
+    .select('id', { count: 'exact', head: true })
+    .not('lat', 'is', null);
+  if (countError) throw new Error(JSON.stringify(countError));
+
+  const rows = [];
+  let lastId = null;
   while (true) {
-    const { data, error } = await db
+    let query = db
       .from('prospects')
-      .select('id')
+      .select(PROSPECT_COLUMNS)
       .not('lat', 'is', null)
       .order('id', { ascending: true })
-      .range(idFrom, idFrom + PAGE - 1);
+      .limit(PAGE);
+    if (lastId) query = query.gt('id', lastId);
+    const { data, error } = await query;
     if (error) throw new Error(JSON.stringify(error));
-    idRows.push(...data);
+    rows.push(...data);
+    if (onProgress) onProgress(rows.length, total);
     if (data.length < PAGE) break;
-    idFrom += PAGE;
+    lastId = data[data.length - 1].id;
   }
-
-  const total = idRows.length;
-  const pageCount = Math.max(1, Math.ceil(total / PAGE));
-  const pages = new Array(pageCount);
-  let fetched = 0;
-  let nextPage = 0;
-
-  async function worker() {
-    while (nextPage < pageCount) {
-      const i = nextPage++;
-      const lowerId = i > 0 ? idRows[i * PAGE - 1].id : null;
-      let query = db
-        .from('prospects')
-        .select(PROSPECT_COLUMNS)
-        .not('lat', 'is', null)
-        .order('id', { ascending: true })
-        .limit(PAGE);
-      if (lowerId) query = query.gt('id', lowerId);
-      const { data, error } = await query;
-      if (error) throw new Error(JSON.stringify(error));
-      pages[i] = data;
-      fetched += data.length;
-      if (onProgress) onProgress(fetched, total);
-    }
-  }
-  await Promise.all(
-    Array.from({ length: Math.min(PAGE_CONCURRENCY, pageCount) }, worker)
-  );
-  return pages.flat();
+  return rows;
 }
 
 let dataLoaded = false;
