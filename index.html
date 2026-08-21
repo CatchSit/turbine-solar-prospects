@@ -1478,41 +1478,35 @@ async function fetchAllProspects() {
   const PAGE = 1000; // PostgREST's default max-rows cap — must page past it explicitly
   const PROSPECT_COLUMNS = 'id, address, postcode, lat, lng, property_type, floor_area:total_floor_area, epc_rating:current_energy_rating, local_authority, solar_status, solar_max_panels, solar_yearly_energy_kwh, current_energy_efficiency, epc_recommends_solar, epc_recommends_efficiency, lodgement_date, business_rates_matches(hereditaments, no_match), company_classifications(company_name, sic_codes, incorporated_on, accounts_type, no_match)';
 
-  const { count, error: countError } = await db
-    .from('prospects')
-    .select('id', { count: 'exact', head: true })
-    .not('lat', 'is', null);
-  if (countError) throw new Error(JSON.stringify(countError));
-
-  // Pages are independent range requests (stable order by id), so fetch them
-  // concurrently instead of one at a time — with ~35k rows that's ~36 pages,
-  // and awaiting them sequentially is where the slow load originally came
-  // from. Firing all 36 at once, though, overwhelmed Postgres under real
-  // (multi-join) load and caused statement-timeout errors across most pages
-  // (2026-08-21 live incident) — so this bounds concurrency to a small
-  // worker pool instead of one unbounded Promise.all burst.
-  const PAGE_CONCURRENCY = 4;
-  const pageCount = Math.max(1, Math.ceil(count / PAGE));
-  const pages = new Array(pageCount);
-  let nextPage = 0;
-  async function fetchPagesWorker() {
-    while (nextPage < pageCount) {
-      const i = nextPage++;
-      const from = i * PAGE;
-      const { data, error } = await db
-        .from('prospects')
-        .select(PROSPECT_COLUMNS)
-        .not('lat', 'is', null)
-        .order('id', { ascending: true })
-        .range(from, from + PAGE - 1);
-      if (error) throw new Error(JSON.stringify(error));
-      pages[i] = data;
-    }
+  // Keyset (cursor) pagination, not offset — `.range(from, to)` translates to
+  // SQL OFFSET, which Postgres can only satisfy by computing the full merge
+  // join across the whole table (now ~35k rows x 2 joined tables) and then
+  // discarding the skipped rows, since OFFSET is applied after the join.
+  // Verified live: a deep page (offset ~34000) took 5.9s under that plan —
+  // both the original sequential version and yesterday's parallelized
+  // attempt were built on top of this same slow query, which is why
+  // bounding concurrency (2026-08-21) didn't actually fix the statement
+  // timeouts. `id > lastId ORDER BY id LIMIT 1000` lets Postgres seek via
+  // the primary-key index instead — the equivalent deep page dropped to
+  // 13ms (EXPLAIN ANALYZE, same live data). Sequential is plenty fast now;
+  // no concurrency needed.
+  const rows = [];
+  let lastId = null;
+  while (true) {
+    let query = db
+      .from('prospects')
+      .select(PROSPECT_COLUMNS)
+      .not('lat', 'is', null)
+      .order('id', { ascending: true })
+      .limit(PAGE);
+    if (lastId) query = query.gt('id', lastId);
+    const { data, error } = await query;
+    if (error) throw new Error(JSON.stringify(error));
+    rows.push(...data);
+    if (data.length < PAGE) break;
+    lastId = data[data.length - 1].id;
   }
-  await Promise.all(
-    Array.from({ length: Math.min(PAGE_CONCURRENCY, pageCount) }, fetchPagesWorker)
-  );
-  return pages.flat();
+  return rows;
 }
 
 let dataLoaded = false;
