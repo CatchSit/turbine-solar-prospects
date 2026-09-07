@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Turbine Energy — CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg: #f8f9fa; --surface: #ffffff; --surface2: #eef1ec;
+  --border: rgba(17,24,39,0.12); --borderH: rgba(17,24,39,0.18);
+  --text: #111827; --text2: #6b7280; --text3: rgba(17,24,39,0.38);
+  --accent: #2ba45e; --accentDim: rgba(43,164,94,0.12); --accentDk: #1f8a52;
+  --warn: #c08438; --warnSoft: #f3e3cb; --alert: #b85544; --alertSoft: #f0d3ce;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.45; }
+a { color: var(--accent); text-decoration: none; }
+button { font-family: inherit; cursor: pointer; }
+#top-nav { background: var(--surface); border-bottom: 1px solid var(--border); height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; position: sticky; top: 0; }
+.nav-brand { font-weight: 600; font-size: 15px; }
+.nav-brand-sub { font-size: 11.5px; color: var(--text3); margin-left: 6px; }
+.nav-right { display: flex; align-items: center; gap: 10px; }
+.nav-link { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; color: var(--text2); text-decoration: none; }
+.nav-link:hover { background: var(--surface2); color: var(--text); text-decoration: none; }
+#sign-out-btn { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; color: var(--text2); }
+#wrap { max-width: 1000px; margin: 0 auto; padding: 24px; }
+.table-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.table-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--border); gap: 12px; }
+.table-header h2 { font-size: 14px; }
+.table-header input { padding: 7px 11px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--surface2); color: var(--text); font-family: inherit; width: 260px; max-width: 50vw; }
+.table-header input:focus { outline: none; border-color: var(--accent); }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+th { text-align: left; padding: 10px 16px; color: var(--text3); font-weight: 500; border-bottom: 1px solid var(--border); white-space: nowrap; }
+td { padding: 10px 16px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: var(--surface2); }
+#empty-state { text-align: center; padding: 60px 20px; color: var(--text3); }
+.tag { display: inline-flex; align-items: center; gap: 6px; background: var(--surface2); color: var(--text2); font-size: 11.5px; padding: 4px 10px 4px 7px; border-radius: 100px; }
+.tag .tag-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+/* ── Lead detail view ────────────────────────────────────── */
+#back-btn { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; color: var(--text2); margin-bottom: 16px; }
+#back-btn:hover { background: var(--surface2); color: var(--text); }
+.lead-header { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin-bottom: 16px; }
+.lead-header h2 { font-size: 18px; margin-bottom: 6px; }
+.lead-header .sub { color: var(--text2); font-size: 12.5px; margin-top: 4px; }
+.lead-header .sub a { color: var(--accent); }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
+.card h3 { font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+.quote-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.quote-field label { display: block; font-size: 11.5px; color: var(--text2); margin-bottom: 5px; }
+.quote-field input { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 13px; background: var(--surface2); color: var(--text); }
+.quote-field input:focus { outline: none; border-color: var(--accent); }
+.quote-total { display: flex; align-items: center; justify-content: space-between; padding-top: 12px; border-top: 1px solid var(--border); font-size: 13px; }
+.quote-total strong { font-size: 16px; }
+.quote-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; }
+.quote-status { font-size: 11.5px; color: var(--text3); }
+.btn-primary { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: 13px; font-weight: 500; }
+.btn-primary:disabled { opacity: .6; cursor: default; }
+.btn-secondary { background: var(--surface2); color: var(--text2); border: none; border-radius: 8px; padding: 8px 16px; font-size: 13px; font-weight: 500; }
+.log-contact-btn { background: var(--accentDim); color: var(--accentDk); border: none; border-radius: 8px; padding: 9px 16px; font-size: 13px; font-weight: 500; }
+
+.doc-item { padding: 9px 0; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.doc-item:first-child { border-top: none; }
+.doc-name { font-weight: 500; color: var(--text); font-size: 12.5px; }
+.doc-meta { color: var(--text3); font-size: 11px; margin-top: 1px; }
+.doc-open-link { color: var(--accent); font-size: 12px; white-space: nowrap; cursor: pointer; }
+.doc-empty { color: var(--text3); font-size: 12px; padding: 4px 0; }
+.doc-upload { display: flex; gap: 8px; align-items: center; padding-top: 10px; border-top: 1px solid var(--border); margin-top: 8px; }
+.doc-file-input { font-size: 11.5px; flex: 1; min-width: 0; }
+.doc-upload-btn { padding: 6px 14px; background: var(--accentDim); color: var(--accentDk); border: none; border-radius: 6px; font-size: 12px; font-weight: 500; }
+.doc-upload-status { padding-top: 6px; font-size: 11.5px; color: var(--text3); }
+.doc-upload-status.error { color: #c0392b; }
+
+/* ── Log Contact modal (ported from index.html) ─────────── */
+#contact-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(17,24,39,0.4); z-index: 2000; align-items: center; justify-content: center; }
+#contact-modal-overlay.open { display: flex; }
+#contact-modal { width: 420px; max-width: 92vw; max-height: 88vh; overflow-y: auto; background: var(--surface); border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+.modal-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 20px 22px 14px; border-bottom: 1px solid var(--border); }
+.modal-eyebrow { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .08em; }
+.modal-header-text h2 { font-size: 17px; font-weight: 600; margin-top: 4px; }
+.modal-sub { font-size: 12.5px; color: var(--text2); margin-top: 2px; }
+.modal-close { background: none; border: none; font-size: 16px; color: var(--text3); cursor: pointer; padding: 4px 8px; border-radius: 6px; }
+.modal-close:hover { background: var(--surface2); color: var(--text); }
+.modal-body { padding: 18px 22px; }
+.modal-body label { display: block; font-size: 12.5px; font-weight: 500; color: var(--text2); margin: 14px 0 6px; }
+.modal-body label:first-child { margin-top: 0; }
+.modal-body .required { color: var(--alert); margin-left: 3px; }
+.optional-label { color: var(--text3); font-weight: 400; font-size: 11.5px; }
+.modal-body input[type="text"], .modal-body input[type="date"], .modal-body textarea {
+  width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px;
+  font-family: inherit; font-size: 13px; background: var(--surface2); color: var(--text);
+}
+.modal-body input:focus, .modal-body textarea:focus { outline: none; border-color: var(--accent); }
+.modal-body textarea { resize: vertical; min-height: 70px; line-height: 1.5; }
+.modal-body input[readonly] { background: var(--border); color: var(--text2); cursor: not-allowed; }
+.outcome-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.outcome-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px 6px 9px; border-radius: 100px; border: 1px solid var(--border); background: var(--surface2); font-size: 12px; color: var(--text2); cursor: pointer; font-family: inherit; }
+.outcome-chip .chip-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.outcome-chip.on { color: #fff; border-color: transparent; }
+.modal-footer { display: flex; align-items: center; justify-content: space-between; padding: 14px 22px; border-top: 1px solid var(--border); }
+.modal-shortcuts { font-size: 11px; color: var(--text3); font-family: monospace; }
+.modal-btns { display: flex; gap: 8px; }
+</style>
+</head>
+<body>
+
+<div id="top-nav">
+  <div><span class="nav-brand">Turbine Energy</span><span class="nav-brand-sub">CRM</span></div>
+  <div class="nav-right">
+    <a class="nav-link" href="index.html">Map</a>
+    <a class="nav-link" id="nav-dashboard-link" href="dashboard.html" style="display:none">Dashboard</a>
+    <button id="sign-out-btn">Sign out</button>
+  </div>
+</div>
+
+<div id="wrap" style="display:none">
+
+  <div id="leads-view">
+    <div class="table-card">
+      <div class="table-header">
+        <h2>Manual leads</h2>
+        <input type="text" id="leads-search" placeholder="Search by name, address, phone, email…"/>
+      </div>
+      <table>
+        <thead><tr>
+          <th>Customer</th><th>Type</th><th>Contact</th><th>Address</th><th>Added</th>
+        </tr></thead>
+        <tbody id="leads-body"></tbody>
+      </table>
+      <div id="empty-state" style="display:none">No manual leads yet — add one from the map.</div>
+    </div>
+  </div>
+
+  <div id="detail-view" style="display:none">
+    <button id="back-btn">← Back to leads</button>
+    <div class="lead-header">
+      <h2 id="lead-name">—</h2>
+      <div class="sub" id="lead-type-sub"></div>
+      <div class="sub" id="lead-address"></div>
+      <div class="sub" id="lead-contact"></div>
+      <div class="sub"><a id="lead-map-link" href="#">View on map →</a></div>
+    </div>
+
+    <div class="card">
+      <h3>Quote details</h3>
+      <div class="quote-grid">
+        <div class="quote-field"><label>Kit price (£)</label><input type="number" min="0" step="1" id="q-kit"/></div>
+        <div class="quote-field"><label>Scaffold price (£)</label><input type="number" min="0" step="1" id="q-scaffold"/></div>
+        <div class="quote-field"><label>Electrical cost (£)</label><input type="number" min="0" step="1" id="q-electrical"/></div>
+        <div class="quote-field"><label>Roofer cost (£)</label><input type="number" min="0" step="1" id="q-roofer"/></div>
+      </div>
+      <div class="quote-total"><span>Total</span><strong id="q-total">£0</strong></div>
+      <div class="quote-footer">
+        <span class="quote-status" id="q-status"></span>
+        <button class="btn-primary" id="q-save-btn">Save quote</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Documents</h3>
+      <div class="doc-list" id="doc-list">Loading…</div>
+      <div class="doc-upload">
+        <input type="file" accept="application/pdf,image/jpeg,image/png,image/heic,.doc,.docx" class="doc-file-input" id="doc-file-input">
+        <button type="button" class="doc-upload-btn" id="doc-upload-btn">Upload</button>
+      </div>
+      <div class="doc-upload-status" id="doc-upload-status"></div>
+    </div>
+
+    <div class="card">
+      <h3>Contact</h3>
+      <button class="log-contact-btn" id="log-contact-btn">Log contact</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Log Contact modal (ported from index.html) ─────────── -->
+<div id="contact-modal-overlay">
+  <div id="contact-modal">
+    <div class="modal-header">
+      <div class="modal-header-text">
+        <div class="modal-eyebrow">Log contact</div>
+        <h2 id="cm-prospect-name">—</h2>
+        <div class="modal-sub" id="cm-prospect-meta"></div>
+      </div>
+      <button class="modal-close" id="cm-close-btn" aria-label="Close">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <input type="hidden" id="cm-prospect-id"/>
+
+      <label>Your name</label>
+      <input type="text" id="cm-employee" placeholder="Enter your name…" readonly/>
+
+      <label>Outcome <span class="required">*</span></label>
+      <div class="outcome-chips" id="cm-outcome-chips"></div>
+      <select id="cm-outcome" style="display:none"></select>
+
+      <div id="cm-followup-date-group" style="display:none">
+        <label>Date <span class="required">*</span></label>
+        <input type="date" id="cm-followup-date"/>
+      </div>
+
+      <label>Notes <span class="optional-label">— optional</span></label>
+      <textarea id="cm-notes" placeholder="What was said? Action items? Any sensitivities?"></textarea>
+
+      <label>Next action <span class="optional-label">— optional</span></label>
+      <textarea id="cm-next-action" placeholder="What needs to happen next…"></textarea>
+    </div>
+
+    <div class="modal-footer">
+      <span class="modal-shortcuts">Esc to cancel · ⌘+↵ to save</span>
+      <div class="modal-btns">
+        <button class="btn-secondary" id="cm-cancel">Cancel</button>
+        <button class="btn-primary" id="cm-submit">Save log</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="shared/escape-html.js"></script>
+<script src="shared/lead-type-config.js"></script>
+<script src="shared/contact-outcome-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+
+/* ── Supabase ────────────────────────────────────────────── */
+const { createClient } = supabase;
+const db = createClient(
+  'https://gkvropheqktytghmiwgp.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdrdnJvcGhlcWt0eXRnaG1pd2dwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5Mjg2NjAsImV4cCI6MjEwMTUwNDY2MH0.swu4sPPi2X9fS-DQEh-cW-ypWZqbWNHXLnGHaKWMxI8'
+);
+
+const ADMIN_EMAILS = ['greg@turbineenergyuk.co.uk'];
+function isAdmin(user) { return ADMIN_EMAILS.includes((user?.email || '').toLowerCase()); }
+function getUserName(user) {
+  return user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'User';
+}
+function formatShortDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d)) return '';
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+let currentUser = null;
+let allLeads = [];
+let currentLead = null;
+
+/* ── Leads table ─────────────────────────────────────────── */
+async function fetchLeads() {
+  const { data, error } = await db.from('prospects')
+    .select('id, customer_name, lead_type, contact_phone, contact_email, address, postcode, created_at')
+    .eq('source', 'manual')
+    .order('created_at', { ascending: false });
+  if (error) { console.error('Failed to load leads:', error); return []; }
+  return data || [];
+}
+
+function renderLeadsTable() {
+  const term = document.getElementById('leads-search').value.trim().toLowerCase();
+  const leads = allLeads.filter(d => !term || [d.customer_name, d.address, d.postcode, d.contact_phone, d.contact_email]
+    .some(v => (v || '').toLowerCase().includes(term)));
+
+  document.getElementById('empty-state').style.display = leads.length ? 'none' : 'block';
+  const body = document.getElementById('leads-body');
+  body.innerHTML = '';
+  leads.forEach(d => {
+    const cfg = LEAD_TYPE[d.lead_type];
+    const typeTag = cfg ? `<span class="tag"><span class="tag-dot" style="background:${cfg.color}"></span>${cfg.label}</span>` : '—';
+    const contact = [
+      d.contact_phone ? escapeHtml(d.contact_phone) : '',
+      d.contact_email ? escapeHtml(d.contact_email) : '',
+    ].filter(Boolean).join('<br>') || '—';
+    const address = [escapeHtml(d.address || ''), escapeHtml(d.postcode || '')].filter(Boolean).join('<br>') || '—';
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${escapeHtml(d.customer_name || 'Unnamed lead')}</td>
+      <td>${typeTag}</td>
+      <td>${contact}</td>
+      <td>${address}</td>
+      <td>${formatShortDate(d.created_at) || '—'}</td>`;
+    tr.addEventListener('click', () => openLeadDetail(d));
+    body.appendChild(tr);
+  });
+}
+
+document.getElementById('leads-search').addEventListener('input', renderLeadsTable);
+
+/* ── Lead detail view ────────────────────────────────────── */
+function openLeadDetail(lead) {
+  currentLead = lead;
+  document.getElementById('leads-view').style.display = 'none';
+  document.getElementById('detail-view').style.display = 'block';
+
+  document.getElementById('lead-name').textContent = lead.customer_name || 'Unnamed lead';
+  const cfg = LEAD_TYPE[lead.lead_type];
+  document.getElementById('lead-type-sub').innerHTML = cfg
+    ? `<span class="tag"><span class="tag-dot" style="background:${cfg.color}"></span>${cfg.label}</span>` : '';
+  document.getElementById('lead-address').textContent = [lead.address, lead.postcode].filter(Boolean).join(', ') || 'No address on file';
+  document.getElementById('lead-contact').innerHTML = [
+    lead.contact_phone ? `📞 <a href="tel:${escapeHtml(lead.contact_phone)}">${escapeHtml(lead.contact_phone)}</a>` : '',
+    lead.contact_email ? `✉ <a href="mailto:${escapeHtml(lead.contact_email)}">${escapeHtml(lead.contact_email)}</a>` : '',
+  ].filter(Boolean).join(' · ') || 'No contact details on file';
+  document.getElementById('lead-map-link').href = `index.html?lead=${encodeURIComponent(lead.id)}`;
+
+  loadQuote(lead.id);
+  loadLeadDocuments(lead.id);
+}
+
+document.getElementById('back-btn').addEventListener('click', () => {
+  currentLead = null;
+  document.getElementById('detail-view').style.display = 'none';
+  document.getElementById('leads-view').style.display = 'block';
+});
+
+/* ── Quote details ───────────────────────────────────────── */
+function quoteInputs() {
+  return {
+    kit: document.getElementById('q-kit'),
+    scaffold: document.getElementById('q-scaffold'),
+    electrical: document.getElementById('q-electrical'),
+    roofer: document.getElementById('q-roofer'),
+  };
+}
+
+function updateQuoteTotal() {
+  const inputs = quoteInputs();
+  const total = ['kit', 'scaffold', 'electrical', 'roofer']
+    .reduce((sum, key) => sum + (Number(inputs[key].value) || 0), 0);
+  document.getElementById('q-total').textContent = `£${total.toLocaleString()}`;
+}
+Object.values(quoteInputs()).forEach(el => el.addEventListener('input', updateQuoteTotal));
+
+async function loadQuote(prospectId) {
+  const inputs = quoteInputs();
+  Object.values(inputs).forEach(el => el.value = '');
+  document.getElementById('q-status').textContent = '';
+
+  const { data, error } = await db.from('lead_quotes')
+    .select('kit_price, scaffold_price, electrical_cost, roofer_cost, updated_at')
+    .eq('prospect_id', prospectId)
+    .maybeSingle();
+  if (error) { console.error('Failed to load quote:', error); updateQuoteTotal(); return; }
+  if (data) {
+    inputs.kit.value = data.kit_price ?? '';
+    inputs.scaffold.value = data.scaffold_price ?? '';
+    inputs.electrical.value = data.electrical_cost ?? '';
+    inputs.roofer.value = data.roofer_cost ?? '';
+    document.getElementById('q-status').textContent = `Last saved ${formatShortDate(data.updated_at)}`;
+  }
+  updateQuoteTotal();
+}
+
+document.getElementById('q-save-btn').addEventListener('click', async () => {
+  if (!currentLead) return;
+  const inputs = quoteInputs();
+  const btn = document.getElementById('q-save-btn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+
+  const { error } = await db.from('lead_quotes').upsert({
+    prospect_id: currentLead.id,
+    kit_price: inputs.kit.value === '' ? null : Number(inputs.kit.value),
+    scaffold_price: inputs.scaffold.value === '' ? null : Number(inputs.scaffold.value),
+    electrical_cost: inputs.electrical.value === '' ? null : Number(inputs.electrical.value),
+    roofer_cost: inputs.roofer.value === '' ? null : Number(inputs.roofer.value),
+    updated_at: new Date().toISOString(),
+    updated_by_email: currentUser?.email || null,
+  }, { onConflict: 'prospect_id' });
+
+  btn.disabled = false; btn.textContent = 'Save quote';
+  if (error) { alert('Failed to save quote: ' + error.message); return; }
+  document.getElementById('q-status').textContent = 'Last saved just now';
+});
+
+/* ── Documents (lead_documents table, 'proposals' Storage bucket —
+   same generalised-from-proposals mechanism as index.html's popup,
+   migration 018) ─────────────────────────────────────────── */
+const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024;
+const ALLOWED_DOCUMENT_TYPES = new Set([
+  'application/pdf', 'image/jpeg', 'image/png', 'image/heic',
+  'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+]);
+const ALLOWED_DOCUMENT_EXTENSIONS = /\.(pdf|jpe?g|png|heic|docx?)$/i;
+function isAllowedDocumentFile(file) {
+  return ALLOWED_DOCUMENT_TYPES.has(file.type) || ALLOWED_DOCUMENT_EXTENSIONS.test(file.name);
+}
+
+function renderDocumentsList(rows) {
+  if (!rows.length) return `<div class="doc-empty">No documents attached yet.</div>`;
+  return rows.map(p => `
+    <div class="doc-item">
+      <div>
+        <div class="doc-name">${escapeHtml(p.file_name)}</div>
+        <div class="doc-meta">${escapeHtml(p.uploaded_by)} · ${formatShortDate(p.uploaded_at)}</div>
+      </div>
+      <span class="doc-open-link" data-storage-path="${escapeHtml(p.storage_path)}" onclick="openLeadDocument(this)">Open</span>
+    </div>`).join('');
+}
+
+async function loadLeadDocuments(prospectId) {
+  const list = document.getElementById('doc-list');
+  list.textContent = 'Loading…';
+  const { data, error } = await db.from('lead_documents')
+    .select('file_name, storage_path, uploaded_by, uploaded_at')
+    .eq('prospect_id', prospectId)
+    .order('uploaded_at', { ascending: false });
+  if (!currentLead || currentLead.id !== prospectId) return; // detail view moved on while this was in flight
+  if (error) { list.innerHTML = `<div class="doc-empty">Couldn't load documents.</div>`; return; }
+  list.innerHTML = renderDocumentsList(data || []);
+}
+
+document.getElementById('doc-upload-btn').addEventListener('click', async () => {
+  if (!currentLead) return;
+  const prospectId = currentLead.id;
+  const fileInput = document.getElementById('doc-file-input');
+  const statusEl = document.getElementById('doc-upload-status');
+  const file = fileInput.files[0];
+
+  statusEl.classList.remove('error');
+  statusEl.textContent = '';
+
+  if (!file) { statusEl.textContent = 'Choose a file first.'; statusEl.classList.add('error'); return; }
+  if (!isAllowedDocumentFile(file)) { statusEl.textContent = 'PDF, Word, or image files only.'; statusEl.classList.add('error'); return; }
+  if (file.size > MAX_DOCUMENT_BYTES) { statusEl.textContent = 'File is too large (max 20 MB).'; statusEl.classList.add('error'); return; }
+
+  statusEl.textContent = 'Uploading…';
+  const safeFileName = file.name.replace(/[^\w.\- ]+/g, '_').slice(-120);
+  const storagePath = `${prospectId}/${Date.now()}-${safeFileName}`;
+
+  const btn = document.getElementById('doc-upload-btn');
+  btn.disabled = true;
+  try {
+    const { error: uploadError } = await db.storage.from('proposals')
+      .upload(storagePath, file, { contentType: file.type || 'application/octet-stream' });
+    if (uploadError) { statusEl.textContent = `Upload failed: ${uploadError.message || 'try again'}`; statusEl.classList.add('error'); return; }
+
+    const { error: insertError } = await db.from('lead_documents').insert({
+      prospect_id: prospectId,
+      file_name: file.name,
+      storage_path: storagePath,
+      file_size_bytes: file.size,
+      uploaded_by: currentUser ? getUserName(currentUser) : 'Unknown',
+      uploaded_by_email: currentUser ? currentUser.email : null,
+    });
+    if (insertError) { statusEl.textContent = `Saved file but failed to record it: ${insertError.message || 'try again'}`; statusEl.classList.add('error'); return; }
+
+    statusEl.textContent = 'Uploaded.';
+    fileInput.value = '';
+    loadLeadDocuments(prospectId);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+async function openLeadDocument(linkEl) {
+  const path = linkEl.dataset.storagePath;
+  const originalText = linkEl.textContent;
+  linkEl.textContent = 'Opening…';
+  const newTab = window.open('', '_blank', 'noopener');
+  const { data, error } = await db.storage.from('proposals').createSignedUrl(path, 300);
+  linkEl.textContent = originalText;
+  if (error || !data?.signedUrl) {
+    if (newTab) newTab.close();
+    alert("Couldn't open this document. Try again in a moment.");
+    return;
+  }
+  if (newTab) newTab.location = data.signedUrl;
+  else alert("Your browser blocked the new tab. Please allow pop-ups for this site and try again.");
+}
+
+/* ── Log Contact modal (ported verbatim from index.html) ─── */
+(function initContactModal() {
+  const chipsEl = document.getElementById('cm-outcome-chips');
+  const selectEl = document.getElementById('cm-outcome');
+  CONTACT_OUTCOME_ORDER.forEach(name => {
+    const cfg = CONTACT_OUTCOME[name];
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'outcome-chip';
+    chip.dataset.value = name;
+    chip.innerHTML = `<span class="chip-dot" style="background:${cfg.color}"></span>${escapeHtml(cfg.label)}`;
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('#cm-outcome-chips .outcome-chip').forEach(c => { c.classList.remove('on'); c.style.background = ''; c.style.borderColor = ''; });
+      chip.classList.add('on');
+      chip.style.background = cfg.color;
+      chip.style.borderColor = cfg.color;
+      selectEl.value = name;
+      selectEl.dispatchEvent(new Event('change'));
+    });
+    chipsEl.appendChild(chip);
+
+    const opt = document.createElement('option');
+    opt.value = name; opt.textContent = name;
+    selectEl.appendChild(opt);
+  });
+})();
+
+document.getElementById('cm-outcome').addEventListener('change', e => {
+  const group = document.getElementById('cm-followup-date-group');
+  const cfg = CONTACT_OUTCOME[e.target.value];
+  if (cfg && cfg.requiresDate) {
+    group.style.display = 'block';
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const input = document.getElementById('cm-followup-date');
+    input.min = todayStr;
+    if (!input.value) {
+      const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+      input.value = tomorrow.toISOString().slice(0, 10);
+    }
+  } else {
+    group.style.display = 'none';
+  }
+});
+
+function openContactModal(prospectId, prospectName) {
+  document.getElementById('cm-prospect-id').value = prospectId;
+  document.getElementById('cm-prospect-name').textContent = prospectName;
+  document.getElementById('cm-prospect-meta').textContent = '';
+  document.getElementById('cm-employee').value = currentUser ? getUserName(currentUser) : '';
+  document.querySelectorAll('#cm-outcome-chips .outcome-chip').forEach(c => { c.classList.remove('on'); c.style.background = ''; c.style.borderColor = ''; });
+  document.getElementById('cm-outcome').value = '';
+  document.getElementById('cm-followup-date-group').style.display = 'none';
+  document.getElementById('cm-followup-date').value = '';
+  document.getElementById('cm-notes').value = '';
+  document.getElementById('cm-next-action').value = '';
+  document.getElementById('contact-modal-overlay').classList.add('open');
+}
+function closeContactModal() {
+  document.getElementById('contact-modal-overlay').classList.remove('open');
+}
+document.getElementById('log-contact-btn').addEventListener('click', () => {
+  if (!currentLead) return;
+  openContactModal(currentLead.id, currentLead.customer_name || currentLead.address || currentLead.postcode || 'Unnamed lead');
+});
+document.getElementById('cm-cancel').addEventListener('click', closeContactModal);
+document.getElementById('cm-close-btn').addEventListener('click', closeContactModal);
+document.getElementById('contact-modal-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('contact-modal-overlay')) closeContactModal();
+});
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('contact-modal-overlay').classList.contains('open')) return;
+  if (e.key === 'Escape') closeContactModal();
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') document.getElementById('cm-submit').click();
+});
+
+document.getElementById('cm-submit').addEventListener('click', async () => {
+  const prospectId = document.getElementById('cm-prospect-id').value;
+  const employee = document.getElementById('cm-employee').value.trim();
+  const outcome = document.getElementById('cm-outcome').value;
+  const followUpDate = document.getElementById('cm-followup-date').value;
+  const notes = document.getElementById('cm-notes').value.trim();
+  const nextAction = document.getElementById('cm-next-action').value.trim();
+
+  if (!employee) { alert('Please enter your name.'); return; }
+  if (!outcome) { alert('Please pick an outcome.'); return; }
+  if (CONTACT_OUTCOME[outcome].requiresDate && !followUpDate) { alert('Please set a date.'); return; }
+
+  const btn = document.getElementById('cm-submit');
+  btn.disabled = true; btn.textContent = 'Saving…';
+
+  const { error } = await db.from('prospect_contacts').insert([{
+    prospect_id: prospectId,
+    employee,
+    employee_email: currentUser?.email || null,
+    outcome,
+    notes: notes || null,
+    next_action: nextAction || null,
+    follow_up_date: CONTACT_OUTCOME[outcome].requiresDate ? (followUpDate || null) : null,
+  }]);
+
+  btn.disabled = false; btn.textContent = 'Save log';
+  if (error) { alert('Failed to save: ' + error.message); return; }
+  closeContactModal();
+});
+
+/* ── Boot ────────────────────────────────────────────────── */
+async function boot(user) {
+  currentUser = user;
+  document.getElementById('nav-dashboard-link').style.display = isAdmin(user) ? '' : 'none';
+  document.getElementById('wrap').style.display = 'block';
+  allLeads = await fetchLeads();
+  renderLeadsTable();
+}
+
+document.getElementById('sign-out-btn').addEventListener('click', async () => { await db.auth.signOut(); location.href = 'index.html'; });
+
+db.auth.getSession().then(({ data: { session } }) => {
+  if (session?.user) boot(session.user);
+  else location.href = 'index.html';
+});
+
+</script>
+</body>
+</html>

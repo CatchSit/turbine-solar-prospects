@@ -271,19 +271,8 @@
     .company-match-badge { display: inline-block; font-size: 10.5px; font-weight: 500; color: var(--accentDk); background: var(--accentDim); padding: 1px 7px; border-radius: 100px; margin-left: 6px; vertical-align: middle; }
 
     /* ── Log Contact modal ──────────────────────────────────── */
-    #contact-modal-overlay, #lead-modal-overlay, #leads-list-overlay { display: none; position: fixed; inset: 0; background: rgba(17,24,39,0.4); z-index: 2000; align-items: center; justify-content: center; }
-    #contact-modal-overlay.open, #lead-modal-overlay.open, #leads-list-overlay.open { display: flex; }
-    #leads-list-panel { width: 760px; max-width: 94vw; max-height: 88vh; overflow-y: auto; background: var(--surface); border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
-    #leads-list-search { width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 13px; background: var(--surface2); color: var(--text); }
-    #leads-list-search:focus { outline: none; border-color: var(--accent); }
-    #leads-list-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-    #leads-list-table th { text-align: left; padding: 8px 10px; color: var(--text3); font-weight: 500; border-bottom: 1px solid var(--border); white-space: nowrap; }
-    #leads-list-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-    #leads-list-table a { color: var(--accent); }
-    .leads-actions { display: flex; gap: 6px; white-space: nowrap; }
-    .leads-actions button { padding: 4px 9px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); font-size: 11.5px; cursor: pointer; font-family: inherit; color: var(--text2); }
-    .leads-actions button:hover { background: var(--border); color: var(--text); }
-    #leads-list-empty { text-align: center; padding: 40px 20px; color: var(--text3); }
+    #contact-modal-overlay, #lead-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(17,24,39,0.4); z-index: 2000; align-items: center; justify-content: center; }
+    #contact-modal-overlay.open, #lead-modal-overlay.open { display: flex; }
     #contact-modal, #lead-modal { width: 420px; max-width: 92vw; max-height: 88vh; overflow-y: auto; background: var(--surface); border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
     .modal-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 20px 22px 14px; border-bottom: 1px solid var(--border); }
     .modal-eyebrow { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .08em; }
@@ -427,7 +416,7 @@
   <div class="nav-right">
     <span class="nav-user-name" id="nav-user-name"></span>
     <div class="nav-avatar" id="nav-avatar"></div>
-    <button class="nav-dashboard-link" id="leads-list-btn">Leads</button>
+    <a class="nav-dashboard-link" href="crm.html">CRM</a>
     <button class="nav-add-lead-btn" id="add-lead-btn">+ Add lead</button>
     <a class="nav-dashboard-link" id="nav-dashboard-link" href="dashboard.html" style="display:none">Dashboard</a>
     <button class="nav-signout-btn" id="sign-out-btn">Sign out</button>
@@ -669,32 +658,6 @@
         <button class="btn-secondary" id="lm-cancel">Cancel</button>
         <button class="btn-primary" id="lm-submit">Add lead</button>
       </div>
-    </div>
-  </div>
-</div>
-
-<!-- ── Leads list ────────────────────────────────────────── -->
-<div id="leads-list-overlay">
-  <div id="leads-list-panel">
-    <div class="modal-header">
-      <div class="modal-header-text">
-        <div class="modal-eyebrow">CRM</div>
-        <h2>Manual leads</h2>
-        <div class="modal-sub" id="leads-list-count"></div>
-      </div>
-      <button class="modal-close" id="leads-list-close-btn" aria-label="Close">✕</button>
-    </div>
-    <div style="padding:14px 22px 0">
-      <input type="text" id="leads-list-search" placeholder="Search by name, address, phone, email…"/>
-    </div>
-    <div style="padding:14px 22px 22px; overflow-x:auto">
-      <table id="leads-list-table">
-        <thead><tr>
-          <th>Customer</th><th>Type</th><th>Contact</th><th>Address</th><th>Added</th><th></th>
-        </tr></thead>
-        <tbody id="leads-list-body"></tbody>
-      </table>
-      <div id="leads-list-empty" style="display:none">No manual leads yet — use "+ Add lead" to create one.</div>
     </div>
   </div>
 </div>
@@ -950,7 +913,7 @@ function createMarker(d) {
   marker.on('click', () => {
     marker.bindPopup(buildPopup(d), { maxWidth: 360, autoPan: true }).openPopup();
     loadCompanyMatch(d);
-    loadProposals(d);
+    loadDocuments(d);
   });
   if (isManual) {
     // Postcode-level geocoding only gets the pin roughly right — this is
@@ -1060,7 +1023,7 @@ function buildPopup(d) {
       <div class="popup-tabs">
         <button class="popup-tab active" type="button" onclick="switchPopupTab(this, 'rates')">Business rates</button>
         <button class="popup-tab" type="button" onclick="switchPopupTab(this, 'companies')">Companies</button>
-        <button class="popup-tab" type="button" onclick="switchPopupTab(this, 'proposals')">Proposals</button>
+        <button class="popup-tab" type="button" onclick="switchPopupTab(this, 'proposals')">Documents</button>
       </div>
       <div class="business-rates popup-tab-panel active" data-panel="rates">${businessRatesHtml(d)}</div>
       <div class="company-match popup-tab-panel" data-panel="companies" id="company-match-${escapeHtml(d.id)}">
@@ -1069,8 +1032,8 @@ function buildPopup(d) {
       <div class="proposals-panel popup-tab-panel" data-panel="proposals" id="proposals-panel-${escapeHtml(d.id)}">
         <div class="proposals-list">Loading…</div>
         <div class="proposals-upload">
-          <input type="file" accept="application/pdf" class="proposals-file-input" id="proposals-file-${escapeHtml(d.id)}">
-          <button type="button" class="proposals-upload-btn" onclick="uploadProposal(${escapeHtml(JSON.stringify(d.id))})">Upload</button>
+          <input type="file" accept="${DOCUMENT_ACCEPT}" class="proposals-file-input" id="proposals-file-${escapeHtml(d.id)}">
+          <button type="button" class="proposals-upload-btn" onclick="uploadDocument(${escapeHtml(JSON.stringify(d.id))})">Upload</button>
         </div>
         <div class="proposals-upload-status"></div>
       </div>
@@ -1111,28 +1074,39 @@ function timeoutAfter(ms) {
   return new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), ms));
 }
 
-function proposalsEmptyHtml() {
-  return `<div class="proposals-empty">No proposals attached yet.</div>`;
+// Generalised (migration 018) from PDF-only sales proposals to any
+// per-lead document — surveys, contracts, ID, site photos. Table renamed
+// prospect_proposals -> lead_documents; the 'proposals' Storage bucket kept
+// its internal id (never user-visible) but now accepts more mime types.
+const DOCUMENT_ACCEPT = 'application/pdf,image/jpeg,image/png,image/heic,.doc,.docx';
+const ALLOWED_DOCUMENT_TYPES = new Set([
+  'application/pdf', 'image/jpeg', 'image/png', 'image/heic',
+  'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+]);
+const ALLOWED_DOCUMENT_EXTENSIONS = /\.(pdf|jpe?g|png|heic|docx?)$/i;
+
+function documentsEmptyHtml() {
+  return `<div class="proposals-empty">No documents attached yet.</div>`;
 }
 
-function renderProposalsList(rows) {
-  if (!rows.length) return proposalsEmptyHtml();
+function renderDocumentsList(rows) {
+  if (!rows.length) return documentsEmptyHtml();
   return rows.map(p => `
     <div class="proposal-item">
       <div>
         <div class="proposal-name">${escapeHtml(p.file_name)}</div>
         <div class="proposal-meta">${escapeHtml(p.uploaded_by)} · ${formatShortDate(p.uploaded_at)}</div>
       </div>
-      <span class="proposal-open-link" data-storage-path="${escapeHtml(p.storage_path)}" onclick="openProposal(this)">Open</span>
+      <span class="proposal-open-link" data-storage-path="${escapeHtml(p.storage_path)}" onclick="openDocument(this)">Open</span>
     </div>`).join('');
 }
 
-async function loadProposals(d) {
+async function loadDocuments(d) {
   const container = document.getElementById(`proposals-panel-${d.id}`);
   if (!container) return;
 
   const { data, error } = await window.db
-    .from('prospect_proposals')
+    .from('lead_documents')
     .select('file_name, storage_path, uploaded_by, uploaded_at')
     .eq('prospect_id', d.id)
     .order('uploaded_at', { ascending: false });
@@ -1143,19 +1117,19 @@ async function loadProposals(d) {
   const list = el.querySelector('.proposals-list');
 
   if (error) {
-    list.innerHTML = `<div class="proposals-empty">Couldn't load proposals. <span class="proposal-open-link" onclick="loadProposals({id: '${escapeHtml(d.id)}'})">Retry</span></div>`;
+    list.innerHTML = `<div class="proposals-empty">Couldn't load documents. <span class="proposal-open-link" onclick="loadDocuments({id: '${escapeHtml(d.id)}'})">Retry</span></div>`;
     return;
   }
-  list.innerHTML = renderProposalsList(data || []);
+  list.innerHTML = renderDocumentsList(data || []);
 }
 
-const MAX_PROPOSAL_BYTES = 20 * 1024 * 1024; // 20 MB
+const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024; // 20 MB — matches migration 015's bucket-level file_size_limit
 
-function isPdfFile(file) {
-  return file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+function isAllowedDocumentFile(file) {
+  return ALLOWED_DOCUMENT_TYPES.has(file.type) || ALLOWED_DOCUMENT_EXTENSIONS.test(file.name);
 }
 
-async function uploadProposal(prospectId) {
+async function uploadDocument(prospectId) {
   const panel = document.getElementById(`proposals-panel-${prospectId}`);
   if (!panel) return;
   const fileInput = panel.querySelector('.proposals-file-input');
@@ -1166,16 +1140,16 @@ async function uploadProposal(prospectId) {
   statusEl.textContent = '';
 
   if (!file) {
-    statusEl.textContent = 'Choose a PDF first.';
+    statusEl.textContent = 'Choose a file first.';
     statusEl.classList.add('error');
     return;
   }
-  if (!isPdfFile(file)) {
-    statusEl.textContent = 'Only PDF files are accepted.';
+  if (!isAllowedDocumentFile(file)) {
+    statusEl.textContent = 'PDF, Word, or image files only.';
     statusEl.classList.add('error');
     return;
   }
-  if (file.size > MAX_PROPOSAL_BYTES) {
+  if (file.size > MAX_DOCUMENT_BYTES) {
     statusEl.textContent = 'File is too large (max 20 MB).';
     statusEl.classList.add('error');
     return;
@@ -1190,14 +1164,14 @@ async function uploadProposal(prospectId) {
   try {
     const { error: uploadError } = await window.db.storage
       .from('proposals')
-      .upload(storagePath, file, { contentType: 'application/pdf' });
+      .upload(storagePath, file, { contentType: file.type || 'application/octet-stream' });
     if (uploadError) {
       statusEl.textContent = `Upload failed: ${uploadError.message || 'try again'}`;
       statusEl.classList.add('error');
       return;
     }
 
-    const { error: insertError } = await window.db.from('prospect_proposals').insert({
+    const { error: insertError } = await window.db.from('lead_documents').insert({
       prospect_id: prospectId,
       file_name: file.name,
       storage_path: storagePath,
@@ -1213,13 +1187,13 @@ async function uploadProposal(prospectId) {
 
     statusEl.textContent = 'Uploaded.';
     fileInput.value = '';
-    loadProposals({ id: prospectId });
+    loadDocuments({ id: prospectId });
   } finally {
     btn.disabled = false;
   }
 }
 
-async function openProposal(linkEl) {
+async function openDocument(linkEl) {
   const path = linkEl.dataset.storagePath;
   const originalText = linkEl.textContent;
   linkEl.textContent = 'Opening…';
@@ -1233,7 +1207,7 @@ async function openProposal(linkEl) {
   linkEl.textContent = originalText;
   if (error || !data?.signedUrl) {
     if (newTab) newTab.close();
-    alert("Couldn't open this proposal. Try again in a moment.");
+    alert("Couldn't open this document. Try again in a moment.");
     return;
   }
   if (newTab) {
@@ -1441,7 +1415,6 @@ function openLeadModal() {
   document.getElementById('lm-email').value = '';
   selectedLeadType = null;
   document.querySelectorAll('#lm-type-chips .outcome-chip').forEach(c => { c.classList.remove('on'); c.style.background = ''; c.style.borderColor = ''; });
-  document.getElementById('leads-list-overlay').classList.remove('open'); // same z-index stacking issue as the Log Contact modal — see renderLeadsList
   document.getElementById('lead-modal-overlay').classList.add('open');
 }
 
@@ -1517,79 +1490,6 @@ document.getElementById('lm-submit').addEventListener('click', async () => {
   allMarkers.push(marker);
   applyFilters();
   cluster.zoomToShowLayer(marker, () => marker.fire('click'));
-});
-
-/* ── Leads list ──────────────────────────────────────────── */
-// Reads straight from allMarkers rather than a fresh query — every manual
-// lead is already loaded there (bootstrapData/createMarker), so this stays
-// in sync with anything just added this session without a round-trip.
-function renderLeadsList() {
-  const term = document.getElementById('leads-list-search').value.trim().toLowerCase();
-  const leads = allMarkers
-    .map(m => m._d)
-    .filter(d => d.source === 'manual')
-    .filter(d => !term || [d.customer_name, d.address, d.postcode, d.contact_phone, d.contact_email]
-      .some(v => (v || '').toLowerCase().includes(term)))
-    .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
-
-  document.getElementById('leads-list-count').textContent = `${leads.length.toLocaleString()} lead${leads.length === 1 ? '' : 's'}`;
-  document.getElementById('leads-list-empty').style.display = leads.length ? 'none' : 'block';
-
-  const body = document.getElementById('leads-list-body');
-  body.innerHTML = '';
-  leads.forEach(d => {
-    const cfg = LEAD_TYPE[d.lead_type];
-    const typeTag = cfg ? `<span class="tag"><span class="tag-dot" style="background:${cfg.color}"></span>${cfg.label}</span>` : '—';
-    const contact = [
-      d.contact_phone ? `<a href="tel:${escapeHtml(d.contact_phone)}">${escapeHtml(d.contact_phone)}</a>` : '',
-      d.contact_email ? `<a href="mailto:${escapeHtml(d.contact_email)}">${escapeHtml(d.contact_email)}</a>` : '',
-    ].filter(Boolean).join('<br>') || '—';
-    const address = [escapeHtml(d.address || ''), escapeHtml(d.postcode || '')].filter(Boolean).join('<br>') || '—';
-
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${escapeHtml(d.customer_name || 'Unnamed lead')}</td>
-      <td>${typeTag}</td>
-      <td>${contact}</td>
-      <td>${address}</td>
-      <td>${formatShortDate(d.created_at) || '—'}</td>
-      <td class="leads-actions">
-        <button type="button" data-action="view">View on map</button>
-        <button type="button" data-action="log">Log contact</button>
-      </td>`;
-    tr.querySelector('[data-action="view"]').addEventListener('click', () => {
-      closeLeadsList();
-      const marker = allMarkers.find(m => m._d.id === d.id);
-      if (marker) cluster.zoomToShowLayer(marker, () => marker.fire('click'));
-    });
-    tr.querySelector('[data-action="log"]').addEventListener('click', () => {
-      // Both overlays share the same z-index, and this one sits later in
-      // the DOM, so it would otherwise paint over the contact modal
-      // instead of the modal opening on top of it.
-      closeLeadsList();
-      openContactModal(d.id, d.customer_name || d.address || d.postcode || 'Unnamed lead');
-    });
-    body.appendChild(tr);
-  });
-}
-
-function openLeadsList() {
-  document.getElementById('leads-list-search').value = '';
-  renderLeadsList();
-  document.getElementById('leads-list-overlay').classList.add('open');
-}
-function closeLeadsList() {
-  document.getElementById('leads-list-overlay').classList.remove('open');
-}
-document.getElementById('leads-list-btn').addEventListener('click', openLeadsList);
-document.getElementById('leads-list-close-btn').addEventListener('click', closeLeadsList);
-document.getElementById('leads-list-overlay').addEventListener('click', e => {
-  if (e.target === document.getElementById('leads-list-overlay')) closeLeadsList();
-});
-document.getElementById('leads-list-search').addEventListener('input', renderLeadsList);
-document.addEventListener('keydown', e => {
-  if (!document.getElementById('leads-list-overlay').classList.contains('open')) return;
-  if (e.key === 'Escape') closeLeadsList();
 });
 
 /* ── Init ────────────────────────────────────────────────── */
@@ -2041,6 +1941,12 @@ function bootstrapData() {
       initGrantAreaLayer(boundaries, grantAreaStatus);
       initMap(data, grantAreaStatus);
       applyFilters();
+      // crm.html's "View on map" links here as index.html?lead=<id>.
+      const leadId = new URLSearchParams(location.search).get('lead');
+      if (leadId) {
+        const marker = allMarkers.find(m => m._d.id === leadId);
+        if (marker) cluster.zoomToShowLayer(marker, () => marker.fire('click'));
+      }
     })
     .catch(e => {
       console.error(e);
