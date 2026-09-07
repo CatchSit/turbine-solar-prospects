@@ -23,6 +23,9 @@ button { font-family: inherit; cursor: pointer; }
 .nav-brand { font-weight: 600; font-size: 15px; }
 .nav-brand-sub { font-size: 11.5px; color: var(--text3); margin-left: 6px; }
 #sign-out-btn { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; color: var(--text2); }
+.nav-right { display: flex; align-items: center; gap: 10px; }
+.nav-map-link { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; color: var(--text2); text-decoration: none; }
+.nav-map-link:hover { background: var(--surface2); color: var(--text); text-decoration: none; }
 #wrap { max-width: 1100px; margin: 0 auto; padding: 24px; }
 .period-row { display: flex; gap: 8px; margin-bottom: 18px; }
 .period-btn { padding: 6px 14px; border-radius: 100px; border: 1px solid var(--border); background: var(--surface); font-size: 12.5px; color: var(--text2); }
@@ -36,6 +39,7 @@ button { font-family: inherit; cursor: pointer; }
 .filters { display: flex; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .filters select, .filters input { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; background: var(--surface2); }
 #export-btn { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; }
+#grant-area-rows select { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; background: var(--surface2); font-family: inherit; }
 table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 th { text-align: left; padding: 10px 16px; color: var(--text3); font-weight: 500; border-bottom: 1px solid var(--border); cursor: pointer; white-space: nowrap; user-select: none; }
 th .sort-ind { color: var(--accent); }
@@ -49,10 +53,18 @@ td { padding: 10px 16px; border-bottom: 1px solid var(--border); vertical-align:
 
 <div id="top-nav">
   <div><span class="nav-brand">Turbine Energy</span><span class="nav-brand-sub">Dashboard</span></div>
-  <button id="sign-out-btn">Sign out</button>
+  <div class="nav-right">
+    <a class="nav-map-link" href="index.html">Map</a>
+    <button id="sign-out-btn">Sign out</button>
+  </div>
 </div>
 
 <div id="wrap" style="display:none">
+  <div class="table-card" style="margin-bottom:18px">
+    <div class="table-header"><h2>Grant funding by area</h2></div>
+    <div id="grant-area-rows" style="padding:12px 16px; display:flex; flex-direction:column; gap:10px"></div>
+  </div>
+
   <div class="period-row">
     <button class="period-btn active" data-period="week">7 days</button>
     <button class="period-btn" data-period="month">30 days</button>
@@ -90,6 +102,7 @@ td { padding: 10px 16px; border-bottom: 1px solid var(--border); vertical-align:
 
 <script src="shared/escape-html.js"></script>
 <script src="shared/contact-outcome-config.js"></script>
+<script src="shared/grant-area-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
@@ -103,6 +116,7 @@ const ADMIN_EMAILS = ['greg@turbineenergyuk.co.uk'];
 function isAdmin(user) { return ADMIN_EMAILS.includes((user?.email || '').toLowerCase()); }
 
 let allData = [];
+let currentUser = null;
 let prospectNames = {};
 let activePeriod = 'week';
 let activeCharts = {};
@@ -120,12 +134,49 @@ async function boot(user) {
     document.getElementById('denied-state').style.display = 'block';
     return;
   }
+  currentUser = user;
   document.getElementById('wrap').style.display = 'block';
   await loadData();
   populateFilters();
   setupSorting();
   buildCharts();
   renderTable();
+  renderGrantAreas();
+}
+
+// Manager-only status toggle per grant-tracked local authority — read by
+// index.html to shade the map's boundary overlay and colour the sidebar's
+// area-filter chips (shared/grant-area-config.js, migration 016).
+async function renderGrantAreas() {
+  const el = document.getElementById('grant-area-rows');
+  const { data, error } = await db.from('grant_areas').select('local_authority, status');
+  if (error) { console.error('grant_areas fetch failed (has migration 016 been run?):', error); return; }
+  const statusByArea = {};
+  (data || []).forEach(row => { statusByArea[row.local_authority] = row.status; });
+
+  GRANT_AREA_ORDER.forEach(area => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:12px;';
+    const select = document.createElement('select');
+    GRANT_STATUS_ORDER.forEach(status => {
+      const opt = document.createElement('option');
+      opt.value = status;
+      opt.textContent = GRANT_STATUS[status].label;
+      if (statusByArea[area] === status) opt.selected = true;
+      select.appendChild(opt);
+    });
+    select.addEventListener('change', async () => {
+      const { error: updateError } = await db.from('grant_areas').update({
+        status: select.value,
+        updated_at: new Date().toISOString(),
+        updated_by_email: currentUser.email,
+      }).eq('local_authority', area);
+      if (updateError) { console.error('grant_areas update failed:', updateError); alert('Failed to update status — see console.'); }
+    });
+    row.innerHTML = `<span style="font-weight:500">${escapeHtml(area)}</span>`;
+    row.appendChild(select);
+    el.appendChild(row);
+  });
 }
 
 document.getElementById('sign-out-btn').addEventListener('click', async () => { await db.auth.signOut(); location.href = 'index.html'; });

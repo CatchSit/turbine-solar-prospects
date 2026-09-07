@@ -469,6 +469,11 @@
   </div>
 
   <div class="section">
+    <h3>Grant funding area</h3>
+    <div id="grant-area-list" class="chip-list"></div>
+  </div>
+
+  <div class="section">
     <h3>Floor area (m²)</h3>
     <div class="range-row">
       <input id="floor-min" type="number" min="0" step="100" placeholder="Min"/>
@@ -618,6 +623,7 @@
 <script src="shared/company-maturity-config.js"></script>
 <script src="shared/epc-recommendation-config.js"></script>
 <script src="shared/contact-outcome-config.js"></script>
+<script src="shared/grant-area-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
 
@@ -754,8 +760,19 @@ const cluster = L.markerClusterGroup({
 });
 map.addLayer(cluster);
 
+// Grant-funding-area boundary overlay (shading set once grant_areas status
+// loads — see initGrantAreaLayer). Added before any prospect markers exist,
+// then sent to back so it always paints under the marker cluster.
+const grantAreaLayer = L.geoJSON(null, {
+  style: () => ({ color: '#666', weight: 1.5, opacity: 0.55, fillOpacity: 0.12, fillColor: '#999' }),
+  onEachFeature: (feature, layer) => {
+    layer.bindTooltip(feature.properties.name, { sticky: true, className: 'day-tooltip', opacity: 0.96 });
+  },
+}).addTo(map);
+
 /* ── State ───────────────────────────────────────────────── */
 let allMarkers = [];
+let activeGrantAreas = new Set(GRANT_AREA_ORDER);
 let activeBuildingTypes = new Set(BUILDING_TYPE_ORDER);
 let activeRatings = new Set(EPC_RATING_ORDER);
 let activeSicSectors = new Set(SIC_SECTOR_ORDER);
@@ -1245,7 +1262,7 @@ document.getElementById('cm-submit').addEventListener('click', async () => {
 });
 
 /* ── Init ────────────────────────────────────────────────── */
-function initMap(data) {
+function initMap(data, grantAreaStatus) {
   document.getElementById("total").textContent = data.length.toLocaleString();
   recDateMin = null;
   recDateMax = null;
@@ -1273,6 +1290,7 @@ function initMap(data) {
     });
     allMarkers.push(marker);
   });
+  buildGrantAreaChips(data, grantAreaStatus);
   buildBuildingTypeChips(data);
   buildEpcRatingChips(data);
   buildSicSectorChips(data);
@@ -1292,6 +1310,42 @@ function applyEpcRecommendationConfig() {
   document.getElementById('epc-solar-label').textContent = EPC_RECOMMENDATION.solar.label;
   document.getElementById('epc-efficiency-dot').style.background = EPC_RECOMMENDATION.efficiency.color;
   document.getElementById('epc-efficiency-label').textContent = EPC_RECOMMENDATION.efficiency.label;
+}
+
+/* ── Grant funding areas ─────────────────────────────────── */
+// Colours the boundary overlay (declared up top, near the map/cluster setup)
+// once each area's status has loaded.
+function initGrantAreaLayer(geojson, statusByArea) {
+  grantAreaLayer.addData(geojson);
+  grantAreaLayer.eachLayer(layer => {
+    const status = statusByArea[layer.feature.properties.name];
+    const cfg = status && GRANT_STATUS[status];
+    layer.setStyle({ fillColor: cfg ? cfg.color : '#999', color: cfg ? cfg.color : '#666' });
+    if (cfg) layer.setTooltipContent(`${layer.feature.properties.name} — ${cfg.label}`);
+  });
+  grantAreaLayer.bringToBack();
+}
+
+function buildGrantAreaChips(data, statusByArea) {
+  const counts = {};
+  data.forEach(d => { if (d.local_authority) counts[d.local_authority] = (counts[d.local_authority] || 0) + 1; });
+  const el = document.getElementById("grant-area-list");
+  GRANT_AREA_ORDER.forEach(area => {
+    const status = statusByArea[area];
+    const cfg = status && GRANT_STATUS[status];
+    const row = document.createElement("label");
+    row.className = "chip on";
+    row.title = cfg ? cfg.label : 'Funding status not set';
+    row.innerHTML = `<input type="checkbox" checked data-area="${area}"/>
+      <span class="dot" style="background:${cfg ? cfg.color : '#999'}"></span>
+      ${area}<span class="chip-n">${(counts[area] || 0).toLocaleString()}</span>`;
+    row.querySelector("input").addEventListener("change", e => {
+      e.target.checked ? activeGrantAreas.add(area) : activeGrantAreas.delete(area);
+      row.classList.toggle('on', e.target.checked);
+      applyFilters();
+    });
+    el.appendChild(row);
+  });
 }
 
 /* ── Chip builders ───────────────────────────────────────── */
@@ -1465,6 +1519,14 @@ function applyFilters() {
   const toShow = [];
   allMarkers.forEach(m => {
     const d = m._d;
+    // Only constrains the four tracked grant areas — a prospect in any other
+    // Yorkshire & Humber local authority (Leeds, Wakefield, etc.) is always
+    // shown, unaffected by this filter. Deliberately not the "full selection
+    // passes everything through, deselecting one goes strict" rule used
+    // below for sectorOk/maturityOk: GRANT_AREA_ORDER is only 4 of many real
+    // local_authority values, so that rule would hide every non-tracked
+    // authority the moment a rep unchecked even one grant area.
+    const areaOk = !GRANT_AREA_ORDER.includes(d.local_authority) || activeGrantAreas.has(d.local_authority);
     const typeOk   = activeBuildingTypes.has(d._bucket);
     // Full selection (untouched default) passes everything through,
     // including prospects with no rating. Deselecting even one chip goes
@@ -1494,7 +1556,7 @@ function applyFilters() {
     const rateableMinOk = rateableMin == null || (rateableValue != null && rateableValue >= rateableMin);
     const rateableMaxOk = rateableMax == null || (rateableValue != null && rateableValue <= rateableMax);
 
-    if (typeOk && ratingOk && sectorOk && maturityOk && recommendationYearOk && statusOk && epcSolarOk && epcEfficiencyOk && searchOk && minOk && maxOk && rateableMinOk && rateableMaxOk) {
+    if (areaOk && typeOk && ratingOk && sectorOk && maturityOk && recommendationYearOk && statusOk && epcSolarOk && epcEfficiencyOk && searchOk && minOk && maxOk && rateableMinOk && rateableMaxOk) {
       toShow.push(m);
       shown++;
     }
@@ -1525,6 +1587,7 @@ document.getElementById("rateable-min").addEventListener("input", e => { rateabl
 document.getElementById("rateable-max").addEventListener("input", e => { rateableMax = e.target.value === '' ? null : Number(e.target.value); applyFilters(); });
 
 document.getElementById("reset").addEventListener("click", () => {
+  activeGrantAreas = new Set(GRANT_AREA_ORDER);
   activeBuildingTypes = new Set(BUILDING_TYPE_ORDER);
   activeRatings = new Set(EPC_RATING_ORDER);
   activeSicSectors = new Set(SIC_SECTOR_ORDER);
@@ -1539,7 +1602,7 @@ document.getElementById("reset").addEventListener("click", () => {
   document.getElementById("floor-max").value = "";
   document.getElementById("rateable-min").value = "";
   document.getElementById("rateable-max").value = "";
-  document.querySelectorAll("#building-type-list input, #epc-rating-list input, #sic-sector-list input, #maturity-list input, #recommendation-year-list input").forEach(cb => {
+  document.querySelectorAll("#grant-area-list input, #building-type-list input, #epc-rating-list input, #sic-sector-list input, #maturity-list input, #recommendation-year-list input").forEach(cb => {
     cb.checked = true;
     cb.closest('.chip').classList.add('on');
   });
@@ -1608,16 +1671,37 @@ async function fetchAllProspects(onProgress) {
 }
 
 let dataLoaded = false;
+// grant_areas may not exist yet on a Supabase project that hasn't run
+// migration 016 — fail open (empty status map, chips/boundaries render
+// neutral grey) rather than blocking the whole map on it.
+async function fetchGrantAreaStatus() {
+  try {
+    const { data, error } = await db.from('grant_areas').select('local_authority, status');
+    if (error) throw error;
+    const statusByArea = {};
+    (data || []).forEach(row => { statusByArea[row.local_authority] = row.status; });
+    return statusByArea;
+  } catch (e) {
+    console.error('grant_areas fetch failed (has migration 016 been run?):', e);
+    return {};
+  }
+}
+
 function bootstrapData() {
   if (dataLoaded) return;
   dataLoaded = true;
   const loadingText = document.getElementById('loading-text');
-  fetchAllProspects((fetched, total) => {
-    loadingText.textContent = `Loading prospect data… (${fetched.toLocaleString()} / ${total.toLocaleString()})`;
-  })
-    .then(data => {
+  Promise.all([
+    fetchAllProspects((fetched, total) => {
+      loadingText.textContent = `Loading prospect data… (${fetched.toLocaleString()} / ${total.toLocaleString()})`;
+    }),
+    fetchGrantAreaStatus(),
+    fetch('shared/south-yorkshire-boundaries.geojson').then(r => r.json()),
+  ])
+    .then(([data, grantAreaStatus, boundaries]) => {
       document.getElementById("loading").style.display = "none";
-      initMap(data);
+      initGrantAreaLayer(boundaries, grantAreaStatus);
+      initMap(data, grantAreaStatus);
       applyFilters();
     })
     .catch(e => {
