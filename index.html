@@ -271,8 +271,19 @@
     .company-match-badge { display: inline-block; font-size: 10.5px; font-weight: 500; color: var(--accentDk); background: var(--accentDim); padding: 1px 7px; border-radius: 100px; margin-left: 6px; vertical-align: middle; }
 
     /* ── Log Contact modal ──────────────────────────────────── */
-    #contact-modal-overlay, #lead-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(17,24,39,0.4); z-index: 2000; align-items: center; justify-content: center; }
-    #contact-modal-overlay.open, #lead-modal-overlay.open { display: flex; }
+    #contact-modal-overlay, #lead-modal-overlay, #leads-list-overlay { display: none; position: fixed; inset: 0; background: rgba(17,24,39,0.4); z-index: 2000; align-items: center; justify-content: center; }
+    #contact-modal-overlay.open, #lead-modal-overlay.open, #leads-list-overlay.open { display: flex; }
+    #leads-list-panel { width: 760px; max-width: 94vw; max-height: 88vh; overflow-y: auto; background: var(--surface); border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+    #leads-list-search { width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 13px; background: var(--surface2); color: var(--text); }
+    #leads-list-search:focus { outline: none; border-color: var(--accent); }
+    #leads-list-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    #leads-list-table th { text-align: left; padding: 8px 10px; color: var(--text3); font-weight: 500; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    #leads-list-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    #leads-list-table a { color: var(--accent); }
+    .leads-actions { display: flex; gap: 6px; white-space: nowrap; }
+    .leads-actions button { padding: 4px 9px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); font-size: 11.5px; cursor: pointer; font-family: inherit; color: var(--text2); }
+    .leads-actions button:hover { background: var(--border); color: var(--text); }
+    #leads-list-empty { text-align: center; padding: 40px 20px; color: var(--text3); }
     #contact-modal, #lead-modal { width: 420px; max-width: 92vw; max-height: 88vh; overflow-y: auto; background: var(--surface); border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
     .modal-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 20px 22px 14px; border-bottom: 1px solid var(--border); }
     .modal-eyebrow { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .08em; }
@@ -416,6 +427,7 @@
   <div class="nav-right">
     <span class="nav-user-name" id="nav-user-name"></span>
     <div class="nav-avatar" id="nav-avatar"></div>
+    <button class="nav-dashboard-link" id="leads-list-btn">Leads</button>
     <button class="nav-add-lead-btn" id="add-lead-btn">+ Add lead</button>
     <a class="nav-dashboard-link" id="nav-dashboard-link" href="dashboard.html" style="display:none">Dashboard</a>
     <button class="nav-signout-btn" id="sign-out-btn">Sign out</button>
@@ -661,6 +673,32 @@
   </div>
 </div>
 
+<!-- ── Leads list ────────────────────────────────────────── -->
+<div id="leads-list-overlay">
+  <div id="leads-list-panel">
+    <div class="modal-header">
+      <div class="modal-header-text">
+        <div class="modal-eyebrow">CRM</div>
+        <h2>Manual leads</h2>
+        <div class="modal-sub" id="leads-list-count"></div>
+      </div>
+      <button class="modal-close" id="leads-list-close-btn" aria-label="Close">✕</button>
+    </div>
+    <div style="padding:14px 22px 0">
+      <input type="text" id="leads-list-search" placeholder="Search by name, address, phone, email…"/>
+    </div>
+    <div style="padding:14px 22px 22px; overflow-x:auto">
+      <table id="leads-list-table">
+        <thead><tr>
+          <th>Customer</th><th>Type</th><th>Contact</th><th>Address</th><th>Added</th><th></th>
+        </tr></thead>
+        <tbody id="leads-list-body"></tbody>
+      </table>
+      <div id="leads-list-empty" style="display:none">No manual leads yet — use "+ Add lead" to create one.</div>
+    </div>
+  </div>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script src="shared/solar-status-config.js"></script>
@@ -823,6 +861,7 @@ const grantAreaLayer = L.geoJSON(null, {
 /* ── State ───────────────────────────────────────────────── */
 let allMarkers = [];
 let activeGrantAreas = new Set(GRANT_AREA_ORDER);
+let grantAreaLayersByName = {}; // populated by initGrantAreaLayer — lets the sidebar chips add/remove a single area's boundary shape
 let activeBuildingTypes = new Set(BUILDING_TYPE_ORDER);
 let activeRatings = new Set(EPC_RATING_ORDER);
 let activeSicSectors = new Set(SIC_SECTOR_ORDER);
@@ -1402,6 +1441,7 @@ function openLeadModal() {
   document.getElementById('lm-email').value = '';
   selectedLeadType = null;
   document.querySelectorAll('#lm-type-chips .outcome-chip').forEach(c => { c.classList.remove('on'); c.style.background = ''; c.style.borderColor = ''; });
+  document.getElementById('leads-list-overlay').classList.remove('open'); // same z-index stacking issue as the Log Contact modal — see renderLeadsList
   document.getElementById('lead-modal-overlay').classList.add('open');
 }
 
@@ -1479,6 +1519,79 @@ document.getElementById('lm-submit').addEventListener('click', async () => {
   cluster.zoomToShowLayer(marker, () => marker.fire('click'));
 });
 
+/* ── Leads list ──────────────────────────────────────────── */
+// Reads straight from allMarkers rather than a fresh query — every manual
+// lead is already loaded there (bootstrapData/createMarker), so this stays
+// in sync with anything just added this session without a round-trip.
+function renderLeadsList() {
+  const term = document.getElementById('leads-list-search').value.trim().toLowerCase();
+  const leads = allMarkers
+    .map(m => m._d)
+    .filter(d => d.source === 'manual')
+    .filter(d => !term || [d.customer_name, d.address, d.postcode, d.contact_phone, d.contact_email]
+      .some(v => (v || '').toLowerCase().includes(term)))
+    .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+
+  document.getElementById('leads-list-count').textContent = `${leads.length.toLocaleString()} lead${leads.length === 1 ? '' : 's'}`;
+  document.getElementById('leads-list-empty').style.display = leads.length ? 'none' : 'block';
+
+  const body = document.getElementById('leads-list-body');
+  body.innerHTML = '';
+  leads.forEach(d => {
+    const cfg = LEAD_TYPE[d.lead_type];
+    const typeTag = cfg ? `<span class="tag"><span class="tag-dot" style="background:${cfg.color}"></span>${cfg.label}</span>` : '—';
+    const contact = [
+      d.contact_phone ? `<a href="tel:${escapeHtml(d.contact_phone)}">${escapeHtml(d.contact_phone)}</a>` : '',
+      d.contact_email ? `<a href="mailto:${escapeHtml(d.contact_email)}">${escapeHtml(d.contact_email)}</a>` : '',
+    ].filter(Boolean).join('<br>') || '—';
+    const address = [escapeHtml(d.address || ''), escapeHtml(d.postcode || '')].filter(Boolean).join('<br>') || '—';
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${escapeHtml(d.customer_name || 'Unnamed lead')}</td>
+      <td>${typeTag}</td>
+      <td>${contact}</td>
+      <td>${address}</td>
+      <td>${formatShortDate(d.created_at) || '—'}</td>
+      <td class="leads-actions">
+        <button type="button" data-action="view">View on map</button>
+        <button type="button" data-action="log">Log contact</button>
+      </td>`;
+    tr.querySelector('[data-action="view"]').addEventListener('click', () => {
+      closeLeadsList();
+      const marker = allMarkers.find(m => m._d.id === d.id);
+      if (marker) cluster.zoomToShowLayer(marker, () => marker.fire('click'));
+    });
+    tr.querySelector('[data-action="log"]').addEventListener('click', () => {
+      // Both overlays share the same z-index, and this one sits later in
+      // the DOM, so it would otherwise paint over the contact modal
+      // instead of the modal opening on top of it.
+      closeLeadsList();
+      openContactModal(d.id, d.customer_name || d.address || d.postcode || 'Unnamed lead');
+    });
+    body.appendChild(tr);
+  });
+}
+
+function openLeadsList() {
+  document.getElementById('leads-list-search').value = '';
+  renderLeadsList();
+  document.getElementById('leads-list-overlay').classList.add('open');
+}
+function closeLeadsList() {
+  document.getElementById('leads-list-overlay').classList.remove('open');
+}
+document.getElementById('leads-list-btn').addEventListener('click', openLeadsList);
+document.getElementById('leads-list-close-btn').addEventListener('click', closeLeadsList);
+document.getElementById('leads-list-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('leads-list-overlay')) closeLeadsList();
+});
+document.getElementById('leads-list-search').addEventListener('input', renderLeadsList);
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('leads-list-overlay').classList.contains('open')) return;
+  if (e.key === 'Escape') closeLeadsList();
+});
+
 /* ── Init ────────────────────────────────────────────────── */
 function initMap(data, grantAreaStatus) {
   document.getElementById("total").textContent = data.length.toLocaleString();
@@ -1523,10 +1636,12 @@ function applyEpcRecommendationConfig() {
 function initGrantAreaLayer(geojson, statusByArea) {
   grantAreaLayer.addData(geojson);
   grantAreaLayer.eachLayer(layer => {
-    const status = statusByArea[layer.feature.properties.name];
+    const name = layer.feature.properties.name;
+    grantAreaLayersByName[name] = layer;
+    const status = statusByArea[name];
     const cfg = status && GRANT_STATUS[status];
     layer.setStyle({ fillColor: cfg ? cfg.color : '#999', color: cfg ? cfg.color : '#666' });
-    if (cfg) layer.setTooltipContent(`${layer.feature.properties.name} — ${cfg.label}`);
+    if (cfg) layer.setTooltipContent(`${name} — ${cfg.label}`);
   });
   grantAreaLayer.bringToBack();
 }
@@ -1547,6 +1662,11 @@ function buildGrantAreaChips(data, statusByArea) {
     row.querySelector("input").addEventListener("change", e => {
       e.target.checked ? activeGrantAreas.add(area) : activeGrantAreas.delete(area);
       row.classList.toggle('on', e.target.checked);
+      const boundary = grantAreaLayersByName[area];
+      if (boundary) {
+        if (e.target.checked) grantAreaLayer.addLayer(boundary);
+        else grantAreaLayer.removeLayer(boundary);
+      }
       applyFilters();
     });
     el.appendChild(row);
@@ -1798,6 +1918,7 @@ document.getElementById("rateable-max").addEventListener("input", e => { rateabl
 
 document.getElementById("reset").addEventListener("click", () => {
   activeGrantAreas = new Set(GRANT_AREA_ORDER);
+  Object.values(grantAreaLayersByName).forEach(layer => grantAreaLayer.addLayer(layer));
   activeBuildingTypes = new Set(BUILDING_TYPE_ORDER);
   activeRatings = new Set(EPC_RATING_ORDER);
   activeSicSectors = new Set(SIC_SECTOR_ORDER);
@@ -1849,7 +1970,14 @@ document.getElementById("reset").addEventListener("click", () => {
 // ~90s sequential load time becomes a real problem again.
 async function fetchAllProspects(onProgress) {
   const PAGE = 1000; // PostgREST's default max-rows cap — must page past it explicitly
-  const PROSPECT_COLUMNS = 'id, address, postcode, lat, lng, property_type, floor_area:total_floor_area, epc_rating:current_energy_rating, local_authority, solar_status, solar_max_panels, solar_yearly_energy_kwh, current_energy_efficiency, epc_recommends_solar, epc_recommends_efficiency, lodgement_date, business_rates_matches(hereditaments, no_match), company_classifications(company_name, sic_codes, incorporated_on, accounts_type, no_match)';
+  // source/customer_name/lead_type/contact_phone/contact_email (migration
+  // 017) must be selected here, not just at insert time — without them, a
+  // manual lead fetched on a fresh page load comes back with source
+  // undefined, createMarker() treats it as a pipeline row instead of a
+  // manual one, and the default solar-status filter (which manual leads
+  // are otherwise exempted from) silently hides it. Bit us live 2026-09-07:
+  // a lead added fine in one session vanished after a reload.
+  const PROSPECT_COLUMNS = 'id, address, postcode, lat, lng, property_type, floor_area:total_floor_area, epc_rating:current_energy_rating, local_authority, solar_status, solar_max_panels, solar_yearly_energy_kwh, current_energy_efficiency, epc_recommends_solar, epc_recommends_efficiency, lodgement_date, source, customer_name, lead_type, contact_phone, contact_email, created_at, business_rates_matches(hereditaments, no_match), company_classifications(company_name, sic_codes, incorporated_on, accounts_type, no_match)';
 
   // head:true returns only a count, no rows — safe from the max-rows cap
   // that bit the id-list fetch (2026-08-21 live incident), and cheap since
