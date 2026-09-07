@@ -271,9 +271,9 @@
     .company-match-badge { display: inline-block; font-size: 10.5px; font-weight: 500; color: var(--accentDk); background: var(--accentDim); padding: 1px 7px; border-radius: 100px; margin-left: 6px; vertical-align: middle; }
 
     /* ── Log Contact modal ──────────────────────────────────── */
-    #contact-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(17,24,39,0.4); z-index: 2000; align-items: center; justify-content: center; }
-    #contact-modal-overlay.open { display: flex; }
-    #contact-modal { width: 420px; max-width: 92vw; max-height: 88vh; overflow-y: auto; background: var(--surface); border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+    #contact-modal-overlay, #lead-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(17,24,39,0.4); z-index: 2000; align-items: center; justify-content: center; }
+    #contact-modal-overlay.open, #lead-modal-overlay.open { display: flex; }
+    #contact-modal, #lead-modal { width: 420px; max-width: 92vw; max-height: 88vh; overflow-y: auto; background: var(--surface); border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
     .modal-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 20px 22px 14px; border-bottom: 1px solid var(--border); }
     .modal-eyebrow { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .08em; }
     .modal-header-text h2 { font-size: 17px; font-weight: 600; margin-top: 4px; }
@@ -285,7 +285,7 @@
     .modal-body label:first-child { margin-top: 0; }
     .modal-body .required { color: var(--alert); margin-left: 3px; }
     .optional-label { color: var(--text3); font-weight: 400; font-size: 11.5px; }
-    .modal-body input[type="text"], .modal-body input[type="date"], .modal-body textarea {
+    .modal-body input[type="text"], .modal-body input[type="date"], .modal-body input[type="tel"], .modal-body input[type="email"], .modal-body textarea {
       width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px;
       font-family: inherit; font-size: 13px; background: var(--surface2); color: var(--text);
     }
@@ -339,6 +339,12 @@
       transition: background .12s, color .12s;
     }
     .nav-dashboard-link:hover { background: var(--surface2); color: var(--text); text-decoration: none; }
+    .nav-add-lead-btn {
+      background: var(--accent); color: #fff; border: none; border-radius: 8px;
+      padding: 7px 13px; font-size: 12.5px; font-weight: 500; cursor: pointer;
+      font-family: inherit; transition: background .12s;
+    }
+    .nav-add-lead-btn:hover { background: var(--accentDk); }
 
     /* ── Login screen ────────────────────────────────────── */
     #login-screen {
@@ -410,6 +416,7 @@
   <div class="nav-right">
     <span class="nav-user-name" id="nav-user-name"></span>
     <div class="nav-avatar" id="nav-avatar"></div>
+    <button class="nav-add-lead-btn" id="add-lead-btn">+ Add lead</button>
     <a class="nav-dashboard-link" id="nav-dashboard-link" href="dashboard.html" style="display:none">Dashboard</a>
     <button class="nav-signout-btn" id="sign-out-btn">Sign out</button>
   </div>
@@ -612,6 +619,48 @@
   </div>
 </div>
 
+<!-- ── Add Lead modal ────────────────────────────────────── -->
+<div id="lead-modal-overlay">
+  <div id="lead-modal">
+    <div class="modal-header">
+      <div class="modal-header-text">
+        <div class="modal-eyebrow">Add lead</div>
+        <h2>New manual lead</h2>
+        <div class="modal-sub">Pin drops at the postcode's location — drag it to the exact building after saving.</div>
+      </div>
+      <button class="modal-close" id="lm-close-btn" aria-label="Close">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <label>Customer name <span class="required">*</span></label>
+      <input type="text" id="lm-customer-name" placeholder="Who's the lead?"/>
+
+      <label>Type <span class="required">*</span></label>
+      <div class="outcome-chips" id="lm-type-chips"></div>
+
+      <label>Address <span class="required">*</span></label>
+      <input type="text" id="lm-address" placeholder="Street address…"/>
+
+      <label>Postcode <span class="required">*</span></label>
+      <input type="text" id="lm-postcode" placeholder="e.g. S1 2HE"/>
+
+      <label>Contact number <span class="optional-label">— optional</span></label>
+      <input type="tel" id="lm-phone" placeholder="07…"/>
+
+      <label>Email address <span class="optional-label">— optional</span></label>
+      <input type="email" id="lm-email" placeholder="name@example.com"/>
+    </div>
+
+    <div class="modal-footer">
+      <span class="modal-shortcuts">Esc to cancel · ⌘+↵ to save</span>
+      <div class="modal-btns">
+        <button class="btn-secondary" id="lm-cancel">Cancel</button>
+        <button class="btn-primary" id="lm-submit">Add lead</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script src="shared/solar-status-config.js"></script>
@@ -624,6 +673,7 @@
 <script src="shared/epc-recommendation-config.js"></script>
 <script src="shared/contact-outcome-config.js"></script>
 <script src="shared/grant-area-config.js"></script>
+<script src="shared/lead-type-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
 
@@ -830,6 +880,54 @@ function makeMarkerIcon(d) {
   return L.divIcon({ html, className: '', iconSize: [size, height], iconAnchor: [size/2, height] });
 }
 
+// Manually-added leads (source:'manual') get a round pin, not the pipeline's
+// teardrop — a different shape, not just a different color, so a rep can
+// tell "my own lead" apart from an EPC/VOA-sourced prospect at a glance.
+// Colour encodes lead_type (commercial/domestic) instead of solar_status,
+// which doesn't mean much for a lead nobody's screened yet.
+function makeManualLeadIcon(d) {
+  const cfg = LEAD_TYPE[d.lead_type] || { color: '#555' };
+  const size = 20;
+  const html = `<div class="day-marker" style="width:${size}px;height:${size}px;border-radius:50%;background:${cfg.color};border:2.5px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,.35);"></div>`;
+  return L.divIcon({ html, className: '', iconSize: [size, size], iconAnchor: [size/2, size/2] });
+}
+
+// Shared by the initial bulk load (initMap) and a freshly-added manual
+// lead (lm-submit handler) so both go through identical bucket/marker/
+// popup/drag wiring instead of two copies drifting apart.
+function createMarker(d) {
+  d._bucket = bucketPropertyType(d.property_type);
+  d._maxRateable = maxHereditamentValue(d);
+  d._sicSector = bucketSicSector(d.company_classifications?.sic_codes);
+  d._maturity = bucketCompanyMaturity(d.company_classifications || {});
+  d._recommendationYear = (d.epc_recommends_solar && d.lodgement_date) ? new Date(d.lodgement_date).getFullYear() : null;
+  const isManual = d.source === 'manual';
+  const marker = L.marker([d.lat, d.lng], {
+    icon: isManual ? makeManualLeadIcon(d) : makeMarkerIcon(d),
+    draggable: isManual,
+  });
+  marker.bindTooltip(d.customer_name || d.address || d.postcode || 'Unnamed building', { direction: "top", offset: [0, -10], className: 'day-tooltip', opacity: 0.96 });
+  marker._d = d;
+  marker.on('click', () => {
+    marker.bindPopup(buildPopup(d), { maxWidth: 360, autoPan: true }).openPopup();
+    loadCompanyMatch(d);
+    loadProposals(d);
+  });
+  if (isManual) {
+    // Postcode-level geocoding only gets the pin roughly right — this is
+    // how a rep corrects it to the exact building afterward (see the Add
+    // Lead modal's subtitle). Scoped to source:'manual' rows only by
+    // migration 017's update policy.
+    marker.on('dragend', async () => {
+      const { lat, lng } = marker.getLatLng();
+      d.lat = lat; d.lng = lng;
+      const { error } = await window.db.from('prospects').update({ lat, lng }).eq('id', d.id);
+      if (error) { console.error('Failed to save moved pin:', error); alert('Failed to save the new pin location — see console.'); }
+    });
+  }
+  return marker;
+}
+
 /* ── Popup builder ───────────────────────────────────────── */
 const BUSINESS_RATES_DISPLAY_LIMIT = 10; // some postcodes (e.g. self-storage sites) carry 1,000+ hereditaments
 function businessRatesHtml(d) {
@@ -859,6 +957,7 @@ function formatShortDate(dateStr) {
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 function buildPopup(d) {
+  const isManual = d.source === 'manual';
   const solarCfg = SOLAR_STATUS[d.solar_status] || { color: '#999', soft: '#eee', label: d.solar_status };
   const epcCfg = EPC_RATING[d.epc_rating] || null;
   const bucket = bucketPropertyType(d.property_type);
@@ -867,7 +966,14 @@ function buildPopup(d) {
   const epcTag = epcCfg
     ? `<span class="tag"><span class="tag-dot" style="background:${epcCfg.color}"></span>EPC ${epcCfg.label}</span>`
     : '';
-  const typeTag = `<span class="tag"><span class="tag-dot" style="background:${BUILDING_TYPE_COLORS[bucket]}"></span>${escapeHtml(bucket)}</span>`;
+  // Building-type is meaningless for a manual lead (property_type is always
+  // null for source:'manual') — bucketPropertyType(null) still resolves to
+  // "Other", which would otherwise render a nonsense tag on every one.
+  const typeTag = isManual ? '' : `<span class="tag"><span class="tag-dot" style="background:${BUILDING_TYPE_COLORS[bucket]}"></span>${escapeHtml(bucket)}</span>`;
+  const leadTypeCfg = isManual ? LEAD_TYPE[d.lead_type] : null;
+  const leadTypeTag = leadTypeCfg
+    ? `<span class="tag"><span class="tag-dot" style="background:${leadTypeCfg.color}"></span>${leadTypeCfg.label}</span>`
+    : '';
   const recDate = formatMonthYear(d.lodgement_date);
   const solarRecTag = d.epc_recommends_solar
     ? `<span class="tag"><span class="tag-dot" style="background:${EPC_RECOMMENDATION.solar.color}"></span>${escapeHtml(EPC_RECOMMENDATION.solar.label)}${recDate ? ` · ${recDate}` : ''}</span>`
@@ -892,6 +998,11 @@ function buildPopup(d) {
     d.local_authority ? escapeHtml(d.local_authority) : '',
   ].filter(Boolean);
   const facts = factParts.length ? `<p>${factParts.join(' · ')}</p>` : '';
+  const contactParts = [
+    d.contact_phone ? `📞 <a href="tel:${escapeHtml(d.contact_phone)}">${escapeHtml(d.contact_phone)}</a>` : '',
+    d.contact_email ? `✉ <a href="mailto:${escapeHtml(d.contact_email)}">${escapeHtml(d.contact_email)}</a>` : '',
+  ].filter(Boolean);
+  const contactInfo = contactParts.length ? `<p>${contactParts.join(' · ')}</p>` : '';
 
   const solarEst = (d.solar_status === 'prospect' && (d.solar_max_panels || d.solar_yearly_energy_kwh))
     ? `<div class="solar-est">☀ Estimated roof potential: ${d.solar_max_panels ? `up to <strong>${d.solar_max_panels}</strong> panels` : ''}${d.solar_max_panels && d.solar_yearly_energy_kwh ? ' · ' : ''}${d.solar_yearly_energy_kwh ? `~<strong>${Math.round(d.solar_yearly_energy_kwh).toLocaleString()}</strong> kWh/year` : ''}</div>`
@@ -900,13 +1011,13 @@ function buildPopup(d) {
   return `
     <div class="popup">
       <div class="popup-header">
-        <div class="popup-eyebrow">Commercial prospect</div>
-        <div class="popup-name">${escapeHtml(d.address ? d.address.split(',')[0] : (d.postcode || 'Unnamed building'))}</div>
+        <div class="popup-eyebrow">${isManual ? 'Manual lead' : 'Commercial prospect'}</div>
+        <div class="popup-name">${escapeHtml(isManual && d.customer_name ? d.customer_name : (d.address ? d.address.split(',')[0] : (d.postcode || 'Unnamed building')))}</div>
         ${d.postcode ? `<div class="popup-meta">${escapeHtml(d.postcode)}</div>` : ''}
-        <div class="tags">${statusPill}${epcTag}${typeTag}${solarRecTag}${efficiencyRecTag}${sectorTag}${maturityTag}</div>
+        <div class="tags">${leadTypeTag}${statusPill}${epcTag}${typeTag}${solarRecTag}${efficiencyRecTag}${sectorTag}${maturityTag}</div>
       </div>
       ${solarEst}
-      <div class="popup-facts">${addr}${facts}</div>
+      <div class="popup-facts">${addr}${contactInfo}${facts}</div>
       <div class="popup-tabs">
         <button class="popup-tab active" type="button" onclick="switchPopupTab(this, 'rates')">Business rates</button>
         <button class="popup-tab" type="button" onclick="switchPopupTab(this, 'companies')">Companies</button>
@@ -924,7 +1035,7 @@ function buildPopup(d) {
         </div>
         <div class="proposals-upload-status"></div>
       </div>
-      <button class="log-contact-btn" onclick="openContactModal('${escapeHtml(d.id)}', ${escapeHtml(JSON.stringify(d.address || d.postcode || 'Unnamed building'))})">Log contact</button>
+      <button class="log-contact-btn" onclick="openContactModal('${escapeHtml(d.id)}', ${escapeHtml(JSON.stringify((isManual && d.customer_name) || d.address || d.postcode || 'Unnamed building'))})">Log contact</button>
     </div>`;
 }
 
@@ -1261,6 +1372,113 @@ document.getElementById('cm-submit').addEventListener('click', async () => {
   closeContactModal();
 });
 
+/* ── Add Lead modal ──────────────────────────────────────── */
+let selectedLeadType = null;
+(function initLeadModal() {
+  const chipsEl = document.getElementById('lm-type-chips');
+  LEAD_TYPE_ORDER.forEach(type => {
+    const cfg = LEAD_TYPE[type];
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'outcome-chip';
+    chip.dataset.value = type;
+    chip.innerHTML = `<span class="chip-dot" style="background:${cfg.color}"></span>${escapeHtml(cfg.label)}`;
+    chip.addEventListener('click', () => {
+      chipsEl.querySelectorAll('.outcome-chip').forEach(c => { c.classList.remove('on'); c.style.background = ''; c.style.borderColor = ''; });
+      chip.classList.add('on');
+      chip.style.background = cfg.color;
+      chip.style.borderColor = cfg.color;
+      selectedLeadType = type;
+    });
+    chipsEl.appendChild(chip);
+  });
+})();
+
+function openLeadModal() {
+  document.getElementById('lm-customer-name').value = '';
+  document.getElementById('lm-address').value = '';
+  document.getElementById('lm-postcode').value = '';
+  document.getElementById('lm-phone').value = '';
+  document.getElementById('lm-email').value = '';
+  selectedLeadType = null;
+  document.querySelectorAll('#lm-type-chips .outcome-chip').forEach(c => { c.classList.remove('on'); c.style.background = ''; c.style.borderColor = ''; });
+  document.getElementById('lead-modal-overlay').classList.add('open');
+}
+
+function closeLeadModal() {
+  document.getElementById('lead-modal-overlay').classList.remove('open');
+}
+
+document.getElementById('add-lead-btn').addEventListener('click', openLeadModal);
+document.getElementById('lm-cancel').addEventListener('click', closeLeadModal);
+document.getElementById('lm-close-btn').addEventListener('click', closeLeadModal);
+document.getElementById('lead-modal-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('lead-modal-overlay')) closeLeadModal();
+});
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('lead-modal-overlay').classList.contains('open')) return;
+  if (e.key === 'Escape') closeLeadModal();
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') document.getElementById('lm-submit').click();
+});
+
+document.getElementById('lm-submit').addEventListener('click', async () => {
+  const customerName = document.getElementById('lm-customer-name').value.trim();
+  const address = document.getElementById('lm-address').value.trim();
+  const postcode = document.getElementById('lm-postcode').value.trim();
+  const phone = document.getElementById('lm-phone').value.trim();
+  const email = document.getElementById('lm-email').value.trim();
+
+  if (!customerName) { alert('Please enter the customer name.'); return; }
+  if (!selectedLeadType) { alert('Please pick commercial or domestic.'); return; }
+  if (!address) { alert('Please enter an address.'); return; }
+  if (!postcode) { alert('Please enter a postcode.'); return; }
+
+  const btn = document.getElementById('lm-submit');
+  btn.disabled = true; btn.textContent = 'Geocoding…';
+
+  // Same free postcodes.io lookup the pipeline's own geocode-postcodes.mjs
+  // uses in bulk — postcode-level accuracy only, hence the drag-to-adjust
+  // step this modal's subtitle points reps at.
+  let geo;
+  try {
+    const resp = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(postcode)}`);
+    const json = await resp.json();
+    if (json.status !== 200) throw new Error('Postcode not found');
+    geo = json.result;
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'Add lead';
+    alert('Could not find that postcode — please check it and try again.');
+    return;
+  }
+
+  btn.textContent = 'Saving…';
+  const { data: inserted, error } = await window.db.from('prospects').insert([{
+    source: 'manual',
+    region: 'yorkshire-humber',
+    customer_name: customerName,
+    lead_type: selectedLeadType,
+    contact_phone: phone || null,
+    contact_email: email || null,
+    address,
+    postcode,
+    local_authority: geo.admin_district || null,
+    lat: geo.latitude,
+    lng: geo.longitude,
+    geocode_source: 'postcodes.io',
+    created_by_email: currentUser?.email || null,
+  }]).select().single();
+
+  btn.disabled = false; btn.textContent = 'Add lead';
+
+  if (error) { alert('Failed to save: ' + error.message); return; }
+
+  closeLeadModal();
+  const marker = createMarker(inserted);
+  allMarkers.push(marker);
+  applyFilters();
+  cluster.zoomToShowLayer(marker, () => marker.fire('click'));
+});
+
 /* ── Init ────────────────────────────────────────────────── */
 function initMap(data, grantAreaStatus) {
   document.getElementById("total").textContent = data.length.toLocaleString();
@@ -1275,20 +1493,7 @@ function initMap(data, grantAreaStatus) {
   });
   data.forEach(d => {
     if (!d.lat || !d.lng) return;
-    d._bucket = bucketPropertyType(d.property_type);
-    d._maxRateable = maxHereditamentValue(d);
-    d._sicSector = bucketSicSector(d.company_classifications?.sic_codes);
-    d._maturity = bucketCompanyMaturity(d.company_classifications || {});
-    d._recommendationYear = (d.epc_recommends_solar && d.lodgement_date) ? new Date(d.lodgement_date).getFullYear() : null;
-    const marker = L.marker([d.lat, d.lng], { icon: makeMarkerIcon(d) });
-    marker.bindTooltip(d.address || d.postcode || 'Unnamed building', { direction: "top", offset: [0, -10], className: 'day-tooltip', opacity: 0.96 });
-    marker._d = d;
-    marker.on('click', () => {
-      marker.bindPopup(buildPopup(d), { maxWidth: 360, autoPan: true }).openPopup();
-      loadCompanyMatch(d);
-      loadProposals(d);
-    });
-    allMarkers.push(marker);
+    allMarkers.push(createMarker(d));
   });
   buildGrantAreaChips(data, grantAreaStatus);
   buildBuildingTypeChips(data);
@@ -1546,7 +1751,12 @@ function applyFilters() {
     const maturityOk = activeMaturities.size === MATURITY_ORDER.length || activeMaturities.has(d._maturity);
     const recommendationYearOk = activeRecommendationYears.size === recommendationYearOrder.length
       || (d._recommendationYear !== null && activeRecommendationYears.has(d._recommendationYear));
-    const statusOk = activeSolarStatuses.has(d.solar_status);
+    // Manual leads default to solar_status:'pending' like anything else
+    // (they're swept into the next solar-enrichment run same as a pipeline
+    // row), but the solar-status filter defaults to showing only
+    // 'prospect' — a rep's own just-added lead would otherwise vanish
+    // behind that default the moment they close the modal.
+    const statusOk = d.source === 'manual' || activeSolarStatuses.has(d.solar_status);
     const epcSolarOk = !filterEpcSolar || d.epc_recommends_solar === true;
     const epcEfficiencyOk = !filterEpcEfficiency || d.epc_recommends_efficiency === true;
     const searchOk = !term || (d.address||'').toLowerCase().includes(term) || (d.postcode||'').toLowerCase().includes(term);
