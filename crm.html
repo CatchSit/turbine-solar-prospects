@@ -561,8 +561,20 @@ async function openLeadDocument(linkEl) {
   const path = linkEl.dataset.storagePath;
   const originalText = linkEl.textContent;
   linkEl.textContent = 'Opening…';
-  const newTab = window.open('', '_blank', 'noopener');
-  const { data, error } = await db.storage.from('proposals').createSignedUrl(path, 300);
+  // 'noopener' in the third argument makes window.open() itself return
+  // null (per spec) — see index.html's identical fix/comment on
+  // openDocument(). Sever the reverse opener link manually instead so we
+  // keep our own reference to redirect this tab once the signed URL is ready.
+  const newTab = window.open('', '_blank');
+  if (newTab) newTab.opener = null;
+  // A thrown network error here would otherwise skip past the redirect
+  // below, leaving the tab stuck on about:blank with no feedback.
+  let data, error;
+  try {
+    ({ data, error } = await db.storage.from('proposals').createSignedUrl(path, 300));
+  } catch (e) {
+    error = e;
+  }
   linkEl.textContent = originalText;
   if (error || !data?.signedUrl) {
     if (newTab) newTab.close();

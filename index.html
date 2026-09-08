@@ -1216,11 +1216,25 @@ async function openDocument(linkEl) {
   const originalText = linkEl.textContent;
   linkEl.textContent = 'Opening…';
 
-  const newTab = window.open('', '_blank', 'noopener');
+  // 'noopener' in the third argument makes window.open() itself return
+  // null (per spec) — we'd lose the reference needed to redirect this tab
+  // to the signed URL once it's ready, leaving it stuck on about:blank
+  // forever. Sever the reverse (new-tab-to-opener) link manually instead,
+  // which keeps our own reference while still getting noopener's actual
+  // security benefit.
+  const newTab = window.open('', '_blank');
+  if (newTab) newTab.opener = null;
 
-  const { data, error } = await window.db.storage
-    .from('proposals')
-    .createSignedUrl(path, 300);
+  // A thrown network error here (not just an {error} response) would
+  // otherwise skip straight past the redirect below, leaving the new tab
+  // stuck on about:blank with no feedback at all — same visible symptom as
+  // the noopener bug above, different cause.
+  let data, error;
+  try {
+    ({ data, error } = await window.db.storage.from('proposals').createSignedUrl(path, 300));
+  } catch (e) {
+    error = e;
+  }
 
   linkEl.textContent = originalText;
   if (error || !data?.signedUrl) {
