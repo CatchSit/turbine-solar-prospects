@@ -263,6 +263,15 @@
     .proposal-meta { color: var(--text3); font-size: 11px; margin-top: 1px; }
     .proposal-open-link { color: var(--accent); font-size: 12px; white-space: nowrap; cursor: pointer; }
     .proposals-empty { color: var(--text3); font-size: 12px; padding: 4px 0; }
+    .contact-log-list { padding: 0 20px; }
+    .contact-log-item { padding: 8px 0; border-top: 1px solid var(--border); }
+    .contact-log-item:first-child { border-top: none; }
+    .clog-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .clog-meta { color: var(--text3); font-size: 11px; }
+    .clog-notes { color: var(--text2); font-size: 12px; margin-top: 4px; white-space: pre-wrap; }
+    .clog-next { color: var(--text3); font-size: 11px; margin-top: 2px; }
+    .outcome-tag { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px 3px 6px; border-radius: 100px; font-size: 11px; }
+    .outcome-tag .dot { width: 6px; height: 6px; border-radius: 50%; }
     .proposals-upload { display: flex; gap: 8px; align-items: center; padding: 10px 20px 0; border-top: 1px solid var(--border); margin-top: 8px; }
     .proposals-file-input { font-size: 11.5px; flex: 1; min-width: 0; }
     .proposals-upload-btn { padding: 5px 12px; background: var(--accentDim); color: var(--accentDk); border: none; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit; }
@@ -914,6 +923,7 @@ function createMarker(d) {
     marker.bindPopup(buildPopup(d), { maxWidth: 360, autoPan: true }).openPopup();
     loadCompanyMatch(d);
     loadDocuments(d);
+    loadContactLog(d);
   });
   if (isManual) {
     // Postcode-level geocoding only gets the pin roughly right — this is
@@ -1024,6 +1034,7 @@ function buildPopup(d) {
         <button class="popup-tab active" type="button" onclick="switchPopupTab(this, 'rates')">Business rates</button>
         <button class="popup-tab" type="button" onclick="switchPopupTab(this, 'companies')">Companies</button>
         <button class="popup-tab" type="button" onclick="switchPopupTab(this, 'proposals')">Documents</button>
+        <button class="popup-tab" type="button" onclick="switchPopupTab(this, 'contact-log')">Contact log</button>
       </div>
       <div class="business-rates popup-tab-panel active" data-panel="rates">${businessRatesHtml(d)}</div>
       <div class="company-match popup-tab-panel" data-panel="companies" id="company-match-${escapeHtml(d.id)}">
@@ -1037,6 +1048,7 @@ function buildPopup(d) {
         </div>
         <div class="proposals-upload-status"></div>
       </div>
+      <div class="contact-log-list popup-tab-panel" data-panel="contact-log" id="contact-log-${escapeHtml(d.id)}">Loading…</div>
       <button class="log-contact-btn" onclick="openContactModal('${escapeHtml(d.id)}', ${escapeHtml(JSON.stringify((isManual && d.customer_name) || d.address || d.postcode || 'Unnamed building'))})">Log contact</button>
     </div>`;
 }
@@ -1121,6 +1133,47 @@ async function loadDocuments(d) {
     return;
   }
   list.innerHTML = renderDocumentsList(data || []);
+}
+
+// Contact log's read was manager-only until migration 021 opened it up to
+// any Turbine Energy rep — see that migration's comment for why. Ported
+// from crm.html's identical loadContactLog().
+function renderContactLogList(rows) {
+  if (!rows.length) return `<div class="proposals-empty">No contacts logged yet.</div>`;
+  return rows.map(c => {
+    const cfg = CONTACT_OUTCOME[c.outcome] || { color: '#999', label: c.outcome };
+    const followUp = c.follow_up_date ? `<div class="clog-next">Follow-up: ${formatShortDate(c.follow_up_date)}</div>` : '';
+    const notes = c.notes ? `<div class="clog-notes">${escapeHtml(c.notes)}</div>` : '';
+    const nextAction = c.next_action ? `<div class="clog-notes">Next: ${escapeHtml(c.next_action)}</div>` : '';
+    return `
+      <div class="contact-log-item">
+        <div class="clog-top">
+          <span class="outcome-tag" style="background:${cfg.color}22;color:${cfg.color}"><span class="dot" style="background:${cfg.color}"></span>${escapeHtml(cfg.label)}</span>
+          <span class="clog-meta">${escapeHtml(c.employee || '')} · ${formatShortDate(c.contacted_at)}</span>
+        </div>
+        ${notes}${nextAction}${followUp}
+      </div>`;
+  }).join('');
+}
+
+async function loadContactLog(d) {
+  const container = document.getElementById(`contact-log-${d.id}`);
+  if (!container) return;
+
+  const { data, error } = await window.db
+    .from('prospect_contacts')
+    .select('employee, outcome, notes, next_action, follow_up_date, contacted_at')
+    .eq('prospect_id', d.id)
+    .order('contacted_at', { ascending: false });
+
+  const el = document.getElementById(`contact-log-${d.id}`);
+  if (!el) return; // popup may have closed while this was in flight
+
+  if (error) {
+    el.innerHTML = `<div class="proposals-empty">Couldn't load contact history. <span class="proposal-open-link" onclick="loadContactLog({id: '${escapeHtml(d.id)}'})">Retry</span></div>`;
+    return;
+  }
+  el.innerHTML = renderContactLogList(data || []);
 }
 
 const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024; // 20 MB — matches migration 015's bucket-level file_size_limit
