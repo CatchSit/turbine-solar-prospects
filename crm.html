@@ -444,7 +444,8 @@ function updateQuoteTotal() {
   const price = Number(inputs.price.value) || 0;
   const margin = price - total;
   const marginEl = document.getElementById('q-margin');
-  marginEl.textContent = `£${margin.toLocaleString()}`;
+  const marginPct = price > 0 ? (margin / price) * 100 : 0;
+  marginEl.textContent = `£${margin.toLocaleString()} (${marginPct.toFixed(1)}%)`;
   marginEl.classList.toggle('margin-positive', margin > 0);
   marginEl.classList.toggle('margin-negative', margin < 0);
 }
