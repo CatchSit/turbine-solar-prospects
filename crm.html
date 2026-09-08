@@ -159,20 +159,26 @@ tbody tr:hover { background: var(--surface2); }
     <div class="card">
       <h3>Quote details</h3>
       <div class="quote-grid">
-        <div class="quote-field"><label>Kit price (£)</label><input type="number" min="0" step="1" id="q-kit"/></div>
-        <div class="quote-field"><label>Scaffold price (£)</label><input type="number" min="0" step="1" id="q-scaffold"/></div>
-        <div class="quote-field"><label>Electrical cost (£)</label><input type="number" min="0" step="1" id="q-electrical"/></div>
-        <div class="quote-field"><label>Roofer cost (£)</label><input type="number" min="0" step="1" id="q-roofer"/></div>
+        <div class="quote-field"><label>Kit price (£)</label><input type="number" min="0" step="1" id="q-kit" disabled/></div>
+        <div class="quote-field"><label>Scaffold price (£)</label><input type="number" min="0" step="1" id="q-scaffold" disabled/></div>
+        <div class="quote-field"><label>Electrical cost (£)</label><input type="number" min="0" step="1" id="q-electrical" disabled/></div>
+        <div class="quote-field"><label>Roofer cost (£)</label><input type="number" min="0" step="1" id="q-roofer" disabled/></div>
       </div>
       <div class="quote-total"><span>Total cost</span><strong id="q-total">£0</strong></div>
       <div class="quote-grid" style="margin-top:12px">
-        <div class="quote-field"><label>Quote price (£)</label><input type="number" min="0" step="1" id="q-price"/></div>
+        <div class="quote-field"><label>Quote price (£)</label><input type="number" min="0" step="1" id="q-price" disabled/></div>
       </div>
       <div class="quote-total"><span>Margin</span><strong id="q-margin">£0</strong></div>
       <div class="quote-footer">
         <span class="quote-status" id="q-status"></span>
-        <button class="btn-primary" id="q-save-btn">Save quote</button>
+        <div>
+          <button class="btn-secondary" id="q-cancel-btn" style="display:none">Cancel</button>
+          <button class="btn-secondary" id="q-edit-btn">Edit</button>
+          <button class="btn-primary" id="q-save-btn" style="display:none">Save quote</button>
+        </div>
       </div>
+      <div class="quote-status" style="margin-top:16px;font-weight:600">Edit history</div>
+      <div id="q-history" style="margin-top:8px"></div>
     </div>
 
     <div class="card">
@@ -451,10 +457,18 @@ function updateQuoteTotal() {
 }
 Object.values(quoteInputs()).forEach(el => el.addEventListener('input', updateQuoteTotal));
 
+function setQuoteEditing(editing) {
+  Object.values(quoteInputs()).forEach(el => el.disabled = !editing);
+  document.getElementById('q-edit-btn').style.display = editing ? 'none' : '';
+  document.getElementById('q-cancel-btn').style.display = editing ? '' : 'none';
+  document.getElementById('q-save-btn').style.display = editing ? '' : 'none';
+}
+
 async function loadQuote(prospectId) {
   const inputs = quoteInputs();
   Object.values(inputs).forEach(el => el.value = '');
   document.getElementById('q-status').textContent = '';
+  setQuoteEditing(false);
 
   const { data, error } = await db.from('lead_quotes')
     .select('kit_price, scaffold_price, electrical_cost, roofer_cost, quote_price, updated_at')
@@ -470,7 +484,13 @@ async function loadQuote(prospectId) {
     document.getElementById('q-status').textContent = `Last saved ${formatShortDate(data.updated_at)}`;
   }
   updateQuoteTotal();
+  loadQuoteHistory(prospectId);
 }
+
+document.getElementById('q-edit-btn').addEventListener('click', () => setQuoteEditing(true));
+document.getElementById('q-cancel-btn').addEventListener('click', () => {
+  if (currentLead) loadQuote(currentLead.id);
+});
 
 document.getElementById('q-save-btn').addEventListener('click', async () => {
   if (!currentLead) return;
@@ -492,7 +512,37 @@ document.getElementById('q-save-btn').addEventListener('click', async () => {
   btn.disabled = false; btn.textContent = 'Save quote';
   if (error) { alert('Failed to save quote: ' + error.message); return; }
   document.getElementById('q-status').textContent = 'Last saved just now';
+  setQuoteEditing(false);
+  loadQuoteHistory(currentLead.id);
 });
+
+/* ── Quote edit history (lead_quote_audit, migration 023) — written by a
+   database trigger on every insert/update to lead_quotes, not by this
+   client code, so the log can't be skipped or forged by a rep. ────── */
+async function loadQuoteHistory(prospectId) {
+  const list = document.getElementById('q-history');
+  list.textContent = 'Loading…';
+  const { data, error } = await db.from('lead_quote_audit')
+    .select('kit_price, scaffold_price, electrical_cost, roofer_cost, quote_price, edited_at, edited_by_email')
+    .eq('prospect_id', prospectId)
+    .order('edited_at', { ascending: false });
+  if (!currentLead || currentLead.id !== prospectId) return; // moved on while this was in flight
+  if (error) { list.innerHTML = `<div class="doc-empty">Couldn't load edit history.</div>`; return; }
+  if (!data.length) { list.innerHTML = `<div class="doc-empty">No edits logged yet.</div>`; return; }
+  list.innerHTML = data.map(h => {
+    const total = ['kit_price', 'scaffold_price', 'electrical_cost', 'roofer_cost']
+      .reduce((sum, key) => sum + (Number(h[key]) || 0), 0);
+    const price = Number(h.quote_price) || 0;
+    const margin = price - total;
+    return `
+      <div class="contact-log-item">
+        <div class="clog-top">
+          <span class="clog-meta">${escapeHtml(h.edited_by_email || 'Unknown')} · ${formatShortDate(h.edited_at)}</span>
+        </div>
+        <div class="clog-notes">Total cost £${total.toLocaleString()} · Quote price £${price.toLocaleString()} · Margin £${margin.toLocaleString()}</div>
+      </div>`;
+  }).join('');
+}
 
 /* ── Documents (lead_documents table, 'proposals' Storage bucket —
    same generalised-from-proposals mechanism as index.html's popup,
