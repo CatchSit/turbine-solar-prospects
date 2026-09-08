@@ -1,2 +1,5 @@
 [functions.company-lookup]
 verify_jwt = true
+
+[functions.send-to-install-hub]
+verify_jwt = true
