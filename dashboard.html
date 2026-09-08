@@ -155,7 +155,7 @@ async function renderGrantAreas() {
   const statusByArea = {};
   (data || []).forEach(row => { statusByArea[row.local_authority] = row.status; });
 
-  GRANT_AREA_ORDER.forEach(area => {
+  GRANT_AREA_NAMED.forEach(area => {
     const row = document.createElement('div');
     row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:12px;';
     const select = document.createElement('select');

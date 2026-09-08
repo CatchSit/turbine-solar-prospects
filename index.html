@@ -122,17 +122,6 @@
     #search::placeholder { color: var(--text3); }
     #search:focus { border-color: var(--accent); background: var(--surface); }
 
-    .range-row { display: flex; align-items: center; gap: 8px; }
-    .range-row input[type="number"] {
-      width: 100%; padding: 9px 10px;
-      border: 1px solid var(--border); border-radius: 8px;
-      background: var(--surface2); color: var(--text);
-      font-size: 12.5px; outline: none; font-family: inherit;
-    }
-    .range-row input:focus { border-color: var(--accent); background: var(--surface); }
-    .range-row span { font-size: 11.5px; color: var(--text3); flex-shrink: 0; }
-    .range-hint { font-size: 11px; color: var(--text3); margin-top: 6px; }
-
     /* Chips (building type / EPC rating / solar status) */
     .chip-list { display: flex; flex-wrap: wrap; gap: 6px; }
     .chip {
@@ -491,25 +480,6 @@
   </div>
 
   <div class="section">
-    <h3>Floor area (m²)</h3>
-    <div class="range-row">
-      <input id="floor-min" type="number" min="0" step="100" placeholder="Min"/>
-      <span>–</span>
-      <input id="floor-max" type="number" min="0" step="100" placeholder="Max"/>
-    </div>
-  </div>
-
-  <div class="section">
-    <h3>Rateable value (£)</h3>
-    <div class="range-row">
-      <input id="rateable-min" type="number" min="0" step="1000" placeholder="Min"/>
-      <span>–</span>
-      <input id="rateable-max" type="number" min="0" step="1000" placeholder="Max"/>
-    </div>
-    <div class="range-hint">Filters on the highest-value unit at each postcode — see note below.</div>
-  </div>
-
-  <div class="section">
     <h3>Building type</h3>
     <div id="building-type-list" class="chip-list"></div>
   </div>
@@ -844,10 +814,6 @@ let activeSolarStatuses = new Set(['prospect']); // default: only show fresh pro
 let filterEpcSolar = false;      // opt-in: when true, only show prospects with epc_recommends_solar
 let filterEpcEfficiency = false; // opt-in: when true, only show prospects with epc_recommends_efficiency
 let searchTerm = "";
-let floorMin = null;
-let floorMax = null;
-let rateableMin = null;
-let rateableMax = null;
 
 // Real spread of solar-recommendation dates in the loaded data, computed
 // once in initMap() before markers are created — bright green = newest,
@@ -908,7 +874,6 @@ function makeManualLeadIcon(d) {
 // popup/drag wiring instead of two copies drifting apart.
 function createMarker(d) {
   d._bucket = bucketPropertyType(d.property_type);
-  d._maxRateable = maxHereditamentValue(d);
   d._sicSector = bucketSicSector(d.company_classifications?.sic_codes);
   d._maturity = bucketCompanyMaturity(d.company_classifications || {});
   d._recommendationYear = (d.epc_recommends_solar && d.lodgement_date) ? new Date(d.lodgement_date).getFullYear() : null;
@@ -1601,14 +1566,17 @@ function initGrantAreaLayer(geojson, statusByArea) {
 
 function buildGrantAreaChips(data, statusByArea) {
   const counts = {};
-  data.forEach(d => { if (d.local_authority) counts[d.local_authority] = (counts[d.local_authority] || 0) + 1; });
+  data.forEach(d => {
+    const area = GRANT_AREA_NAMED.includes(d.local_authority) ? d.local_authority : 'Other';
+    counts[area] = (counts[area] || 0) + 1;
+  });
   const el = document.getElementById("grant-area-list");
   GRANT_AREA_ORDER.forEach(area => {
     const status = statusByArea[area];
     const cfg = status && GRANT_STATUS[status];
     const row = document.createElement("label");
     row.className = "chip on";
-    row.title = cfg ? cfg.label : 'Funding status not set';
+    row.title = area === 'Other' ? 'Every local authority outside the four tracked grant areas' : (cfg ? cfg.label : 'Funding status not set');
     row.innerHTML = `<input type="checkbox" checked data-area="${area}"/>
       <span class="dot" style="background:${cfg ? cfg.color : '#999'}"></span>
       ${area}<span class="chip-n">${(counts[area] || 0).toLocaleString()}</span>`;
@@ -1782,13 +1750,6 @@ document.getElementById("solar-status-clear").addEventListener("click", () => {
   applyFilters();
 });
 
-function maxHereditamentValue(d) {
-  const hereditaments = d.business_rates_matches?.hereditaments;
-  if (!hereditaments || !hereditaments.length) return null;
-  const values = hereditaments.map(h => Number(h.rateable_value)).filter(Number.isFinite);
-  return values.length ? Math.max(...values) : null;
-}
-
 /* ── Filter logic ────────────────────────────────────────── */
 function applyFilters() {
   const term = searchTerm.toLowerCase();
@@ -1797,14 +1758,16 @@ function applyFilters() {
   const toShow = [];
   allMarkers.forEach(m => {
     const d = m._d;
-    // Only constrains the four tracked grant areas — a prospect in any other
-    // Yorkshire & Humber local authority (Leeds, Wakefield, etc.) is always
-    // shown, unaffected by this filter. Deliberately not the "full selection
-    // passes everything through, deselecting one goes strict" rule used
-    // below for sectorOk/maturityOk: GRANT_AREA_ORDER is only 4 of many real
-    // local_authority values, so that rule would hide every non-tracked
-    // authority the moment a rep unchecked even one grant area.
-    const areaOk = !GRANT_AREA_ORDER.includes(d.local_authority) || activeGrantAreas.has(d.local_authority);
+    // Every prospect falls into exactly one of the five chips: one of the
+    // four tracked South Yorkshire areas, or "Other" for every remaining
+    // Yorkshire & Humber local authority (Leeds, Wakefield, etc.) — added
+    // 2026-09-08 so the area filter covers every lead, not just four
+    // councils. Unlike sectorOk/maturityOk's "full selection passes
+    // everything through" rule, this is a real exhaustive partition (every
+    // prospect maps to a real chip), so the strict has()-membership check
+    // is correct even at the default all-five-checked state.
+    const areaBucket = GRANT_AREA_NAMED.includes(d.local_authority) ? d.local_authority : 'Other';
+    const areaOk = activeGrantAreas.has(areaBucket);
     const typeOk   = activeBuildingTypes.has(d._bucket);
     // Full selection (untouched default) passes everything through,
     // including prospects with no rating. Deselecting even one chip goes
@@ -1833,13 +1796,8 @@ function applyFilters() {
     const epcSolarOk = !filterEpcSolar || d.epc_recommends_solar === true;
     const epcEfficiencyOk = !filterEpcEfficiency || d.epc_recommends_efficiency === true;
     const searchOk = !term || (d.address||'').toLowerCase().includes(term) || (d.postcode||'').toLowerCase().includes(term);
-    const minOk    = floorMin == null || (d.floor_area != null && d.floor_area >= floorMin);
-    const maxOk    = floorMax == null || (d.floor_area != null && d.floor_area <= floorMax);
-    const rateableValue = d._maxRateable;
-    const rateableMinOk = rateableMin == null || (rateableValue != null && rateableValue >= rateableMin);
-    const rateableMaxOk = rateableMax == null || (rateableValue != null && rateableValue <= rateableMax);
 
-    if (areaOk && typeOk && ratingOk && sectorOk && maturityOk && recommendationYearOk && statusOk && epcSolarOk && epcEfficiencyOk && searchOk && minOk && maxOk && rateableMinOk && rateableMaxOk) {
+    if (areaOk && typeOk && ratingOk && sectorOk && maturityOk && recommendationYearOk && statusOk && epcSolarOk && epcEfficiencyOk && searchOk) {
       toShow.push(m);
       shown++;
     }
@@ -1864,10 +1822,6 @@ document.getElementById('menu-btn').addEventListener('click', () => {
 document.getElementById('sidebar-overlay').addEventListener('click', closeSidebar);
 
 document.getElementById("search").addEventListener("input", e => { searchTerm = e.target.value; applyFilters(); });
-document.getElementById("floor-min").addEventListener("input", e => { floorMin = e.target.value === '' ? null : Number(e.target.value); applyFilters(); });
-document.getElementById("floor-max").addEventListener("input", e => { floorMax = e.target.value === '' ? null : Number(e.target.value); applyFilters(); });
-document.getElementById("rateable-min").addEventListener("input", e => { rateableMin = e.target.value === '' ? null : Number(e.target.value); applyFilters(); });
-document.getElementById("rateable-max").addEventListener("input", e => { rateableMax = e.target.value === '' ? null : Number(e.target.value); applyFilters(); });
 
 document.getElementById("reset").addEventListener("click", () => {
   activeGrantAreas = new Set(GRANT_AREA_ORDER);
@@ -1880,12 +1834,8 @@ document.getElementById("reset").addEventListener("click", () => {
   activeSolarStatuses = new Set(['prospect']);
   filterEpcSolar = false;
   filterEpcEfficiency = false;
-  searchTerm = ""; floorMin = null; floorMax = null; rateableMin = null; rateableMax = null;
+  searchTerm = "";
   document.getElementById("search").value = "";
-  document.getElementById("floor-min").value = "";
-  document.getElementById("floor-max").value = "";
-  document.getElementById("rateable-min").value = "";
-  document.getElementById("rateable-max").value = "";
   document.querySelectorAll("#grant-area-list input, #building-type-list input, #epc-rating-list input, #sic-sector-list input, #maturity-list input, #recommendation-year-list input").forEach(cb => {
     cb.checked = true;
     cb.closest('.chip').classList.add('on');
