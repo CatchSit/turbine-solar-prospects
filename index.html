@@ -891,8 +891,22 @@ function createMarker(d) {
   });
   marker.bindTooltip(d.customer_name || d.address || d.postcode || 'Unnamed building', { direction: "top", offset: [0, -10], className: 'day-tooltip', opacity: 0.96 });
   marker._d = d;
-  marker.on('click', () => {
-    marker.bindPopup(buildPopup(d), { maxWidth: 360, autoPan: true }).openPopup();
+  // Bind once, here, not inside a click handler. Leaflet's bindPopup() wires
+  // its own internal click-to-open/toggle handler the first time it's ever
+  // called on a layer, guarded by a one-time flag — so calling bindPopup()
+  // again on every click (as this used to) added a SECOND click listener
+  // starting from the marker's 2nd click onward (the guard stops it being
+  // added twice, but not once). From then on, every click fired both: ours
+  // (opening a fresh popup) and Leaflet's internal one (which, seeing the
+  // popup already open for this marker, immediately toggled it back closed)
+  // — the popup flashed open and shut within the same click, which looked
+  // exactly like "stops showing after a couple of clicks" (2026-09-09).
+  // Binding once avoids the double-handler entirely; Leaflet's own handler
+  // now does 100% of the open/toggle work, and the data-loading side
+  // effects move to 'popupopen' so they still fire on every real open,
+  // including the programmatic marker.fire('click') used by deep links.
+  marker.bindPopup(buildPopup(d), { maxWidth: 360, autoPan: true });
+  marker.on('popupopen', () => {
     loadCompanyMatch(d);
     loadDocuments(d);
     loadContactLog(d);
