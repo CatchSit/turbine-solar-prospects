@@ -87,9 +87,9 @@ tbody tr:hover { background: var(--surface2); }
 .doc-upload-status.error { color: #c0392b; }
 
 /* ── Log Contact modal (ported from index.html) ─────────── */
-#contact-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(17,24,39,0.4); z-index: 2000; align-items: center; justify-content: center; }
-#contact-modal-overlay.open { display: flex; }
-#contact-modal { width: 420px; max-width: 92vw; max-height: 88vh; overflow-y: auto; background: var(--surface); border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+#contact-modal-overlay, #lead-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(17,24,39,0.4); z-index: 2000; align-items: center; justify-content: center; }
+#contact-modal-overlay.open, #lead-modal-overlay.open { display: flex; }
+#contact-modal, #lead-modal { width: 420px; max-width: 92vw; max-height: 88vh; overflow-y: auto; background: var(--surface); border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
 .modal-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 20px 22px 14px; border-bottom: 1px solid var(--border); }
 .modal-eyebrow { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .08em; }
 .modal-header-text h2 { font-size: 17px; font-weight: 600; margin-top: 4px; }
@@ -135,6 +135,7 @@ tbody tr:hover { background: var(--surface2); }
       <div class="table-header">
         <h2>Manual leads</h2>
         <input type="text" id="leads-search" placeholder="Search by name, address, phone, email…"/>
+        <button class="btn-primary" id="add-lead-btn">+ Add lead</button>
       </div>
       <table>
         <thead><tr>
@@ -254,6 +255,48 @@ tbody tr:hover { background: var(--surface2); }
       <div class="modal-btns">
         <button class="btn-secondary" id="cm-cancel">Cancel</button>
         <button class="btn-primary" id="cm-submit">Save log</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Add Lead modal (ported from index.html) ─────────────── -->
+<div id="lead-modal-overlay">
+  <div id="lead-modal">
+    <div class="modal-header">
+      <div class="modal-header-text">
+        <div class="modal-eyebrow">Add lead</div>
+        <h2>New manual lead</h2>
+        <div class="modal-sub">Location is geocoded from the postcode — drag the pin to the exact building on the map afterwards if needed.</div>
+      </div>
+      <button class="modal-close" id="lm-close-btn" aria-label="Close">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <label>Customer name <span class="required">*</span></label>
+      <input type="text" id="lm-customer-name" placeholder="Who's the lead?"/>
+
+      <label>Type <span class="required">*</span></label>
+      <div class="outcome-chips" id="lm-type-chips"></div>
+
+      <label>Address <span class="required">*</span></label>
+      <input type="text" id="lm-address" placeholder="Street address…"/>
+
+      <label>Postcode <span class="required">*</span></label>
+      <input type="text" id="lm-postcode" placeholder="e.g. S1 2HE"/>
+
+      <label>Contact number <span class="optional-label">— optional</span></label>
+      <input type="tel" id="lm-phone" placeholder="07…"/>
+
+      <label>Email address <span class="optional-label">— optional</span></label>
+      <input type="email" id="lm-email" placeholder="name@example.com"/>
+    </div>
+
+    <div class="modal-footer">
+      <span class="modal-shortcuts">Esc to cancel · ⌘+↵ to save</span>
+      <div class="modal-btns">
+        <button class="btn-secondary" id="lm-cancel">Cancel</button>
+        <button class="btn-primary" id="lm-submit">Add lead</button>
       </div>
     </div>
   </div>
@@ -756,6 +799,110 @@ document.getElementById('cm-submit').addEventListener('click', async () => {
   if (error) { alert('Failed to save: ' + error.message); return; }
   closeContactModal();
   if (currentLead && currentLead.id === prospectId) loadContactLog(prospectId);
+});
+
+/* ── Add Lead modal (ported from index.html) ─────────────── */
+let selectedLeadType = null;
+(function initLeadModal() {
+  const chipsEl = document.getElementById('lm-type-chips');
+  LEAD_TYPE_ORDER.forEach(type => {
+    const cfg = LEAD_TYPE[type];
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'outcome-chip';
+    chip.dataset.value = type;
+    chip.innerHTML = `<span class="chip-dot" style="background:${cfg.color}"></span>${escapeHtml(cfg.label)}`;
+    chip.addEventListener('click', () => {
+      chipsEl.querySelectorAll('.outcome-chip').forEach(c => { c.classList.remove('on'); c.style.background = ''; c.style.borderColor = ''; });
+      chip.classList.add('on');
+      chip.style.background = cfg.color;
+      chip.style.borderColor = cfg.color;
+      selectedLeadType = type;
+    });
+    chipsEl.appendChild(chip);
+  });
+})();
+
+function openLeadModal() {
+  document.getElementById('lm-customer-name').value = '';
+  document.getElementById('lm-address').value = '';
+  document.getElementById('lm-postcode').value = '';
+  document.getElementById('lm-phone').value = '';
+  document.getElementById('lm-email').value = '';
+  selectedLeadType = null;
+  document.querySelectorAll('#lm-type-chips .outcome-chip').forEach(c => { c.classList.remove('on'); c.style.background = ''; c.style.borderColor = ''; });
+  document.getElementById('lead-modal-overlay').classList.add('open');
+}
+function closeLeadModal() {
+  document.getElementById('lead-modal-overlay').classList.remove('open');
+}
+document.getElementById('add-lead-btn').addEventListener('click', openLeadModal);
+document.getElementById('lm-cancel').addEventListener('click', closeLeadModal);
+document.getElementById('lm-close-btn').addEventListener('click', closeLeadModal);
+document.getElementById('lead-modal-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('lead-modal-overlay')) closeLeadModal();
+});
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('lead-modal-overlay').classList.contains('open')) return;
+  if (e.key === 'Escape') closeLeadModal();
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') document.getElementById('lm-submit').click();
+});
+
+document.getElementById('lm-submit').addEventListener('click', async () => {
+  const customerName = document.getElementById('lm-customer-name').value.trim();
+  const address = document.getElementById('lm-address').value.trim();
+  const postcode = document.getElementById('lm-postcode').value.trim();
+  const phone = document.getElementById('lm-phone').value.trim();
+  const email = document.getElementById('lm-email').value.trim();
+
+  if (!customerName) { alert('Please enter the customer name.'); return; }
+  if (!selectedLeadType) { alert('Please pick commercial or domestic.'); return; }
+  if (!address) { alert('Please enter an address.'); return; }
+  if (!postcode) { alert('Please enter a postcode.'); return; }
+
+  const btn = document.getElementById('lm-submit');
+  btn.disabled = true; btn.textContent = 'Geocoding…';
+
+  // Same free postcodes.io lookup index.html's map modal and its own
+  // geocode-postcodes.mjs use — postcode-level accuracy only, hence the
+  // drag-to-adjust step this modal's subtitle points reps at.
+  let geo;
+  try {
+    const resp = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(postcode)}`);
+    const json = await resp.json();
+    if (json.status !== 200) throw new Error('Postcode not found');
+    geo = json.result;
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'Add lead';
+    alert('Could not find that postcode — please check it and try again.');
+    return;
+  }
+
+  btn.textContent = 'Saving…';
+  const { data: inserted, error } = await db.from('prospects').insert([{
+    source: 'manual',
+    region: 'yorkshire-humber',
+    customer_name: customerName,
+    lead_type: selectedLeadType,
+    contact_phone: phone || null,
+    contact_email: email || null,
+    address,
+    postcode,
+    local_authority: geo.admin_district || null,
+    lat: geo.latitude,
+    lng: geo.longitude,
+    geocode_source: 'postcodes.io',
+    created_by_email: currentUser?.email || null,
+  }]).select('id, customer_name, lead_type, contact_phone, contact_email, address, postcode, created_at, install_hub_job_id, sent_to_install_hub_at, sent_to_install_hub_by_email').single();
+
+  btn.disabled = false; btn.textContent = 'Add lead';
+
+  if (error) { alert('Failed to save: ' + error.message); return; }
+
+  closeLeadModal();
+  allLeads.unshift(inserted);
+  renderLeadsTable();
+  openLeadDetail(inserted);
 });
 
 /* ── Boot ────────────────────────────────────────────────── */
