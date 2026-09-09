@@ -48,6 +48,11 @@ tbody tr:hover { background: var(--surface2); }
 .lead-header h2 { font-size: 18px; margin-bottom: 6px; }
 .lead-header .sub { color: var(--text2); font-size: 12.5px; margin-top: 4px; }
 .lead-header .sub a { color: var(--accent); }
+.name-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.name-row h2 { margin-bottom: 0; }
+.name-input { font-size: 16px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; background: var(--surface2); color: var(--text); flex: 1; min-width: 160px; }
+.name-input:focus { outline: none; border-color: var(--accent); }
+.name-history { margin-top: 12px; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
 .card h3 { font-size: 13px; font-weight: 600; margin-bottom: 12px; }
 .quote-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 12px; }
@@ -150,11 +155,21 @@ tbody tr:hover { background: var(--surface2); }
   <div id="detail-view" style="display:none">
     <button id="back-btn">← Back to leads</button>
     <div class="lead-header">
-      <h2 id="lead-name">—</h2>
+      <div class="name-row">
+        <h2 id="lead-name">—</h2>
+        <input type="text" id="lead-name-input" class="name-input" style="display:none"/>
+        <button class="btn-secondary" id="name-edit-btn">Edit</button>
+        <button class="btn-secondary" id="name-cancel-btn" style="display:none">Cancel</button>
+        <button class="btn-primary" id="name-save-btn" style="display:none">Save</button>
+      </div>
       <div class="sub" id="lead-type-sub"></div>
       <div class="sub" id="lead-address"></div>
       <div class="sub" id="lead-contact"></div>
       <div class="sub"><a id="lead-map-link" href="#">View on map →</a></div>
+      <div class="name-history">
+        <div class="quote-status" style="font-weight:600">Name history</div>
+        <div id="name-history-list" style="margin-top:8px"></div>
+      </div>
     </div>
 
     <div class="card">
@@ -389,10 +404,69 @@ function openLeadDetail(lead) {
   ].filter(Boolean).join(' · ') || 'No contact details on file';
   document.getElementById('lead-map-link').href = `index.html?lead=${encodeURIComponent(lead.id)}`;
 
+  setNameEditing(false);
+  loadNameHistory(lead.id);
   loadQuote(lead.id);
   loadLeadDocuments(lead.id);
   renderInstallHubStatus();
   loadContactLog(lead.id);
+}
+
+/* ── Customer name edit + audit history (prospect_name_audit,
+   migration 025 — written by a database trigger on every customer_name
+   change, same "not client-driven" pattern as lead_quote_audit) ──── */
+function setNameEditing(editing) {
+  document.getElementById('lead-name').style.display = editing ? 'none' : '';
+  document.getElementById('lead-name-input').style.display = editing ? '' : 'none';
+  document.getElementById('name-edit-btn').style.display = editing ? 'none' : '';
+  document.getElementById('name-cancel-btn').style.display = editing ? '' : 'none';
+  document.getElementById('name-save-btn').style.display = editing ? '' : 'none';
+}
+
+document.getElementById('name-edit-btn').addEventListener('click', () => {
+  if (!currentLead) return;
+  document.getElementById('lead-name-input').value = currentLead.customer_name || '';
+  setNameEditing(true);
+});
+document.getElementById('name-cancel-btn').addEventListener('click', () => setNameEditing(false));
+
+document.getElementById('name-save-btn').addEventListener('click', async () => {
+  if (!currentLead) return;
+  const newName = document.getElementById('lead-name-input').value.trim();
+  if (!newName) { alert('Please enter a name.'); return; }
+
+  const btn = document.getElementById('name-save-btn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  const { error } = await db.from('prospects').update({ customer_name: newName }).eq('id', currentLead.id);
+  btn.disabled = false; btn.textContent = 'Save';
+  if (error) { alert('Failed to save: ' + error.message); return; }
+
+  currentLead.customer_name = newName;
+  document.getElementById('lead-name').textContent = newName;
+  const listRow = allLeads.find(l => l.id === currentLead.id);
+  if (listRow) listRow.customer_name = newName;
+  renderLeadsTable();
+  setNameEditing(false);
+  loadNameHistory(currentLead.id);
+});
+
+async function loadNameHistory(prospectId) {
+  const list = document.getElementById('name-history-list');
+  list.textContent = 'Loading…';
+  const { data, error } = await db.from('prospect_name_audit')
+    .select('old_name, new_name, edited_at, edited_by_email')
+    .eq('prospect_id', prospectId)
+    .order('edited_at', { ascending: false });
+  if (!currentLead || currentLead.id !== prospectId) return; // moved on while this was in flight
+  if (error) { list.innerHTML = `<div class="doc-empty">Couldn't load name history.</div>`; return; }
+  if (!data.length) { list.innerHTML = `<div class="doc-empty">No renames yet.</div>`; return; }
+  list.innerHTML = data.map(h => `
+    <div class="contact-log-item">
+      <div class="clog-top">
+        <span class="clog-meta">${escapeHtml(h.edited_by_email || 'Unknown')} · ${formatShortDate(h.edited_at)}</span>
+      </div>
+      <div class="clog-notes">"${escapeHtml(h.old_name || '(empty)')}" → "${escapeHtml(h.new_name || '(empty)')}"</div>
+    </div>`).join('');
 }
 
 /* ── Contact log history (migration 021 opened prospect_contacts' read
