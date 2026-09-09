@@ -118,7 +118,7 @@ async function checkBuilding(lat: number, lng: number): Promise<SolarResult> {
 
 // ─── Main handler ─────────────────────────────────────────────────────────
 
-Deno.serve(async () => {
+Deno.serve(async (req) => {
   console.log('=== Solar Enrichment ===')
 
   const period = currentPeriod()
@@ -143,6 +143,40 @@ Deno.serve(async () => {
   if (remainingBudget <= 0) {
     console.warn(`Monthly Solar API budget (${MONTHLY_CAP}) exhausted for ${period} — used=${usedThisPeriod}`)
     return new Response(JSON.stringify({ processed: 0, budgetExhausted: true, period, usedThisPeriod }), { status: 200 })
+  }
+
+  // Billing-check mode: POST {"test": true} to make exactly one real Solar
+  // API call against a fixed known UK building (Leeds Town Hall — always
+  // has coverage) instead of a full batch. Touches no prospects rows, only
+  // the same api_usage counter a real call would. Added 2026-09-09 so
+  // whether Google Cloud billing is actually enabled can be confirmed
+  // without risking a wasted ~300-row batch against a bill that isn't
+  // really on yet (HANDOVER.md Section 1, item 1).
+  const body = await req.json().catch(() => null)
+  if (body?.test === true) {
+    const TEST_LAT = 53.7997
+    const TEST_LNG = -1.5492
+    let result: SolarResult
+    try {
+      result = await checkBuilding(TEST_LAT, TEST_LNG)
+    } catch (e) {
+      usedThisPeriod++
+      await db.from('api_usage').update({
+        request_count: usedThisPeriod, updated_at: new Date().toISOString(),
+      }).eq('api_name', API_NAME).eq('period', period)
+      return new Response(JSON.stringify({ test: true, billingEnabled: false, error: String(e) }), { status: 200 })
+    }
+    usedThisPeriod++
+    await db.from('api_usage').update({
+      request_count: usedThisPeriod, updated_at: new Date().toISOString(),
+    }).eq('api_name', API_NAME).eq('period', period)
+    return new Response(JSON.stringify({
+      test: true,
+      billingEnabled: result.status !== 'error',
+      status: result.status,
+      detectionStatus: result.detectionStatus,
+      rawErrorBody: result.status === 'error' ? result.raw : undefined,
+    }), { status: 200 })
   }
 
   const { data: batch, error: fetchErr } = await db
