@@ -500,6 +500,11 @@
   </div>
 
   <div class="section">
+    <h3>Property ownership</h3>
+    <div id="ownership-status-list" class="chip-list"></div>
+  </div>
+
+  <div class="section">
     <h3>Solar recommendation year</h3>
     <div id="recommendation-year-list" class="chip-list"></div>
   </div>
@@ -654,6 +659,7 @@
 <script src="shared/contact-outcome-config.js"></script>
 <script src="shared/grant-area-config.js"></script>
 <script src="shared/lead-type-config.js"></script>
+<script src="shared/ownership-status-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
 
@@ -808,6 +814,7 @@ let activeBuildingTypes = new Set(BUILDING_TYPE_ORDER);
 let activeRatings = new Set(EPC_RATING_ORDER);
 let activeSicSectors = new Set(SIC_SECTOR_ORDER);
 let activeMaturities = new Set(MATURITY_ORDER);
+let activeOwnershipStatuses = new Set(OWNERSHIP_STATUS_ORDER);
 let activeRecommendationYears = new Set(); // populated once buildRecommendationYearChips runs (years are data-driven, not a fixed enum)
 let recommendationYearOrder = []; // set alongside activeRecommendationYears
 let activeSolarStatuses = new Set(['prospect']); // default: only show fresh prospects
@@ -1545,6 +1552,7 @@ function initMap(data, grantAreaStatus) {
   buildEpcRatingChips(data);
   buildSicSectorChips(data);
   buildMaturityChips(data);
+  buildOwnershipStatusChips(data);
   buildRecommendationYearChips(data);
   buildSolarStatusChips(data);
   applyEpcRecommendationConfig();
@@ -1686,6 +1694,26 @@ function buildMaturityChips(data) {
   });
 }
 
+function buildOwnershipStatusChips(data) {
+  const counts = {};
+  data.forEach(d => { counts[d.ownership_status] = (counts[d.ownership_status] || 0) + 1; });
+  const el = document.getElementById("ownership-status-list");
+  OWNERSHIP_STATUS_ORDER.filter(s => counts[s]).forEach(status => {
+    const cfg = OWNERSHIP_STATUS[status];
+    const row = document.createElement("label");
+    row.className = "chip on";
+    row.innerHTML = `<input type="checkbox" checked data-status="${status}"/>
+      <span class="dot" style="background:${cfg.color}"></span>
+      ${cfg.label}<span class="chip-n">${counts[status].toLocaleString()}</span>`;
+    row.querySelector("input").addEventListener("change", e => {
+      e.target.checked ? activeOwnershipStatuses.add(status) : activeOwnershipStatuses.delete(status);
+      row.classList.toggle('on', e.target.checked);
+      applyFilters();
+    });
+    el.appendChild(row);
+  });
+}
+
 function buildRecommendationYearChips(data) {
   const counts = {};
   data.forEach(d => { if (d._recommendationYear) counts[d._recommendationYear] = (counts[d._recommendationYear] || 0) + 1; });
@@ -1799,6 +1827,10 @@ function applyFilters() {
     // follows this identical strict-once-touched rule for d._recommendationYear.
     const sectorOk = activeSicSectors.size === SIC_SECTOR_ORDER.length || activeSicSectors.has(d._sicSector);
     const maturityOk = activeMaturities.size === MATURITY_ORDER.length || activeMaturities.has(d._maturity);
+    // Same "full selection passes everything, one deselect goes strict" rule
+    // as sector/maturity above — 'unknown' is the overwhelming majority
+    // bucket (see migration 024's comment), not a rare edge case.
+    const ownershipOk = activeOwnershipStatuses.size === OWNERSHIP_STATUS_ORDER.length || activeOwnershipStatuses.has(d.ownership_status);
     const recommendationYearOk = activeRecommendationYears.size === recommendationYearOrder.length
       || (d._recommendationYear !== null && activeRecommendationYears.has(d._recommendationYear));
     // Manual leads default to solar_status:'pending' like anything else
@@ -1811,7 +1843,7 @@ function applyFilters() {
     const epcEfficiencyOk = !filterEpcEfficiency || d.epc_recommends_efficiency === true;
     const searchOk = !term || (d.address||'').toLowerCase().includes(term) || (d.postcode||'').toLowerCase().includes(term);
 
-    if (areaOk && typeOk && ratingOk && sectorOk && maturityOk && recommendationYearOk && statusOk && epcSolarOk && epcEfficiencyOk && searchOk) {
+    if (areaOk && typeOk && ratingOk && sectorOk && maturityOk && ownershipOk && recommendationYearOk && statusOk && epcSolarOk && epcEfficiencyOk && searchOk) {
       toShow.push(m);
       shown++;
     }
@@ -1844,13 +1876,14 @@ document.getElementById("reset").addEventListener("click", () => {
   activeRatings = new Set(EPC_RATING_ORDER);
   activeSicSectors = new Set(SIC_SECTOR_ORDER);
   activeMaturities = new Set(MATURITY_ORDER);
+  activeOwnershipStatuses = new Set(OWNERSHIP_STATUS_ORDER);
   activeRecommendationYears = new Set(recommendationYearOrder);
   activeSolarStatuses = new Set(['prospect']);
   filterEpcSolar = false;
   filterEpcEfficiency = false;
   searchTerm = "";
   document.getElementById("search").value = "";
-  document.querySelectorAll("#grant-area-list input, #building-type-list input, #epc-rating-list input, #sic-sector-list input, #maturity-list input, #recommendation-year-list input").forEach(cb => {
+  document.querySelectorAll("#grant-area-list input, #building-type-list input, #epc-rating-list input, #sic-sector-list input, #maturity-list input, #ownership-status-list input, #recommendation-year-list input").forEach(cb => {
     cb.checked = true;
     cb.closest('.chip').classList.add('on');
   });
@@ -1894,7 +1927,7 @@ async function fetchAllProspects(onProgress) {
   // manual one, and the default solar-status filter (which manual leads
   // are otherwise exempted from) silently hides it. Bit us live 2026-09-07:
   // a lead added fine in one session vanished after a reload.
-  const PROSPECT_COLUMNS = 'id, address, postcode, lat, lng, property_type, floor_area:total_floor_area, epc_rating:current_energy_rating, local_authority, solar_status, solar_max_panels, solar_yearly_energy_kwh, current_energy_efficiency, epc_recommends_solar, epc_recommends_efficiency, lodgement_date, source, customer_name, lead_type, contact_phone, contact_email, created_at, business_rates_matches(hereditaments, no_match), company_classifications(company_name, sic_codes, incorporated_on, accounts_type, no_match)';
+  const PROSPECT_COLUMNS = 'id, address, postcode, lat, lng, property_type, floor_area:total_floor_area, epc_rating:current_energy_rating, local_authority, solar_status, solar_max_panels, solar_yearly_energy_kwh, current_energy_efficiency, epc_recommends_solar, epc_recommends_efficiency, lodgement_date, source, customer_name, lead_type, contact_phone, contact_email, created_at, ownership_status, business_rates_matches(hereditaments, no_match), company_classifications(company_name, sic_codes, incorporated_on, accounts_type, no_match)';
 
   // head:true returns only a count, no rows — safe from the max-rows cap
   // that bit the id-list fetch (2026-08-21 live incident), and cheap since
