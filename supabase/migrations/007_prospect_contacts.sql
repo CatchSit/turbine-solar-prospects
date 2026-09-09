@@ -5,7 +5,8 @@ create table if not exists prospect_contacts (
   employee_email text,
   outcome        text not null,
   -- outcome must be one of: No Answer, Follow Up, Meeting Booked, Survey Booked,
-  -- Quote Sent, Converted, Not Interested, Already Has Solar
+  -- Quote Sent, Converted, Scheduled for Install, Completed, Not Interested,
+  -- Already Has Solar (see shared/contact-outcome-config.js for the live list)
   -- (no DB-level CHECK constraint — enforced by the UI only, matching mcs-map's contacts table)
   notes          text,
   next_action    text,

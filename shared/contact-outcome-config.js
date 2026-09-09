@@ -9,6 +9,8 @@ const CONTACT_OUTCOME = {
   "Survey Booked":     { color: "#2a9d9d", soft: "#d9f0ef", label: "Survey booked",     requiresDate: true  },
   "Quote Sent":        { color: "#8a6d3b", soft: "#ede2cf", label: "Quote sent",        requiresDate: false },
   "Converted":         { color: "#2ba45e", soft: "#e6f4ec", label: "Converted",         requiresDate: false },
+  "Scheduled for Install": { color: "#2f6fb3", soft: "#dbe6f2", label: "Scheduled for install", requiresDate: true },
+  "Completed":         { color: "#1f8a52", soft: "#dcf0e4", label: "Completed",         requiresDate: false },
   "Not Interested":    { color: "#8e9080", soft: "#ececdf", label: "Not interested",    requiresDate: false },
   "Already Has Solar": { color: "#6f5b94", soft: "#e2dcec", label: "Already has solar", requiresDate: false },
 };
