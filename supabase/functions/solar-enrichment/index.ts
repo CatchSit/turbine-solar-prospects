@@ -2,10 +2,11 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const SUPABASE_URL              = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+const SUPABASE_ANON_KEY         = Deno.env.get('SUPABASE_ANON_KEY')!
 const GOOGLE_SOLAR_API_KEY      = Deno.env.get('GOOGLE_SOLAR_API_KEY')!
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !GOOGLE_SOLAR_API_KEY) {
-  throw new Error('Missing required secrets — check SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GOOGLE_SOLAR_API_KEY')
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !SUPABASE_ANON_KEY || !GOOGLE_SOLAR_API_KEY) {
+  throw new Error('Missing required secrets — check SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY, GOOGLE_SOLAR_API_KEY')
 }
 
 const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
@@ -121,6 +122,22 @@ async function checkBuilding(lat: number, lng: number): Promise<SolarResult> {
 Deno.serve(async (req) => {
   console.log('=== Solar Enrichment ===')
 
+  // This function's own verify_jwt=true only checks that *some* valid
+  // Supabase JWT was presented — the public anon key (embedded client-side
+  // in index.html) satisfies that trivially. Re-verify the caller is an
+  // actual signed-in Turbine Energy rep, same pattern as company-lookup,
+  // so this isn't callable by anyone who's viewed the page source — it can
+  // burn real Google Solar API budget and (via diagnostic modes) read
+  // prospect data. Added 2026-09-09 after noticing the gap while adding
+  // the test/areaCounts diagnostic modes.
+  const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } },
+  })
+  const { data: { user }, error: authErr } = await authClient.auth.getUser()
+  if (authErr || !user || !user.email?.toLowerCase().endsWith('@turbineenergyuk.co.uk')) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
+  }
+
   const period = currentPeriod()
   const { data: usageRow, error: usageErr } = await db
     .from('api_usage')
@@ -153,6 +170,36 @@ Deno.serve(async (req) => {
   // without risking a wasted ~300-row batch against a bill that isn't
   // really on yet (HANDOVER.md Section 1, item 1).
   const body = await req.json().catch(() => null)
+
+  // Read-only diagnostic mode: POST {"areaCounts": true} to see how many
+  // 'pending' rows (eligible for enrichment — solar_status='pending', has
+  // lat/lng) sit in each of the four named grant areas, so a batch can be
+  // sized/targeted by area before spending real API budget on it. No
+  // Google API calls, no writes — just counts. Added 2026-09-09.
+  if (body?.areaCounts === true) {
+    const AREAS = ['Barnsley', 'Doncaster', 'Rotherham', 'Sheffield']
+    const counts: Record<string, number> = {}
+    for (const area of AREAS) {
+      const { count, error } = await db.from('prospects')
+        .select('id', { count: 'exact', head: true })
+        .eq('solar_status', 'pending')
+        .not('lat', 'is', null)
+        .not('lng', 'is', null)
+        .eq('local_authority', area)
+      if (error) return new Response(JSON.stringify({ areaCounts: true, error }), { status: 500 })
+      counts[area] = count ?? 0
+    }
+    const { count: totalCount, error: totalErr } = await db.from('prospects')
+      .select('id', { count: 'exact', head: true })
+      .eq('solar_status', 'pending')
+      .not('lat', 'is', null)
+      .not('lng', 'is', null)
+    if (totalErr) return new Response(JSON.stringify({ areaCounts: true, error: totalErr }), { status: 500 })
+    counts['Other'] = (totalCount ?? 0) - AREAS.reduce((sum, a) => sum + counts[a], 0)
+    counts['Total pending'] = totalCount ?? 0
+    return new Response(JSON.stringify({ areaCounts: true, counts, monthlyCap: MONTHLY_CAP, usedThisPeriod, remainingBudget, period }), { status: 200 })
+  }
+
   if (body?.test === true) {
     const TEST_LAT = 53.7997
     const TEST_LNG = -1.5492
