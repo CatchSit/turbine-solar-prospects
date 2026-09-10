@@ -167,6 +167,17 @@
     #map { flex: 1; background: #eef0eb; }
     .leaflet-container { font-family: 'Inter', sans-serif !important; }
     .leaflet-tile-pane { filter: saturate(0.35) brightness(1.04) contrast(0.96); }
+    /* Satellite imagery needs real colour/contrast to judge a rooftop by
+       eye — the streets basemap's desaturation filter would defeat the
+       point of the toggle, so it's reset while satellite is active. */
+    #map.satellite-active .leaflet-tile-pane { filter: none; }
+    .satellite-toggle-btn {
+      background: var(--surface); color: var(--text2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 0 12px; height: 32px; font-size: 12.5px; font-weight: 500;
+      font-family: inherit; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.04); margin-bottom: 4px;
+    }
+    .satellite-toggle-btn:hover { background: var(--surface2); color: var(--text); }
+    .satellite-toggle-btn.on { background: var(--accent); color: #fff; border-color: var(--accent); }
     .leaflet-control-zoom a {
       background: var(--surface) !important; color: var(--text2) !important;
       border: 1px solid var(--border) !important; border-radius: 8px !important;
@@ -648,6 +659,11 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<!-- Satellite imagery (2026-09-10) — key is restricted to
+     https://catchsit.github.io/* with no localhost origin, so the
+     satellite toggle only works on the live Pages URL, not local dev. -->
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDVsJHNtuToSUR6EClZG5peicR-qXgXz_s"></script>
+<script src="https://unpkg.com/leaflet.gridlayer.googlemutant@0.7.1/Leaflet.GoogleMutant.js"></script>
 <script src="shared/solar-status-config.js"></script>
 <script src="shared/epc-rating-config.js"></script>
 <script src="shared/escape-html.js"></script>
@@ -780,11 +796,51 @@ function natureOfControlLabel(value) {
 
 /* ── Map setup ───────────────────────────────────────────── */
 const map = L.map("map", { center: [53.85, -1.3], zoom: 9, zoomControl: false });
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+const streetsLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',
   maxZoom: 19,
 }).addTo(map);
 L.control.zoom({ position: 'topright' }).addTo(map);
+
+// Satellite toggle — real Google satellite tiles via the GoogleMutant
+// bridge (renders Google's own Maps JS layer inside a Leaflet GridLayer,
+// which is what Google's terms require, rather than scraping tile URLs
+// directly). Lets a rep double-check a building's roof by eye when the
+// Solar API reported no_coverage. Google's script loads async in the
+// background, so the layer itself is only constructed lazily on first
+// toggle — by then window.google.maps is reliably present, since a rep
+// can't click this before the page has finished rendering.
+let satelliteLayer = null;
+let satelliteOn = false;
+const SatelliteToggleControl = L.Control.extend({
+  options: { position: 'topright' },
+  onAdd: function () {
+    const btn = L.DomUtil.create('button', 'satellite-toggle-btn');
+    btn.type = 'button';
+    btn.textContent = 'Satellite';
+    L.DomEvent.disableClickPropagation(btn);
+    btn.addEventListener('click', () => {
+      if (!satelliteOn && !satelliteLayer && (!window.google || !window.google.maps)) {
+        alert('Google Maps failed to load — satellite imagery is unavailable. Check your connection and try again.');
+        return;
+      }
+      satelliteOn = !satelliteOn;
+      btn.classList.toggle('on', satelliteOn);
+      btn.textContent = satelliteOn ? 'Streets' : 'Satellite';
+      document.getElementById('map').classList.toggle('satellite-active', satelliteOn);
+      if (satelliteOn) {
+        if (!satelliteLayer) satelliteLayer = L.gridLayer.googleMutant({ type: 'satellite', maxZoom: 21 });
+        map.removeLayer(streetsLayer);
+        map.addLayer(satelliteLayer);
+      } else {
+        map.removeLayer(satelliteLayer);
+        map.addLayer(streetsLayer);
+      }
+    });
+    return btn;
+  },
+});
+map.addControl(new SatelliteToggleControl());
 
 const cluster = L.markerClusterGroup({
   chunkedLoading: true,
