@@ -11,6 +11,31 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !SUPABASE_ANON_KEY || !GOOGLE
 
 const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
+// This function was originally only ever invoked via the CLI/curl, so it
+// never needed CORS headers. dashboard.html now calls it directly from the
+// browser (db.functions.invoke) to drive the "Solar enrichment" panel
+// (2026-09-10) — without these, the browser blocks the response before
+// supabase-js can read it, surfacing as the generic "Failed to send a
+// request to the Edge Function". Same origin-echo pattern as
+// company-lookup, the only other function called from the browser.
+const PROD_ORIGIN = 'https://catchsit.github.io'
+
+function isAllowedOrigin(origin: string | null): boolean {
+  if (!origin) return false
+  if (origin === PROD_ORIGIN) return true
+  return /^http:\/\/localhost(:\d+)?$/.test(origin)
+}
+
+function corsHeadersFor(origin: string | null): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Vary': 'Origin',
+  }
+  if (isAllowedOrigin(origin)) headers['Access-Control-Allow-Origin'] = origin as string
+  return headers
+}
+
 // Bounded per-invocation batch, to stay inside the Edge Function wall-clock
 // timeout. Invoke this function repeatedly (manually, for the pilot) until
 // no 'pending' rows remain — same "run until done" operational pattern as
@@ -120,6 +145,20 @@ async function checkBuilding(lat: number, lng: number): Promise<SolarResult> {
 // ─── Main handler ─────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
+  const origin = req.headers.get('Origin')
+  const CORS_HEADERS = corsHeadersFor(origin)
+
+  function jsonResponse(body: unknown, status: number): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+    })
+  }
+
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 200, headers: CORS_HEADERS })
+  }
+
   console.log('=== Solar Enrichment ===')
 
   // This function's own verify_jwt=true only checks that *some* valid
@@ -135,7 +174,7 @@ Deno.serve(async (req) => {
   })
   const { data: { user }, error: authErr } = await authClient.auth.getUser()
   if (authErr || !user || !user.email?.toLowerCase().endsWith('@turbineenergyuk.co.uk')) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
+    return jsonResponse({ error: 'Unauthorized' }, 401)
   }
 
   const period = currentPeriod()
@@ -148,7 +187,7 @@ Deno.serve(async (req) => {
 
   if (usageErr) {
     console.error('Failed to read api_usage:', JSON.stringify(usageErr))
-    return new Response(JSON.stringify({ error: usageErr }), { status: 500 })
+    return jsonResponse({ error: usageErr }, 500)
   }
 
   let usedThisPeriod = usageRow?.request_count ?? 0
@@ -159,7 +198,7 @@ Deno.serve(async (req) => {
   const remainingBudget = MONTHLY_CAP - usedThisPeriod
   if (remainingBudget <= 0) {
     console.warn(`Monthly Solar API budget (${MONTHLY_CAP}) exhausted for ${period} — used=${usedThisPeriod}`)
-    return new Response(JSON.stringify({ processed: 0, budgetExhausted: true, period, usedThisPeriod }), { status: 200 })
+    return jsonResponse({ processed: 0, budgetExhausted: true, period, usedThisPeriod }, 200)
   }
 
   // Billing-check mode: POST {"test": true} to make exactly one real Solar
@@ -186,7 +225,7 @@ Deno.serve(async (req) => {
         .not('lat', 'is', null)
         .not('lng', 'is', null)
         .eq('local_authority', area)
-      if (error) return new Response(JSON.stringify({ areaCounts: true, error }), { status: 500 })
+      if (error) return jsonResponse({ areaCounts: true, error }, 500)
       counts[area] = count ?? 0
     }
     const { count: totalCount, error: totalErr } = await db.from('prospects')
@@ -194,10 +233,10 @@ Deno.serve(async (req) => {
       .eq('solar_status', 'pending')
       .not('lat', 'is', null)
       .not('lng', 'is', null)
-    if (totalErr) return new Response(JSON.stringify({ areaCounts: true, error: totalErr }), { status: 500 })
+    if (totalErr) return jsonResponse({ areaCounts: true, error: totalErr }, 500)
     counts['Other'] = (totalCount ?? 0) - AREAS.reduce((sum, a) => sum + counts[a], 0)
     counts['Total pending'] = totalCount ?? 0
-    return new Response(JSON.stringify({ areaCounts: true, counts, monthlyCap: MONTHLY_CAP, usedThisPeriod, remainingBudget, period }), { status: 200 })
+    return jsonResponse({ areaCounts: true, counts, monthlyCap: MONTHLY_CAP, usedThisPeriod, remainingBudget, period }, 200)
   }
 
   if (body?.test === true) {
@@ -211,19 +250,19 @@ Deno.serve(async (req) => {
       await db.from('api_usage').update({
         request_count: usedThisPeriod, updated_at: new Date().toISOString(),
       }).eq('api_name', API_NAME).eq('period', period)
-      return new Response(JSON.stringify({ test: true, billingEnabled: false, error: String(e) }), { status: 200 })
+      return jsonResponse({ test: true, billingEnabled: false, error: String(e) }, 200)
     }
     usedThisPeriod++
     await db.from('api_usage').update({
       request_count: usedThisPeriod, updated_at: new Date().toISOString(),
     }).eq('api_name', API_NAME).eq('period', period)
-    return new Response(JSON.stringify({
+    return jsonResponse({
       test: true,
       billingEnabled: result.status !== 'error',
       status: result.status,
       detectionStatus: result.detectionStatus,
       rawErrorBody: result.status === 'error' ? result.raw : undefined,
-    }), { status: 200 })
+    }, 200)
   }
 
   // Optional area targeting: POST {"areas": ["Doncaster","Sheffield"]} to
@@ -244,7 +283,7 @@ Deno.serve(async (req) => {
 
   if (fetchErr) {
     console.error('Failed to fetch batch:', JSON.stringify(fetchErr))
-    return new Response(JSON.stringify({ error: fetchErr }), { status: 500 })
+    return jsonResponse({ error: fetchErr }, 500)
   }
 
   const rows = (batch ?? []) as Prospect[]
@@ -298,5 +337,5 @@ Deno.serve(async (req) => {
   }
 
   console.log(`Done. prospect=${counts.prospect} has_solar=${counts.has_solar} no_coverage=${counts.no_coverage} error=${counts.error} rateLimited=${counts.rateLimited} usedThisPeriod=${usedThisPeriod}/${MONTHLY_CAP}`)
-  return new Response(JSON.stringify({ processed: rows.length, ...counts, period, usedThisPeriod, monthlyCap: MONTHLY_CAP }), { status: 200 })
+  return jsonResponse({ processed: rows.length, ...counts, period, usedThisPeriod, monthlyCap: MONTHLY_CAP }, 200)
 })
