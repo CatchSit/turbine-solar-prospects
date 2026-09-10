@@ -226,12 +226,20 @@ Deno.serve(async (req) => {
     }), { status: 200 })
   }
 
-  const { data: batch, error: fetchErr } = await db
+  // Optional area targeting: POST {"areas": ["Doncaster","Sheffield"]} to
+  // restrict this batch to specific local authorities (e.g. running the
+  // areas with grant funding currently available first) instead of
+  // whatever 'pending' rows sort first nationwide. Added 2026-09-10.
+  let batchQuery = db
     .from('prospects')
     .select('id, lat, lng')
     .eq('solar_status', 'pending')
     .not('lat', 'is', null)
     .not('lng', 'is', null)
+  if (Array.isArray(body?.areas) && body.areas.length) {
+    batchQuery = batchQuery.in('local_authority', body.areas)
+  }
+  const { data: batch, error: fetchErr } = await batchQuery
     .limit(Math.min(BATCH_SIZE, remainingBudget))
 
   if (fetchErr) {

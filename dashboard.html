@@ -66,6 +66,19 @@ td { padding: 10px 16px; border-bottom: 1px solid var(--border); vertical-align:
     <div id="grant-area-rows" style="padding:12px 16px; display:flex; flex-direction:column; gap:10px"></div>
   </div>
 
+  <div class="table-card" style="margin-bottom:18px">
+    <div class="table-header"><h2>Solar enrichment</h2></div>
+    <div style="padding:12px 16px; display:flex; flex-direction:column; gap:10px">
+      <div id="enrich-area-list" style="display:flex; gap:16px; flex-wrap:wrap; font-size:12.5px;"></div>
+      <div style="display:flex; align-items:center; gap:10px">
+        <button class="period-btn" id="enrich-run-btn">Run enrichment</button>
+        <button class="period-btn" id="enrich-stop-btn" style="display:none">Stop</button>
+        <span id="enrich-status" style="font-size:12.5px; color:var(--text2)"></span>
+      </div>
+      <div id="enrich-log" style="font-size:11.5px; color:var(--text3); font-family:monospace; white-space:pre-wrap; max-height:160px; overflow-y:auto"></div>
+    </div>
+  </div>
+
   <div class="period-row">
     <button class="period-btn active" data-period="week">7 days</button>
     <button class="period-btn" data-period="month">30 days</button>
@@ -143,7 +156,82 @@ async function boot(user) {
   buildCharts();
   renderTable();
   renderGrantAreas();
+  initEnrichPanel();
 }
+
+/* ── Solar enrichment runner ─────────────────────────────────
+   Calls the solar-enrichment Edge Function (deployed 2026-09-10 with
+   optional {"areas":[...]} targeting) repeatedly, using this page's own
+   real signed-in manager session, until either no 'pending' rows remain
+   for the selected area(s) or the monthly budget is exhausted. Runs here
+   (not via a script) because the function requires a real
+   @turbineenergyuk.co.uk session — no service-role/admin bypass exists
+   for it by design (see the function's own auth check). */
+let enrichRunning = false;
+function initEnrichPanel() {
+  const list = document.getElementById('enrich-area-list');
+  const preselected = ['Doncaster', 'Sheffield']; // the areas with funding currently available
+  GRANT_AREA_NAMED.forEach(area => {
+    const label = document.createElement('label');
+    label.style.cssText = 'display:flex; align-items:center; gap:6px; cursor:pointer;';
+    label.innerHTML = `<input type="checkbox" value="${area}" class="enrich-area-cb" ${preselected.includes(area) ? 'checked' : ''}> ${area}`;
+    list.appendChild(label);
+  });
+}
+
+document.getElementById('enrich-run-btn').addEventListener('click', async () => {
+  const areas = [...document.querySelectorAll('.enrich-area-cb:checked')].map(cb => cb.value);
+  if (!areas.length) { alert('Pick at least one area.'); return; }
+
+  enrichRunning = true;
+  document.getElementById('enrich-run-btn').style.display = 'none';
+  document.getElementById('enrich-stop-btn').style.display = '';
+  const logEl = document.getElementById('enrich-log');
+  const statusEl = document.getElementById('enrich-status');
+  logEl.textContent = '';
+
+  const totals = { prospect: 0, has_solar: 0, no_coverage: 0, error: 0 };
+  let batchNum = 0;
+  const MAX_BATCHES = 100; // safety cap against a runaway loop
+
+  while (enrichRunning && batchNum < MAX_BATCHES) {
+    batchNum++;
+    statusEl.textContent = `Running batch ${batchNum}…`;
+    const { data, error } = await db.functions.invoke('solar-enrichment', { body: { areas } });
+
+    if (error) {
+      logEl.textContent += `Batch ${batchNum}: error — ${error.message}\n`;
+      break;
+    }
+    if (data.error) {
+      logEl.textContent += `Batch ${batchNum}: error — ${JSON.stringify(data.error)}\n`;
+      break;
+    }
+    if (data.budgetExhausted) {
+      logEl.textContent += `Batch ${batchNum}: monthly Solar API budget exhausted (${data.usedThisPeriod}/${data.monthlyCap}). Stopping.\n`;
+      break;
+    }
+
+    totals.prospect += data.prospect || 0;
+    totals.has_solar += data.has_solar || 0;
+    totals.no_coverage += data.no_coverage || 0;
+    totals.error += data.error || 0;
+    logEl.textContent += `Batch ${batchNum}: processed ${data.processed} (prospect=${data.prospect} has_solar=${data.has_solar} no_coverage=${data.no_coverage} error=${data.error}) — budget used ${data.usedThisPeriod}/${data.monthlyCap}\n`;
+    logEl.scrollTop = logEl.scrollHeight;
+
+    if (!data.processed) {
+      logEl.textContent += `Done — no pending rows left in the selected area(s).\n`;
+      break;
+    }
+  }
+
+  enrichRunning = false;
+  document.getElementById('enrich-run-btn').style.display = '';
+  document.getElementById('enrich-stop-btn').style.display = 'none';
+  statusEl.textContent = `Finished: ${totals.prospect} prospect, ${totals.has_solar} has_solar, ${totals.no_coverage} no_coverage, ${totals.error} error (${batchNum} batch${batchNum === 1 ? '' : 'es'}).`;
+});
+
+document.getElementById('enrich-stop-btn').addEventListener('click', () => { enrichRunning = false; });
 
 // Manager-only status toggle per grant-tracked local authority — read by
 // index.html to shade the map's boundary overlay and colour the sidebar's
