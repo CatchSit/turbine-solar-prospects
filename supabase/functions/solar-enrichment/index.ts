@@ -36,11 +36,22 @@ function corsHeadersFor(origin: string | null): Record<string, string> {
   return headers
 }
 
-// Bounded per-invocation batch, to stay inside the Edge Function wall-clock
-// timeout. Invoke this function repeatedly (manually, for the pilot) until
-// no 'pending' rows remain — same "run until done" operational pattern as
-// re-invoking mcs-scraper.
-const BATCH_SIZE = 300
+// Bounded per-invocation batch. Invoke this function repeatedly (manually
+// for the pilot, or looped by dashboard.html's "Solar enrichment" panel)
+// until no 'pending' rows remain — same "run until done" operational
+// pattern as re-invoking mcs-scraper.
+//
+// Originally 300, sized only against the Edge Function's wall-clock
+// timeout — never actually run at that scale in production, since Google
+// Cloud billing was off until 2026-09-09. The first real run (Doncaster/
+// Sheffield, 2026-09-10) died with WORKER_RESOURCE_LIMIT ("not enough
+// compute resources") partway through batch 1: Google's buildingInsights
+// responses can be genuinely large (roof segment stats, many possible
+// panel-layout configs per building), and 300 of those parsed/
+// re-serialized sequentially blew the CPU/memory ceiling that wall-clock
+// timing alone didn't account for. Cut down substantially; if
+// WORKER_RESOURCE_LIMIT recurs even at this size, cut it further.
+const BATCH_SIZE = 40
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 // Self-imposed budget, independent of whatever quota is configured in the

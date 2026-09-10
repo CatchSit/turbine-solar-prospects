@@ -192,7 +192,11 @@ document.getElementById('enrich-run-btn').addEventListener('click', async () => 
 
   const totals = { prospect: 0, has_solar: 0, no_coverage: 0, error: 0 };
   let batchNum = 0;
-  const MAX_BATCHES = 100; // safety cap against a runaway loop
+  // Safety cap against a runaway loop — sized against the monthly budget
+  // (9,500) at the smaller BATCH_SIZE=40 the function was cut down to
+  // after WORKER_RESOURCE_LIMIT (2026-09-10), so a legitimate full-budget
+  // run is never cut short by this cap before the budget itself stops it.
+  const MAX_BATCHES = 250;
 
   while (enrichRunning && batchNum < MAX_BATCHES) {
     batchNum++;
