@@ -190,7 +190,22 @@ document.getElementById('enrich-run-btn').addEventListener('click', async () => 
   const statusEl = document.getElementById('enrich-status');
   logEl.textContent = '';
 
+  // Upfront estimate of how much work this run has ahead of it, using the
+  // existing areaCounts diagnostic mode, so the log can show batches
+  // remaining rather than just a running count with no sense of how close
+  // to done it is. A nice-to-have, not required to proceed — if it fails,
+  // the run still works, it just won't show a remaining estimate.
+  let totalPending = null;
+  try {
+    const { data: countData, error: countErr } = await db.functions.invoke('solar-enrichment', { body: { areaCounts: true } });
+    if (!countErr && countData?.counts) {
+      totalPending = areas.reduce((sum, a) => sum + (countData.counts[a] || 0), 0);
+      logEl.textContent += `${totalPending.toLocaleString()} pending lead(s) in ${areas.join(', ')}.\n`;
+    }
+  } catch { /* estimate only — fall through without one */ }
+
   const totals = { prospect: 0, has_solar: 0, no_coverage: 0, error: 0 };
+  let processedSoFar = 0;
   let batchNum = 0;
   // Safety cap against a runaway loop — sized against the monthly budget
   // (9,500) at the smaller BATCH_SIZE=40 the function was cut down to
@@ -233,7 +248,15 @@ document.getElementById('enrich-run-btn').addEventListener('click', async () => 
     totals.has_solar += data.has_solar || 0;
     totals.no_coverage += data.no_coverage || 0;
     totals.error += data.error || 0;
-    logEl.textContent += `Batch ${batchNum}: processed ${data.processed} (prospect=${data.prospect} has_solar=${data.has_solar} no_coverage=${data.no_coverage} error=${data.error}) — budget used ${data.usedThisPeriod}/${data.monthlyCap}\n`;
+    processedSoFar += data.processed || 0;
+
+    let remainingNote = '';
+    if (totalPending !== null && data.processed) {
+      const remaining = Math.max(totalPending - processedSoFar, 0);
+      const batchesLeft = Math.ceil(remaining / data.processed);
+      remainingNote = ` — ~${remaining.toLocaleString()} lead(s) / ~${batchesLeft} batch${batchesLeft === 1 ? '' : 'es'} left`;
+    }
+    logEl.textContent += `Batch ${batchNum}: processed ${data.processed} (prospect=${data.prospect} has_solar=${data.has_solar} no_coverage=${data.no_coverage} error=${data.error}) — budget used ${data.usedThisPeriod}/${data.monthlyCap}${remainingNote}\n`;
     logEl.scrollTop = logEl.scrollHeight;
 
     if (!data.processed) {
