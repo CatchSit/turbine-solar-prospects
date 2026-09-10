@@ -829,7 +829,17 @@ const SatelliteToggleControl = L.Control.extend({
       btn.textContent = satelliteOn ? 'Streets' : 'Satellite';
       document.getElementById('map').classList.toggle('satellite-active', satelliteOn);
       if (satelliteOn) {
-        if (!satelliteLayer) satelliteLayer = L.gridLayer.googleMutant({ type: 'satellite', maxZoom: 21 });
+        if (!satelliteLayer) {
+          satelliteLayer = L.gridLayer.googleMutant({ type: 'satellite', maxZoom: 21 });
+          // This is the actual billable "map load" event (one real
+          // google.maps.Map gets created right here) — toggling back and
+          // forth afterward reuses this same cached layer/instance, so it
+          // doesn't fire again until the page is reloaded. Fire-and-forget;
+          // a tracking hiccup shouldn't block the toggle itself.
+          window.db.rpc('increment_maps_js_load').then(({ error }) => {
+            if (error) console.warn('Failed to record maps_js_load usage:', error);
+          });
+        }
         map.removeLayer(streetsLayer);
         map.addLayer(satelliteLayer);
       } else {

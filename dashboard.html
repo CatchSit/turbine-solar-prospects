@@ -79,6 +79,11 @@ td { padding: 10px 16px; border-bottom: 1px solid var(--border); vertical-align:
     </div>
   </div>
 
+  <div class="table-card" style="margin-bottom:18px">
+    <div class="table-header"><h2>API usage this month</h2></div>
+    <div id="api-usage-rows" style="padding:12px 16px; display:flex; flex-direction:column; gap:6px; font-size:12.5px; color:var(--text2)"></div>
+  </div>
+
   <div class="period-row">
     <button class="period-btn active" data-period="week">7 days</button>
     <button class="period-btn" data-period="month">30 days</button>
@@ -157,6 +162,27 @@ async function boot(user) {
   renderTable();
   renderGrantAreas();
   initEnrichPanel();
+  renderApiUsage();
+}
+
+// Read-only visibility into api_usage (005/027) — the Solar API's
+// self-imposed 9,500/month cap and the Maps JavaScript API's satellite
+// toggle (no hard cap; its free tier of 10,000 loads/month is nowhere
+// near reachable at this app's usage, so this is informational only).
+const API_USAGE_LABELS = {
+  solar_buildingInsights: { label: 'Solar API (buildingInsights)', cap: 9500 },
+  maps_js_load:           { label: 'Maps JavaScript API (map loads)', cap: 10000 },
+};
+async function renderApiUsage() {
+  const el = document.getElementById('api-usage-rows');
+  const period = new Date().toISOString().slice(0, 7); // 'YYYY-MM', matches currentPeriod() server-side
+  const { data, error } = await db.from('api_usage').select('api_name, request_count').eq('period', period);
+  if (error) { el.innerHTML = `<div>Couldn't load API usage.</div>`; return; }
+  const byName = Object.fromEntries((data || []).map(r => [r.api_name, r.request_count]));
+  el.innerHTML = Object.entries(API_USAGE_LABELS).map(([name, cfg]) => {
+    const used = byName[name] || 0;
+    return `<div>${escapeHtml(cfg.label)}: <strong>${used.toLocaleString()}</strong> / ${cfg.cap.toLocaleString()} free this month</div>`;
+  }).join('');
 }
 
 /* ── Solar enrichment runner ─────────────────────────────────
@@ -269,6 +295,7 @@ document.getElementById('enrich-run-btn').addEventListener('click', async () => 
   document.getElementById('enrich-run-btn').style.display = '';
   document.getElementById('enrich-stop-btn').style.display = 'none';
   statusEl.textContent = `Finished: ${totals.prospect} prospect, ${totals.has_solar} has_solar, ${totals.no_coverage} no_coverage, ${totals.error} error (${batchNum} batch${batchNum === 1 ? '' : 'es'}).`;
+  renderApiUsage();
 });
 
 document.getElementById('enrich-stop-btn').addEventListener('click', () => { enrichRunning = false; });
