@@ -1921,7 +1921,7 @@ function applyFilters() {
     const statusOk = d.source === 'manual' || activeSolarStatuses.has(d.solar_status);
     const epcSolarOk = !filterEpcSolar || d.epc_recommends_solar === true;
     const epcEfficiencyOk = !filterEpcEfficiency || d.epc_recommends_efficiency === true;
-    const searchOk = !term || (d.address||'').toLowerCase().includes(term) || (d.postcode||'').toLowerCase().includes(term);
+    const searchOk = !term || (d.address||'').toLowerCase().includes(term) || (d.postcode||'').toLowerCase().includes(term) || (d.customer_name||'').toLowerCase().includes(term);
 
     if (areaOk && typeOk && ratingOk && sectorOk && maturityOk && ownershipOk && recommendationYearOk && statusOk && epcSolarOk && epcEfficiencyOk && searchOk) {
       toShow.push(m);
