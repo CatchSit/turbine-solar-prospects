@@ -313,6 +313,16 @@
     .btn-primary { background: var(--accent); color: #fff; }
     .btn-primary:disabled { opacity: .6; cursor: default; }
     .log-contact-btn { margin: 0 20px 14px; padding: 8px 14px; width: calc(100% - 40px); background: var(--accentDim); color: var(--accentDk); border: none; border-radius: 8px; font-size: 12.5px; font-weight: 500; cursor: pointer; font-family: inherit; }
+    .popup-facts p:empty { display: none; padding: 0; }
+    .enrich-panel { margin: 0 20px 12px; }
+    .enrich-toggle-btn { padding: 7px 12px; width: 100%; background: transparent; color: var(--accent); border: 1px dashed var(--border); border-radius: 8px; font-size: 12.5px; font-weight: 500; cursor: pointer; font-family: inherit; }
+    .enrich-options { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+    .enrich-provider-row { display: flex; gap: 6px; }
+    .enrich-provider-btn { flex: 1; padding: 7px 10px; background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit; text-align: center; }
+    .enrich-provider-btn:disabled { opacity: .5; cursor: default; }
+    .enrich-provider-btn .enrich-remaining { display: block; font-weight: 400; color: var(--text3); font-size: 10.5px; margin-top: 2px; }
+    .enrich-result { font-size: 12px; color: var(--text2); padding: 4px 2px; }
+    .enrich-result.enrich-error { color: var(--alert); }
 
     /* ── Loading ──────────────────────────────────────────── */
     #loading {
@@ -1008,6 +1018,12 @@ function businessRatesHtml(d) {
   const more = remaining > 0 ? `<div>+ ${remaining.toLocaleString()} more</div>` : '';
   return `${rows}${more}`;
 }
+function contactInfoHtml(d) {
+  return [
+    d.contact_phone ? `📞 <a href="tel:${escapeHtml(d.contact_phone)}">${escapeHtml(d.contact_phone)}</a>` : '',
+    d.contact_email ? `✉ <a href="mailto:${escapeHtml(d.contact_email)}">${escapeHtml(d.contact_email)}</a>` : '',
+  ].filter(Boolean).join(' · ');
+}
 function formatMonthYear(dateStr) {
   if (!dateStr) return '';
   const d = new Date(dateStr);
@@ -1062,11 +1078,7 @@ function buildPopup(d) {
     d.local_authority ? escapeHtml(d.local_authority) : '',
   ].filter(Boolean);
   const facts = factParts.length ? `<p>${factParts.join(' · ')}</p>` : '';
-  const contactParts = [
-    d.contact_phone ? `📞 <a href="tel:${escapeHtml(d.contact_phone)}">${escapeHtml(d.contact_phone)}</a>` : '',
-    d.contact_email ? `✉ <a href="mailto:${escapeHtml(d.contact_email)}">${escapeHtml(d.contact_email)}</a>` : '',
-  ].filter(Boolean);
-  const contactInfo = contactParts.length ? `<p>${contactParts.join(' · ')}</p>` : '';
+  const contactInfo = `<p id="contact-info-${escapeHtml(d.id)}">${contactInfoHtml(d)}</p>`;
 
   const solarEst = (d.solar_status === 'prospect' && (d.solar_max_panels || d.solar_yearly_energy_kwh))
     ? `<div class="solar-est">☀ Estimated roof potential: ${d.solar_max_panels ? `up to <strong>${d.solar_max_panels}</strong> panels` : ''}${d.solar_max_panels && d.solar_yearly_energy_kwh ? ' · ' : ''}${d.solar_yearly_energy_kwh ? `~<strong>${Math.round(d.solar_yearly_energy_kwh).toLocaleString()}</strong> kWh/year` : ''}</div>`
@@ -1082,6 +1094,10 @@ function buildPopup(d) {
       </div>
       ${solarEst}
       <div class="popup-facts">${addr}${contactInfo}${facts}</div>
+      <div class="enrich-panel" id="enrich-panel-${escapeHtml(d.id)}">
+        <button class="enrich-toggle-btn" type="button" onclick="toggleEnrichPanel(${escapeHtml(JSON.stringify(d.id))})">🔍 Find more info</button>
+        <div class="enrich-options" style="display:none"></div>
+      </div>
       <div class="popup-tabs">
         <button class="popup-tab active" type="button" onclick="switchPopupTab(this, 'rates')">Business rates</button>
         <button class="popup-tab" type="button" onclick="switchPopupTab(this, 'companies')">Companies</button>
@@ -1109,6 +1125,112 @@ function switchPopupTab(btn, tab) {
   const popup = btn.closest('.popup');
   popup.querySelectorAll('.popup-tab').forEach(t => t.classList.toggle('active', t === btn));
   popup.querySelectorAll('.popup-tab-panel').forEach(p => p.classList.toggle('active', p.dataset.panel === tab));
+}
+
+/* ── Contact enrichment (Apollo/Hunter, manual per-prospect) ─────────── */
+// Self-imposed monthly budgets — must match MONTHLY_CAPS in
+// supabase/functions/contact-enrichment/index.ts (the actual enforcement
+// lives server-side; this copy is only for the "N left" labels shown here
+// before a rep picks a provider).
+const ENRICH_CAPS = { apollo: 50, hunter: 50 };
+const ENRICH_API_NAMES = { apollo: 'apollo_search', hunter: 'hunter_search' };
+
+async function fetchEnrichRemaining() {
+  const period = new Date().toISOString().slice(0, 7); // 'YYYY-MM', matches the Edge Function's UTC-based currentPeriod()
+  const { data, error } = await window.db
+    .from('api_usage')
+    .select('api_name, request_count')
+    .in('api_name', Object.values(ENRICH_API_NAMES))
+    .eq('period', period);
+  const used = { apollo: 0, hunter: 0 };
+  if (!error && data) {
+    data.forEach(row => {
+      const provider = Object.keys(ENRICH_API_NAMES).find(p => ENRICH_API_NAMES[p] === row.api_name);
+      if (provider) used[provider] = row.request_count;
+    });
+  }
+  return {
+    apollo: Math.max(0, ENRICH_CAPS.apollo - used.apollo),
+    hunter: Math.max(0, ENRICH_CAPS.hunter - used.hunter),
+  };
+}
+
+async function toggleEnrichPanel(id) {
+  const panel = document.getElementById(`enrich-panel-${id}`);
+  if (!panel) return;
+  const options = panel.querySelector('.enrich-options');
+  const isOpen = options.style.display !== 'none';
+  if (isOpen) {
+    options.style.display = 'none';
+    return;
+  }
+  options.style.display = 'flex';
+  options.innerHTML = `<div class="enrich-result">Checking remaining searches…</div>`;
+  const remaining = await fetchEnrichRemaining();
+  // The panel may have closed (or a different one opened) while that fetch was in flight.
+  const stillOpen = document.getElementById(`enrich-panel-${id}`)?.querySelector('.enrich-options');
+  if (!stillOpen || stillOpen.style.display === 'none') return;
+  stillOpen.innerHTML = `
+    <div class="enrich-provider-row">
+      <button class="enrich-provider-btn" type="button" ${remaining.apollo <= 0 ? 'disabled' : ''} onclick="runEnrichment(${escapeHtml(JSON.stringify(id))}, 'apollo')">Apollo<span class="enrich-remaining">${remaining.apollo} left this month</span></button>
+      <button class="enrich-provider-btn" type="button" ${remaining.hunter <= 0 ? 'disabled' : ''} onclick="runEnrichment(${escapeHtml(JSON.stringify(id))}, 'hunter')">Hunter<span class="enrich-remaining">${remaining.hunter} left this month</span></button>
+    </div>
+    <div class="enrich-result"></div>`;
+}
+
+async function runEnrichment(id, provider) {
+  const panel = document.getElementById(`enrich-panel-${id}`);
+  if (!panel) return;
+  const options = panel.querySelector('.enrich-options');
+  const resultEl = options.querySelector('.enrich-result');
+  options.querySelectorAll('.enrich-provider-btn').forEach(b => b.disabled = true);
+  resultEl.classList.remove('enrich-error');
+  resultEl.textContent = `Searching ${provider === 'apollo' ? 'Apollo' : 'Hunter'}…`;
+
+  try {
+    const { data, error } = await window.db.functions.invoke('contact-enrichment', { body: { prospect_id: id, provider } });
+    if (error) {
+      let message = error.message;
+      try {
+        const body = await error.context.clone().json();
+        if (body?.error) message = body.error;
+      } catch { /* response body wasn't JSON — fall back to error.message */ }
+      resultEl.classList.add('enrich-error');
+      resultEl.textContent = message;
+      options.querySelectorAll('.enrich-provider-btn').forEach(b => b.disabled = false);
+      return;
+    }
+    if (data?.error) {
+      resultEl.classList.add('enrich-error');
+      resultEl.textContent = data.error;
+      options.querySelectorAll('.enrich-provider-btn').forEach(b => b.disabled = false);
+      return;
+    }
+
+    const who = [data.target_name, data.target_company].filter(Boolean).join(' · ');
+    if (data.status === 'found') {
+      resultEl.textContent = `Found via ${provider === 'apollo' ? 'Apollo' : 'Hunter'} (${who}): ${[data.email, data.phone].filter(Boolean).join(' · ')}`;
+      const marker = allMarkers.find(m => m._d.id === id);
+      if (marker) {
+        if (data.email && !marker._d.contact_email) marker._d.contact_email = data.email;
+        if (data.phone && !marker._d.contact_phone) marker._d.contact_phone = data.phone;
+        const infoEl = document.getElementById(`contact-info-${id}`);
+        if (infoEl) infoEl.innerHTML = contactInfoHtml(marker._d);
+      }
+    } else {
+      resultEl.textContent = `No email/phone found via ${provider === 'apollo' ? 'Apollo' : 'Hunter'}${who ? ` (searched: ${who})` : ''}.`;
+    }
+    // Refresh the "N left" counts now that this search has been spent.
+    const remaining = await fetchEnrichRemaining();
+    options.querySelector(`.enrich-provider-row`).innerHTML = `
+      <button class="enrich-provider-btn" type="button" ${remaining.apollo <= 0 ? 'disabled' : ''} onclick="runEnrichment(${escapeHtml(JSON.stringify(id))}, 'apollo')">Apollo<span class="enrich-remaining">${remaining.apollo} left this month</span></button>
+      <button class="enrich-provider-btn" type="button" ${remaining.hunter <= 0 ? 'disabled' : ''} onclick="runEnrichment(${escapeHtml(JSON.stringify(id))}, 'hunter')">Hunter<span class="enrich-remaining">${remaining.hunter} left this month</span></button>`;
+  } catch (e) {
+    resultEl.classList.add('enrich-error');
+    resultEl.textContent = 'Search failed — try again.';
+    options.querySelectorAll('.enrich-provider-btn').forEach(b => b.disabled = false);
+    console.error(e);
+  }
 }
 
 /* ── Company lookup ──────────────────────────────────────── */
