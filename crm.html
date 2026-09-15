@@ -144,7 +144,7 @@ tbody tr:hover { background: var(--surface2); }
       </div>
       <table>
         <thead><tr>
-          <th>Customer</th><th>Type</th><th>Contact</th><th>Address</th><th>Added</th>
+          <th>Customer</th><th>Type</th><th>Status</th><th>Contact</th><th>Address</th><th>Added</th>
         </tr></thead>
         <tbody id="leads-body"></tbody>
       </table>
@@ -163,6 +163,7 @@ tbody tr:hover { background: var(--surface2); }
         <button class="btn-primary" id="name-save-btn" style="display:none">Save</button>
       </div>
       <div class="sub" id="lead-type-sub"></div>
+      <div class="sub" id="lead-status-sub"></div>
       <div class="sub" id="lead-address"></div>
       <div class="sub" id="lead-contact"></div>
       <div class="sub"><a id="lead-map-link" href="#">View on map →</a></div>
@@ -170,6 +171,12 @@ tbody tr:hover { background: var(--surface2); }
         <div class="quote-status" style="font-weight:600">Name history</div>
         <div id="name-history-list" style="margin-top:8px"></div>
       </div>
+    </div>
+
+    <div class="card">
+      <h3>Contact</h3>
+      <button class="log-contact-btn" id="log-contact-btn">Log contact</button>
+      <div class="contact-log-list" id="contact-log-list" style="margin-top:14px"></div>
     </div>
 
     <div class="card">
@@ -221,12 +228,6 @@ tbody tr:hover { background: var(--surface2); }
       <div id="ih-sent" style="display:none">
         <div class="quote-status" id="ih-sent-status"></div>
       </div>
-    </div>
-
-    <div class="card">
-      <h3>Contact</h3>
-      <button class="log-contact-btn" id="log-contact-btn">Log contact</button>
-      <div class="contact-log-list" id="contact-log-list" style="margin-top:14px"></div>
     </div>
   </div>
 
@@ -343,6 +344,35 @@ function formatShortDate(dateStr) {
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+// Not a real prospect_contacts.outcome value — a display-only fallback for
+// leads with no contact logged yet, so the Status column/badge is never
+// blank. A lead's "status" is simply its most recent contact log outcome
+// (fetchLatestOutcomes below), there's no separate status field in the DB.
+const NOT_CONTACTED_STATUS = { color: '#9ca3af', soft: '#e5e7eb', label: 'Not yet contacted' };
+function statusBadgeHtml(outcome) {
+  const cfg = outcome ? (CONTACT_OUTCOME[outcome] || { color: '#999', soft: '#eee', label: outcome }) : NOT_CONTACTED_STATUS;
+  return `<span class="tag"><span class="tag-dot" style="background:${cfg.color}"></span>${escapeHtml(cfg.label)}</span>`;
+}
+
+// One bulk query for every visible lead's latest outcome, rather than a
+// per-row query — same "avoid N+1 against a table this size" reasoning as
+// fetchAllProspects's own joins. Ties (identical contacted_at) keep
+// whichever row PostgREST returns first for that prospect_id, which is
+// good enough for a status label — not used for anything order-sensitive.
+async function fetchLatestOutcomes(prospectIds) {
+  if (!prospectIds.length) return {};
+  const { data, error } = await db.from('prospect_contacts')
+    .select('prospect_id, outcome, contacted_at')
+    .in('prospect_id', prospectIds)
+    .order('contacted_at', { ascending: false });
+  if (error) { console.error('Failed to load contact outcomes:', error); return {}; }
+  const latest = {};
+  (data || []).forEach(row => {
+    if (!(row.prospect_id in latest)) latest[row.prospect_id] = row.outcome;
+  });
+  return latest;
+}
+
 let currentUser = null;
 let allLeads = [];
 let currentLead = null;
@@ -378,6 +408,7 @@ function renderLeadsTable() {
     tr.innerHTML = `
       <td>${escapeHtml(d.customer_name || 'Unnamed lead')}</td>
       <td>${typeTag}</td>
+      <td>${statusBadgeHtml(d.latest_outcome)}</td>
       <td>${contact}</td>
       <td>${address}</td>
       <td>${formatShortDate(d.created_at) || '—'}</td>`;
@@ -398,6 +429,7 @@ function openLeadDetail(lead) {
   const cfg = LEAD_TYPE[lead.lead_type];
   document.getElementById('lead-type-sub').innerHTML = cfg
     ? `<span class="tag"><span class="tag-dot" style="background:${cfg.color}"></span>${cfg.label}</span>` : '';
+  document.getElementById('lead-status-sub').innerHTML = statusBadgeHtml(lead.latest_outcome);
   document.getElementById('lead-address').textContent = [lead.address, lead.postcode].filter(Boolean).join(', ') || 'No address on file';
   document.getElementById('lead-contact').innerHTML = [
     lead.contact_phone ? `📞 <a href="tel:${escapeHtml(lead.contact_phone)}">${escapeHtml(lead.contact_phone)}</a>` : '',
@@ -876,7 +908,18 @@ document.getElementById('cm-submit').addEventListener('click', async () => {
   btn.disabled = false; btn.textContent = 'Save log';
   if (error) { alert('Failed to save: ' + error.message); return; }
   closeContactModal();
-  if (currentLead && currentLead.id === prospectId) loadContactLog(prospectId);
+
+  // This log is now the most recent contact for this prospect (inserted
+  // with contacted_at defaulting to now()), so its outcome becomes the new
+  // status without waiting on a re-fetch.
+  const row = allLeads.find(l => l.id === prospectId);
+  if (row) row.latest_outcome = outcome;
+  renderLeadsTable();
+  if (currentLead && currentLead.id === prospectId) {
+    currentLead.latest_outcome = outcome;
+    document.getElementById('lead-status-sub').innerHTML = statusBadgeHtml(outcome);
+    loadContactLog(prospectId);
+  }
 });
 
 /* ── Add Lead modal (ported from index.html) ─────────────── */
@@ -978,6 +1021,7 @@ document.getElementById('lm-submit').addEventListener('click', async () => {
   if (error) { alert('Failed to save: ' + error.message); return; }
 
   closeLeadModal();
+  inserted.latest_outcome = null;
   allLeads.unshift(inserted);
   renderLeadsTable();
   openLeadDetail(inserted);
@@ -989,6 +1033,8 @@ async function boot(user) {
   document.getElementById('nav-dashboard-link').style.display = isAdmin(user) ? '' : 'none';
   document.getElementById('wrap').style.display = 'block';
   allLeads = await fetchLeads();
+  const outcomes = await fetchLatestOutcomes(allLeads.map(l => l.id));
+  allLeads.forEach(l => { l.latest_outcome = outcomes[l.id] || null; });
   renderLeadsTable();
 }
 
