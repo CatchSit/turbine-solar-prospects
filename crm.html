@@ -197,6 +197,7 @@ tbody tr:hover { background: var(--surface2); }
         <div class="quote-field"><label>Electrical cost (£)</label><input type="number" min="0" step="1" id="q-electrical" disabled/></div>
         <div class="quote-field"><label>Roofer cost (£)</label><input type="number" min="0" step="1" id="q-roofer" disabled/></div>
         <div class="quote-field"><label>MCS cost (£)</label><input type="number" min="0" step="1" id="q-mcs" disabled/></div>
+        <div class="quote-field"><label>Fuel costs (£)</label><input type="number" min="0" step="1" id="q-fuel" disabled/></div>
       </div>
       <div class="quote-total"><span>Total cost</span><strong id="q-total">£0</strong></div>
       <div class="quote-grid" style="margin-top:12px">
@@ -659,13 +660,14 @@ function quoteInputs() {
     electrical: document.getElementById('q-electrical'),
     roofer: document.getElementById('q-roofer'),
     mcs: document.getElementById('q-mcs'),
+    fuel: document.getElementById('q-fuel'),
     price: document.getElementById('q-price'),
   };
 }
 
 function updateQuoteTotal() {
   const inputs = quoteInputs();
-  const total = ['kit', 'scaffold', 'electrical', 'roofer', 'mcs']
+  const total = ['kit', 'scaffold', 'electrical', 'roofer', 'mcs', 'fuel']
     .reduce((sum, key) => sum + (Number(inputs[key].value) || 0), 0);
   document.getElementById('q-total').textContent = `£${total.toLocaleString()}`;
 
@@ -693,7 +695,7 @@ async function loadQuote(prospectId) {
   setQuoteEditing(false);
 
   const { data, error } = await db.from('lead_quotes')
-    .select('kit_price, scaffold_price, electrical_cost, roofer_cost, mcs_cost, quote_price, updated_at')
+    .select('kit_price, scaffold_price, electrical_cost, roofer_cost, mcs_cost, fuel_cost, quote_price, updated_at')
     .eq('prospect_id', prospectId)
     .maybeSingle();
   if (error) { console.error('Failed to load quote:', error); updateQuoteTotal(); return; }
@@ -703,6 +705,7 @@ async function loadQuote(prospectId) {
     inputs.electrical.value = data.electrical_cost ?? '';
     inputs.roofer.value = data.roofer_cost ?? '';
     inputs.mcs.value = data.mcs_cost ?? '';
+    inputs.fuel.value = data.fuel_cost ?? '';
     inputs.price.value = data.quote_price ?? '';
     document.getElementById('q-status').textContent = `Last saved ${formatShortDate(data.updated_at)}`;
   }
@@ -728,6 +731,7 @@ document.getElementById('q-save-btn').addEventListener('click', async () => {
     electrical_cost: inputs.electrical.value === '' ? null : Number(inputs.electrical.value),
     roofer_cost: inputs.roofer.value === '' ? null : Number(inputs.roofer.value),
     mcs_cost: inputs.mcs.value === '' ? null : Number(inputs.mcs.value),
+    fuel_cost: inputs.fuel.value === '' ? null : Number(inputs.fuel.value),
     quote_price: inputs.price.value === '' ? null : Number(inputs.price.value),
     updated_at: new Date().toISOString(),
     updated_by_email: currentUser?.email || null,
@@ -747,14 +751,14 @@ async function loadQuoteHistory(prospectId) {
   const list = document.getElementById('q-history');
   list.textContent = 'Loading…';
   const { data, error } = await db.from('lead_quote_audit')
-    .select('kit_price, scaffold_price, electrical_cost, roofer_cost, mcs_cost, quote_price, edited_at, edited_by_email')
+    .select('kit_price, scaffold_price, electrical_cost, roofer_cost, mcs_cost, fuel_cost, quote_price, edited_at, edited_by_email')
     .eq('prospect_id', prospectId)
     .order('edited_at', { ascending: false });
   if (!currentLead || currentLead.id !== prospectId) return; // moved on while this was in flight
   if (error) { list.innerHTML = `<div class="doc-empty">Couldn't load edit history.</div>`; return; }
   if (!data.length) { list.innerHTML = `<div class="doc-empty">No edits logged yet.</div>`; return; }
   list.innerHTML = data.map(h => {
-    const total = ['kit_price', 'scaffold_price', 'electrical_cost', 'roofer_cost', 'mcs_cost']
+    const total = ['kit_price', 'scaffold_price', 'electrical_cost', 'roofer_cost', 'mcs_cost', 'fuel_cost']
       .reduce((sum, key) => sum + (Number(h[key]) || 0), 0);
     const price = Number(h.quote_price) || 0;
     const margin = price - total;
