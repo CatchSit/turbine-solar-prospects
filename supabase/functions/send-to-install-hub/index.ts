@@ -158,6 +158,10 @@ Deno.serve(async (req) => {
     install_hub_job_id: ingestJson.job_id,
     sent_to_install_hub_at: new Date().toISOString(),
     sent_to_install_hub_by_email: user.email,
+    // install-hub is the source of truth for scheduling, but sms-scheduler
+    // (029_sms_automation.sql) needs the date locally to fire install-day
+    // confirmation texts without querying install-hub's own project.
+    install_scheduled_date: scheduled_date,
   }).eq('id', prospect_id)
 
   if (updateErr) {

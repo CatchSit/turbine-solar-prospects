@@ -3,3 +3,11 @@ verify_jwt = true
 
 [functions.send-to-install-hub]
 verify_jwt = true
+
+[functions.sms-inbound]
+# Twilio's webhook — it has no Supabase session, so the platform-level JWT
+# gate must be off here. Request authenticity instead comes from validating
+# Twilio's own X-Twilio-Signature header inside the function (see
+# validateTwilioSignature() in index.ts) — never trust this endpoint on
+# verify_jwt alone the way the other functions do.
+verify_jwt = false

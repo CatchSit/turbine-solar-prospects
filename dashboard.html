@@ -80,6 +80,20 @@ td { padding: 10px 16px; border-bottom: 1px solid var(--border); vertical-align:
   </div>
 
   <div class="table-card" style="margin-bottom:18px">
+    <div class="table-header"><h2>SMS reminders</h2></div>
+    <div style="padding:12px 16px; display:flex; flex-direction:column; gap:10px">
+      <div style="font-size:12.5px; color:var(--text2)">
+        One click sends appointment reminders (Meeting/Survey Booked, due tomorrow), quote follow-up nudges (Quote Sent 3 days ago, nothing logged since), and install-day confirmations (install-hub jobs due tomorrow) — to every eligible lead in one go. Already-sent reminders are never repeated.
+      </div>
+      <div style="display:flex; align-items:center; gap:10px">
+        <button class="period-btn" id="sms-run-btn">Send scheduled texts now</button>
+        <span id="sms-status" style="font-size:12.5px; color:var(--text2)"></span>
+      </div>
+      <div id="sms-log" style="font-size:11.5px; color:var(--text3); font-family:monospace; white-space:pre-wrap; max-height:160px; overflow-y:auto"></div>
+    </div>
+  </div>
+
+  <div class="table-card" style="margin-bottom:18px">
     <div class="table-header"><h2>API usage this month</h2></div>
     <div id="api-usage-rows" style="padding:12px 16px; display:flex; flex-direction:column; gap:6px; font-size:12.5px; color:var(--text2)"></div>
   </div>
@@ -172,6 +186,9 @@ async function boot(user) {
 const API_USAGE_LABELS = {
   solar_buildingInsights: { label: 'Solar API (buildingInsights)', cap: 9500 },
   maps_js_load:           { label: 'Maps JavaScript API (map loads)', cap: 10000 },
+  // No free tier to cap against (real per-message cost) — cap: null means
+  // "just show the running count", not "X / cap free this month".
+  sms_send:               { label: 'SMS sent (Twilio)', cap: null },
 };
 async function renderApiUsage() {
   const el = document.getElementById('api-usage-rows');
@@ -181,9 +198,49 @@ async function renderApiUsage() {
   const byName = Object.fromEntries((data || []).map(r => [r.api_name, r.request_count]));
   el.innerHTML = Object.entries(API_USAGE_LABELS).map(([name, cfg]) => {
     const used = byName[name] || 0;
-    return `<div>${escapeHtml(cfg.label)}: <strong>${used.toLocaleString()}</strong> / ${cfg.cap.toLocaleString()} free this month</div>`;
+    return cfg.cap
+      ? `<div>${escapeHtml(cfg.label)}: <strong>${used.toLocaleString()}</strong> / ${cfg.cap.toLocaleString()} free this month</div>`
+      : `<div>${escapeHtml(cfg.label)}: <strong>${used.toLocaleString()}</strong> this month</div>`;
   }).join('');
 }
+
+/* ── SMS reminders runner ────────────────────────────────────
+   Calls sms-scheduler (deployed 2026-09-15) using this page's own real
+   signed-in manager session — same "no service-role bypass, real user
+   session required" shape as the Solar enrichment runner above. Unlike
+   that one, this isn't a repeat-until-done batch loop: one invocation
+   already scans every eligible lead across all three message types in a
+   single pass (bounded by MAX_SENDS_PER_RUN server-side as a safety cap,
+   not because the work is naturally batched). */
+document.getElementById('sms-run-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('sms-run-btn');
+  const statusEl = document.getElementById('sms-status');
+  const logEl = document.getElementById('sms-log');
+  btn.disabled = true;
+  statusEl.textContent = 'Sending…';
+
+  const { data, error } = await db.functions.invoke('sms-scheduler', { body: {} });
+
+  btn.disabled = false;
+  if (error) {
+    let detail = error.message;
+    try {
+      const body = await error.context.clone().json();
+      if (body?.error) detail = body.error;
+    } catch { /* response body wasn't JSON — fall back to error.message */ }
+    statusEl.textContent = 'Error';
+    logEl.textContent += `Error — ${detail}\n`;
+    return;
+  }
+
+  const c = data.counts;
+  statusEl.textContent = `Done — ${data.sentThisRun} sent this run.`;
+  logEl.textContent +=
+    `Appointment reminders: ${c.appointment_reminder.sent} sent, ${c.appointment_reminder.skipped_opted_out} opted out, ${c.appointment_reminder.skipped_no_phone} no phone, ${c.appointment_reminder.failed} failed, ${c.appointment_reminder.already_sent} already sent.\n` +
+    `Quote follow-ups: ${c.quote_followup.sent} sent, ${c.quote_followup.skipped_opted_out} opted out, ${c.quote_followup.skipped_no_phone} no phone, ${c.quote_followup.failed} failed, ${c.quote_followup.already_sent} already sent.\n` +
+    `Install confirmations: ${c.install_confirmation.sent} sent, ${c.install_confirmation.skipped_opted_out} opted out, ${c.install_confirmation.skipped_no_phone} no phone, ${c.install_confirmation.failed} failed, ${c.install_confirmation.already_sent} already sent.\n`;
+  renderApiUsage();
+});
 
 /* ── Solar enrichment runner ─────────────────────────────────
    Calls the solar-enrichment Edge Function (deployed 2026-09-10 with
