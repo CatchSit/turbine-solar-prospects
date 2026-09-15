@@ -114,6 +114,7 @@ tbody tr:hover { background: var(--surface2); }
 .modal-body textarea { resize: vertical; min-height: 70px; line-height: 1.5; }
 .modal-body input[readonly] { background: var(--border); color: var(--text2); cursor: not-allowed; }
 .outcome-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.outcome-chips.disabled { pointer-events: none; opacity: .6; }
 .outcome-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px 6px 9px; border-radius: 100px; border: 1px solid var(--border); background: var(--surface2); font-size: 12px; color: var(--text2); cursor: pointer; font-family: inherit; }
 .outcome-chip .chip-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .outcome-chip.on { color: #fff; border-color: transparent; }
@@ -157,18 +158,27 @@ tbody tr:hover { background: var(--surface2); }
     <div class="lead-header">
       <div class="name-row">
         <h2 id="lead-name">—</h2>
-        <input type="text" id="lead-name-input" class="name-input" style="display:none"/>
-        <button class="btn-secondary" id="name-edit-btn">Edit</button>
-        <button class="btn-secondary" id="name-cancel-btn" style="display:none">Cancel</button>
-        <button class="btn-primary" id="name-save-btn" style="display:none">Save</button>
       </div>
-      <div class="sub" id="lead-type-sub"></div>
       <div class="sub" id="lead-status-sub"></div>
-      <div class="sub" id="lead-address"></div>
-      <div class="sub" id="lead-contact"></div>
+      <div class="quote-grid" style="margin-top:10px">
+        <div class="quote-field"><label>Customer name</label><input type="text" id="ld-name" disabled/></div>
+        <div class="quote-field"><label>Address</label><input type="text" id="ld-address" disabled/></div>
+        <div class="quote-field"><label>Postcode</label><input type="text" id="ld-postcode" disabled/></div>
+        <div class="quote-field"><label>Contact number</label><input type="tel" id="ld-phone" disabled/></div>
+        <div class="quote-field"><label>Email address</label><input type="email" id="ld-email" disabled/></div>
+      </div>
+      <div class="quote-field">
+        <label>Type</label>
+        <div class="outcome-chips disabled" id="ld-type-chips"></div>
+      </div>
+      <div style="display:flex; gap:8px; margin:4px 0 12px">
+        <button class="btn-secondary" id="details-edit-btn">Edit</button>
+        <button class="btn-secondary" id="details-cancel-btn" style="display:none">Cancel</button>
+        <button class="btn-primary" id="details-save-btn" style="display:none">Save</button>
+      </div>
       <div class="sub"><a id="lead-map-link" href="#">View on map →</a></div>
       <div class="name-history">
-        <div class="quote-status" style="font-weight:600">Name history</div>
+        <div class="quote-status" style="font-weight:600">Edit history</div>
         <div id="name-history-list" style="margin-top:8px"></div>
       </div>
     </div>
@@ -420,85 +430,146 @@ function renderLeadsTable() {
 document.getElementById('leads-search').addEventListener('input', renderLeadsTable);
 
 /* ── Lead detail view ────────────────────────────────────── */
+function populateLeadFields(lead) {
+  document.getElementById('lead-name').textContent = lead.customer_name || 'Unnamed lead';
+  document.getElementById('lead-status-sub').innerHTML = statusBadgeHtml(lead.latest_outcome);
+  document.getElementById('ld-name').value = lead.customer_name || '';
+  document.getElementById('ld-address').value = lead.address || '';
+  document.getElementById('ld-postcode').value = lead.postcode || '';
+  document.getElementById('ld-phone').value = lead.contact_phone || '';
+  document.getElementById('ld-email').value = lead.contact_email || '';
+  selectedEditLeadType = lead.lead_type || null;
+  document.querySelectorAll('#ld-type-chips .outcome-chip').forEach(c => {
+    const cfg = LEAD_TYPE[c.dataset.value];
+    const on = c.dataset.value === selectedEditLeadType;
+    c.classList.toggle('on', on);
+    c.style.background = on ? cfg.color : '';
+    c.style.borderColor = on ? cfg.color : '';
+  });
+}
+
 function openLeadDetail(lead) {
   currentLead = lead;
   document.getElementById('leads-view').style.display = 'none';
   document.getElementById('detail-view').style.display = 'block';
 
-  document.getElementById('lead-name').textContent = lead.customer_name || 'Unnamed lead';
-  const cfg = LEAD_TYPE[lead.lead_type];
-  document.getElementById('lead-type-sub').innerHTML = cfg
-    ? `<span class="tag"><span class="tag-dot" style="background:${cfg.color}"></span>${cfg.label}</span>` : '';
-  document.getElementById('lead-status-sub').innerHTML = statusBadgeHtml(lead.latest_outcome);
-  document.getElementById('lead-address').textContent = [lead.address, lead.postcode].filter(Boolean).join(', ') || 'No address on file';
-  document.getElementById('lead-contact').innerHTML = [
-    lead.contact_phone ? `📞 <a href="tel:${escapeHtml(lead.contact_phone)}">${escapeHtml(lead.contact_phone)}</a>` : '',
-    lead.contact_email ? `✉ <a href="mailto:${escapeHtml(lead.contact_email)}">${escapeHtml(lead.contact_email)}</a>` : '',
-  ].filter(Boolean).join(' · ') || 'No contact details on file';
+  populateLeadFields(lead);
   document.getElementById('lead-map-link').href = `index.html?lead=${encodeURIComponent(lead.id)}`;
 
-  setNameEditing(false);
-  loadNameHistory(lead.id);
+  setDetailsEditing(false);
+  loadDetailsHistory(lead.id);
   loadQuote(lead.id);
   loadLeadDocuments(lead.id);
   renderInstallHubStatus();
   loadContactLog(lead.id);
 }
 
-/* ── Customer name edit + audit history (prospect_name_audit,
-   migration 025 — written by a database trigger on every customer_name
-   change, same "not client-driven" pattern as lead_quote_audit) ──── */
-function setNameEditing(editing) {
-  document.getElementById('lead-name').style.display = editing ? 'none' : '';
-  document.getElementById('lead-name-input').style.display = editing ? '' : 'none';
-  document.getElementById('name-edit-btn').style.display = editing ? 'none' : '';
-  document.getElementById('name-cancel-btn').style.display = editing ? '' : 'none';
-  document.getElementById('name-save-btn').style.display = editing ? '' : 'none';
+/* ── Lead details edit + audit history (prospect_name_audit, migration
+   025 + 031 — written by a database trigger on every customer_name/
+   address/postcode/contact_phone/contact_email/lead_type change, same
+   "not client-driven" pattern as lead_quote_audit) ──────────────── */
+let selectedEditLeadType = null;
+(function initDetailsEditChips() {
+  const chipsEl = document.getElementById('ld-type-chips');
+  LEAD_TYPE_ORDER.forEach(type => {
+    const cfg = LEAD_TYPE[type];
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'outcome-chip';
+    chip.dataset.value = type;
+    chip.innerHTML = `<span class="chip-dot" style="background:${cfg.color}"></span>${escapeHtml(cfg.label)}`;
+    chip.addEventListener('click', () => {
+      chipsEl.querySelectorAll('.outcome-chip').forEach(c => { c.classList.remove('on'); c.style.background = ''; c.style.borderColor = ''; });
+      chip.classList.add('on');
+      chip.style.background = cfg.color;
+      chip.style.borderColor = cfg.color;
+      selectedEditLeadType = type;
+    });
+    chipsEl.appendChild(chip);
+  });
+})();
+
+function setDetailsEditing(editing) {
+  ['ld-name', 'ld-address', 'ld-postcode', 'ld-phone', 'ld-email'].forEach(id => {
+    document.getElementById(id).disabled = !editing;
+  });
+  document.getElementById('ld-type-chips').classList.toggle('disabled', !editing);
+  document.getElementById('details-edit-btn').style.display = editing ? 'none' : '';
+  document.getElementById('details-cancel-btn').style.display = editing ? '' : 'none';
+  document.getElementById('details-save-btn').style.display = editing ? '' : 'none';
 }
 
-document.getElementById('name-edit-btn').addEventListener('click', () => {
-  if (!currentLead) return;
-  document.getElementById('lead-name-input').value = currentLead.customer_name || '';
-  setNameEditing(true);
+document.getElementById('details-edit-btn').addEventListener('click', () => setDetailsEditing(true));
+document.getElementById('details-cancel-btn').addEventListener('click', () => {
+  populateLeadFields(currentLead); // discard any unsaved typing
+  setDetailsEditing(false);
 });
-document.getElementById('name-cancel-btn').addEventListener('click', () => setNameEditing(false));
 
-document.getElementById('name-save-btn').addEventListener('click', async () => {
+document.getElementById('details-save-btn').addEventListener('click', async () => {
   if (!currentLead) return;
-  const newName = document.getElementById('lead-name-input').value.trim();
-  if (!newName) { alert('Please enter a name.'); return; }
+  const newName = document.getElementById('ld-name').value.trim();
+  const newAddress = document.getElementById('ld-address').value.trim();
+  const newPostcode = document.getElementById('ld-postcode').value.trim();
+  const newPhone = document.getElementById('ld-phone').value.trim();
+  const newEmail = document.getElementById('ld-email').value.trim();
+  if (!newName) { alert('Please enter a customer name.'); return; }
+  if (!newAddress || !newPostcode) { alert('Please enter an address and postcode.'); return; }
+  if (!selectedEditLeadType) { alert('Please pick commercial or domestic.'); return; }
 
-  const btn = document.getElementById('name-save-btn');
+  const btn = document.getElementById('details-save-btn');
   btn.disabled = true; btn.textContent = 'Saving…';
-  const { error } = await db.from('prospects').update({ customer_name: newName }).eq('id', currentLead.id);
+  const updates = {
+    customer_name: newName,
+    address: newAddress,
+    postcode: newPostcode,
+    contact_phone: newPhone || null,
+    contact_email: newEmail || null,
+    lead_type: selectedEditLeadType,
+  };
+  const { error } = await db.from('prospects').update(updates).eq('id', currentLead.id);
   btn.disabled = false; btn.textContent = 'Save';
   if (error) { alert('Failed to save: ' + error.message); return; }
 
-  currentLead.customer_name = newName;
-  document.getElementById('lead-name').textContent = newName;
+  Object.assign(currentLead, updates);
   const listRow = allLeads.find(l => l.id === currentLead.id);
-  if (listRow) listRow.customer_name = newName;
+  if (listRow) Object.assign(listRow, updates);
   renderLeadsTable();
-  setNameEditing(false);
-  loadNameHistory(currentLead.id);
+  populateLeadFields(currentLead);
+  setDetailsEditing(false);
+  loadDetailsHistory(currentLead.id);
 });
 
-async function loadNameHistory(prospectId) {
+function detailsHistoryChanges(h) {
+  const changes = [];
+  if (h.old_name !== h.new_name) changes.push(`Name: "${escapeHtml(h.old_name || '(empty)')}" → "${escapeHtml(h.new_name || '(empty)')}"`);
+  if (h.old_address !== h.new_address) changes.push(`Address: "${escapeHtml(h.old_address || '(empty)')}" → "${escapeHtml(h.new_address || '(empty)')}"`);
+  if (h.old_postcode !== h.new_postcode) changes.push(`Postcode: "${escapeHtml(h.old_postcode || '(empty)')}" → "${escapeHtml(h.new_postcode || '(empty)')}"`);
+  if (h.old_contact_phone !== h.new_contact_phone) changes.push(`Phone: "${escapeHtml(h.old_contact_phone || '(empty)')}" → "${escapeHtml(h.new_contact_phone || '(empty)')}"`);
+  if (h.old_contact_email !== h.new_contact_email) changes.push(`Email: "${escapeHtml(h.old_contact_email || '(empty)')}" → "${escapeHtml(h.new_contact_email || '(empty)')}"`);
+  if (h.old_lead_type !== h.new_lead_type) {
+    const oldLabel = LEAD_TYPE[h.old_lead_type]?.label || h.old_lead_type || '(empty)';
+    const newLabel = LEAD_TYPE[h.new_lead_type]?.label || h.new_lead_type || '(empty)';
+    changes.push(`Type: "${escapeHtml(oldLabel)}" → "${escapeHtml(newLabel)}"`);
+  }
+  return changes;
+}
+
+async function loadDetailsHistory(prospectId) {
   const list = document.getElementById('name-history-list');
   list.textContent = 'Loading…';
   const { data, error } = await db.from('prospect_name_audit')
-    .select('old_name, new_name, edited_at, edited_by_email')
+    .select('old_name, new_name, old_address, new_address, old_postcode, new_postcode, old_contact_phone, new_contact_phone, old_contact_email, new_contact_email, old_lead_type, new_lead_type, edited_at, edited_by_email')
     .eq('prospect_id', prospectId)
     .order('edited_at', { ascending: false });
   if (!currentLead || currentLead.id !== prospectId) return; // moved on while this was in flight
-  if (error) { list.innerHTML = `<div class="doc-empty">Couldn't load name history.</div>`; return; }
-  if (!data.length) { list.innerHTML = `<div class="doc-empty">No renames yet.</div>`; return; }
+  if (error) { list.innerHTML = `<div class="doc-empty">Couldn't load edit history.</div>`; return; }
+  if (!data.length) { list.innerHTML = `<div class="doc-empty">No edits yet.</div>`; return; }
   list.innerHTML = data.map(h => `
     <div class="contact-log-item">
       <div class="clog-top">
         <span class="clog-meta">${escapeHtml(h.edited_by_email || 'Unknown')} · ${formatShortDate(h.edited_at)}</span>
       </div>
-      <div class="clog-notes">"${escapeHtml(h.old_name || '(empty)')}" → "${escapeHtml(h.new_name || '(empty)')}"</div>
+      <div class="clog-notes">${detailsHistoryChanges(h).join('<br>')}</div>
     </div>`).join('');
 }
 
