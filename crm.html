@@ -90,6 +90,13 @@ tbody tr:hover { background: var(--surface2); }
 .doc-upload-btn { padding: 6px 14px; background: var(--accentDim); color: var(--accentDk); border: none; border-radius: 6px; font-size: 12px; font-weight: 500; }
 .doc-upload-status { padding-top: 6px; font-size: 11.5px; color: var(--text3); }
 .doc-upload-status.error { color: #c0392b; }
+.quote-option-card { border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+.quote-option-card:last-child { margin-bottom: 0; }
+.quote-option-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.quote-option-label-input { font-size: 14px; font-weight: 600; padding: 6px 9px; border: 1px solid transparent; border-radius: 8px; font-family: inherit; background: transparent; color: var(--text); flex: 1; min-width: 120px; }
+.quote-option-label-input:not(:disabled) { border-color: var(--border); background: var(--surface2); }
+.quote-option-label-input:disabled { opacity: 1; }
+.selected-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 100px; font-size: 11.5px; font-weight: 500; background: var(--accentDim); color: var(--accentDk); white-space: nowrap; }
 
 /* ── Log Contact modal (ported from index.html) ─────────── */
 #contact-modal-overlay, #lead-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(17,24,39,0.4); z-index: 2000; align-items: center; justify-content: center; }
@@ -190,35 +197,17 @@ tbody tr:hover { background: var(--surface2); }
     </div>
 
     <div class="card">
-      <h3>Quote details</h3>
-      <div class="quote-grid">
-        <div class="quote-field"><label>Kit price (£)</label><input type="number" min="0" step="1" id="q-kit" disabled/></div>
-        <div class="quote-field"><label>Scaffold price (£)</label><input type="number" min="0" step="1" id="q-scaffold" disabled/></div>
-        <div class="quote-field"><label>Electrical cost (£)</label><input type="number" min="0" step="1" id="q-electrical" disabled/></div>
-        <div class="quote-field"><label>Roofer cost (£)</label><input type="number" min="0" step="1" id="q-roofer" disabled/></div>
-        <div class="quote-field"><label>MCS cost (£)</label><input type="number" min="0" step="1" id="q-mcs" disabled/></div>
-        <div class="quote-field"><label>Fuel costs (£)</label><input type="number" min="0" step="1" id="q-fuel" disabled/></div>
-        <div class="quote-field"><label>Commission (£)</label><input type="number" min="0" step="1" id="q-commission" disabled/></div>
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px">
+        <h3 style="margin-bottom:0">Quote options</h3>
+        <button class="btn-secondary" id="add-quote-option-btn">+ Add option</button>
       </div>
-      <div class="quote-total"><span>Total cost</span><strong id="q-total">£0</strong></div>
-      <div class="quote-grid" style="margin-top:12px">
-        <div class="quote-field"><label>Quote price (£)</label><input type="number" min="0" step="1" id="q-price" disabled/></div>
-      </div>
-      <div class="quote-total"><span>Margin</span><strong id="q-margin">£0</strong></div>
-      <div class="quote-footer">
-        <span class="quote-status" id="q-status"></span>
-        <div>
-          <button class="btn-secondary" id="q-cancel-btn" style="display:none">Cancel</button>
-          <button class="btn-secondary" id="q-edit-btn">Edit</button>
-          <button class="btn-primary" id="q-save-btn" style="display:none">Save quote</button>
-        </div>
-      </div>
-      <div class="quote-status" style="margin-top:16px;font-weight:600">Edit history</div>
-      <div id="q-history" style="margin-top:8px"></div>
+      <div id="quote-options-list"></div>
+      <div id="quote-options-empty" class="doc-empty" style="display:none">No quote options yet — add one to get started.</div>
     </div>
 
     <div class="card">
-      <h3>Documents</h3>
+      <h3>General documents</h3>
+      <div class="quote-status" style="margin-bottom:10px">Not tied to a specific quote option — e.g. a site survey photo. Per-option paperwork (like a quote PDF) attaches within that option's card above instead.</div>
       <div class="doc-list" id="doc-list">Loading…</div>
       <div class="doc-upload">
         <input type="file" accept="application/pdf,image/jpeg,image/png,image/heic,.doc,.docx" class="doc-file-input" id="doc-file-input">
@@ -460,7 +449,7 @@ function openLeadDetail(lead) {
 
   setDetailsEditing(false);
   loadDetailsHistory(lead.id);
-  loadQuote(lead.id);
+  loadQuoteOptions(lead.id);
   loadLeadDocuments(lead.id);
   renderInstallHubStatus();
   loadContactLog(lead.id);
@@ -653,119 +642,212 @@ document.getElementById('back-btn').addEventListener('click', () => {
   document.getElementById('leads-view').style.display = 'block';
 });
 
-/* ── Quote details ───────────────────────────────────────── */
-function quoteInputs() {
-  return {
-    kit: document.getElementById('q-kit'),
-    scaffold: document.getElementById('q-scaffold'),
-    electrical: document.getElementById('q-electrical'),
-    roofer: document.getElementById('q-roofer'),
-    mcs: document.getElementById('q-mcs'),
-    fuel: document.getElementById('q-fuel'),
-    commission: document.getElementById('q-commission'),
-    price: document.getElementById('q-price'),
-  };
+/* ── Quote options (quote_options, migration 034) — a lead can have
+   several quote options (e.g. different panel counts, with/without
+   battery), each with its own cost breakdown, documents, and edit
+   history. Replaces the old single-lead_quotes-row model. ─────────── */
+const QUOTE_COST_FIELDS = [
+  { key: 'kit_price', label: 'Kit price (£)' },
+  { key: 'scaffold_price', label: 'Scaffold price (£)' },
+  { key: 'electrical_cost', label: 'Electrical cost (£)' },
+  { key: 'roofer_cost', label: 'Roofer cost (£)' },
+  { key: 'mcs_cost', label: 'MCS cost (£)' },
+  { key: 'fuel_cost', label: 'Fuel costs (£)' },
+  { key: 'commission_cost', label: 'Commission (£)' },
+];
+let currentQuoteOptions = [];
+
+function qoFieldId(optionId, field) { return `qo-${field}-${optionId}`; }
+function qoInput(optionId, field) { return document.getElementById(qoFieldId(optionId, field)); }
+function optionCardEl(optionId) { return document.querySelector(`.quote-option-card[data-option-id="${CSS.escape(optionId)}"]`); }
+
+function quoteOptionTotals(values) {
+  const total = QUOTE_COST_FIELDS.reduce((sum, f) => sum + (Number(values[f.key]) || 0), 0);
+  const price = Number(values.quote_price) || 0;
+  const margin = price - total;
+  const marginPct = price > 0 ? (margin / price) * 100 : 0;
+  return { total, price, margin, marginPct };
 }
 
-function updateQuoteTotal() {
-  const inputs = quoteInputs();
-  const total = ['kit', 'scaffold', 'electrical', 'roofer', 'mcs', 'fuel', 'commission']
-    .reduce((sum, key) => sum + (Number(inputs[key].value) || 0), 0);
-  document.getElementById('q-total').textContent = `£${total.toLocaleString()}`;
+// Reads the current (possibly mid-edit) input values for one option card,
+// falling back to '' for any field — used both to recompute the live
+// total/margin display and to build the payload on Save.
+function readOptionCardValues(optionId) {
+  const values = { label: qoInput(optionId, 'label')?.value ?? '' };
+  QUOTE_COST_FIELDS.forEach(f => { values[f.key] = qoInput(optionId, f.key)?.value ?? ''; });
+  values.quote_price = qoInput(optionId, 'quote_price')?.value ?? '';
+  return values;
+}
 
-  const price = Number(inputs.price.value) || 0;
-  const margin = price - total;
-  const marginEl = document.getElementById('q-margin');
-  const marginPct = price > 0 ? (margin / price) * 100 : 0;
+function updateOptionTotals(optionId) {
+  const { total, margin, marginPct } = quoteOptionTotals(readOptionCardValues(optionId));
+  document.getElementById(`qo-total-${optionId}`).textContent = `£${total.toLocaleString()}`;
+  const marginEl = document.getElementById(`qo-margin-${optionId}`);
   marginEl.textContent = `£${margin.toLocaleString()} (${marginPct.toFixed(1)}%)`;
   marginEl.classList.toggle('margin-positive', margin > 0);
   marginEl.classList.toggle('margin-negative', margin < 0);
 }
-Object.values(quoteInputs()).forEach(el => el.addEventListener('input', updateQuoteTotal));
 
-function setQuoteEditing(editing) {
-  Object.values(quoteInputs()).forEach(el => el.disabled = !editing);
-  document.getElementById('q-edit-btn').style.display = editing ? 'none' : '';
-  document.getElementById('q-cancel-btn').style.display = editing ? '' : 'none';
-  document.getElementById('q-save-btn').style.display = editing ? '' : 'none';
+function quoteOptionCardHtml(opt) {
+  const { total, margin, marginPct } = quoteOptionTotals(opt);
+  const id = opt.id;
+  const costFieldsHtml = QUOTE_COST_FIELDS.map(f => `
+    <div class="quote-field"><label>${escapeHtml(f.label)}</label>
+      <input type="number" min="0" step="1" id="${qoFieldId(id, f.key)}" value="${opt[f.key] ?? ''}" oninput="updateOptionTotals('${id}')" disabled/>
+    </div>`).join('');
+
+  return `
+    <div class="quote-option-card" data-option-id="${escapeHtml(id)}">
+      <div class="quote-option-header">
+        <input type="text" class="quote-option-label-input" id="${qoFieldId(id, 'label')}" value="${escapeHtml(opt.label || '')}" placeholder="Option label (e.g. 16 panels + battery)" disabled/>
+        ${opt.is_selected
+          ? `<span class="selected-badge">✓ Selected</span>`
+          : `<button class="btn-secondary" type="button" onclick="selectQuoteOption('${id}')">Mark as selected</button>`}
+      </div>
+      <div class="quote-grid" style="margin-top:12px">${costFieldsHtml}</div>
+      <div class="quote-total"><span>Total cost</span><strong id="qo-total-${id}">£${total.toLocaleString()}</strong></div>
+      <div class="quote-grid" style="margin-top:12px">
+        <div class="quote-field"><label>Quote price (£)</label>
+          <input type="number" min="0" step="1" id="${qoFieldId(id, 'quote_price')}" value="${opt.quote_price ?? ''}" oninput="updateOptionTotals('${id}')" disabled/>
+        </div>
+      </div>
+      <div class="quote-total">
+        <span>Margin</span>
+        <strong id="qo-margin-${id}" class="${margin > 0 ? 'margin-positive' : margin < 0 ? 'margin-negative' : ''}">£${margin.toLocaleString()} (${marginPct.toFixed(1)}%)</strong>
+      </div>
+      <div class="quote-footer">
+        <span class="quote-status" id="qo-status-${id}">${opt.updated_at ? 'Last saved ' + formatShortDate(opt.updated_at) : ''}</span>
+        <div>
+          <button class="btn-secondary" id="qo-cancel-${id}" style="display:none" onclick="cancelQuoteOptionEdit('${id}')">Cancel</button>
+          <button class="btn-secondary" id="qo-edit-${id}" onclick="editQuoteOption('${id}')">Edit</button>
+          <button class="btn-primary" id="qo-save-${id}" style="display:none" onclick="saveQuoteOption('${id}')">Save</button>
+          <button class="btn-secondary" onclick="deleteQuoteOption('${id}')">Delete</button>
+        </div>
+      </div>
+      <div class="quote-status" style="margin-top:16px;font-weight:600">Documents</div>
+      <div class="doc-list" id="qo-doc-list-${id}">Loading…</div>
+      <div class="doc-upload">
+        <input type="file" accept="application/pdf,image/jpeg,image/png,image/heic,.doc,.docx" class="doc-file-input" id="qo-doc-file-${id}">
+        <button type="button" class="doc-upload-btn" onclick="uploadOptionDocument('${id}')">Upload</button>
+      </div>
+      <div class="doc-upload-status" id="qo-doc-status-${id}"></div>
+      <div class="quote-status" style="margin-top:16px;font-weight:600">Edit history</div>
+      <div id="qo-history-${id}" style="margin-top:8px"></div>
+    </div>`;
 }
 
-async function loadQuote(prospectId) {
-  const inputs = quoteInputs();
-  Object.values(inputs).forEach(el => el.value = '');
-  document.getElementById('q-status').textContent = '';
-  setQuoteEditing(false);
-
-  const { data, error } = await db.from('lead_quotes')
-    .select('kit_price, scaffold_price, electrical_cost, roofer_cost, mcs_cost, fuel_cost, commission_cost, quote_price, updated_at')
-    .eq('prospect_id', prospectId)
-    .maybeSingle();
-  if (error) { console.error('Failed to load quote:', error); updateQuoteTotal(); return; }
-  if (data) {
-    inputs.kit.value = data.kit_price ?? '';
-    inputs.scaffold.value = data.scaffold_price ?? '';
-    inputs.electrical.value = data.electrical_cost ?? '';
-    inputs.roofer.value = data.roofer_cost ?? '';
-    inputs.mcs.value = data.mcs_cost ?? '';
-    inputs.fuel.value = data.fuel_cost ?? '';
-    inputs.commission.value = data.commission_cost ?? '';
-    inputs.price.value = data.quote_price ?? '';
-    document.getElementById('q-status').textContent = `Last saved ${formatShortDate(data.updated_at)}`;
-  }
-  updateQuoteTotal();
-  loadQuoteHistory(prospectId);
+function setOptionEditing(optionId, editing) {
+  [...QUOTE_COST_FIELDS.map(f => f.key), 'quote_price', 'label'].forEach(field => {
+    const el = qoInput(optionId, field);
+    if (el) el.disabled = !editing;
+  });
+  document.getElementById(`qo-edit-${optionId}`).style.display = editing ? 'none' : '';
+  document.getElementById(`qo-cancel-${optionId}`).style.display = editing ? '' : 'none';
+  document.getElementById(`qo-save-${optionId}`).style.display = editing ? '' : 'none';
 }
 
-document.getElementById('q-edit-btn').addEventListener('click', () => setQuoteEditing(true));
-document.getElementById('q-cancel-btn').addEventListener('click', () => {
-  if (currentLead) loadQuote(currentLead.id);
-});
+function editQuoteOption(optionId) { setOptionEditing(optionId, true); }
 
-document.getElementById('q-save-btn').addEventListener('click', async () => {
-  if (!currentLead) return;
-  const inputs = quoteInputs();
-  const btn = document.getElementById('q-save-btn');
+function cancelQuoteOptionEdit(optionId) {
+  const opt = currentQuoteOptions.find(o => o.id === optionId);
+  if (!opt) return;
+  qoInput(optionId, 'label').value = opt.label || '';
+  QUOTE_COST_FIELDS.forEach(f => { qoInput(optionId, f.key).value = opt[f.key] ?? ''; });
+  qoInput(optionId, 'quote_price').value = opt.quote_price ?? '';
+  updateOptionTotals(optionId);
+  setOptionEditing(optionId, false);
+}
+
+async function saveQuoteOption(optionId) {
+  const values = readOptionCardValues(optionId);
+  const updates = { label: values.label.trim() || null };
+  QUOTE_COST_FIELDS.forEach(f => { updates[f.key] = values[f.key] === '' ? null : Number(values[f.key]); });
+  updates.quote_price = values.quote_price === '' ? null : Number(values.quote_price);
+  updates.updated_at = new Date().toISOString();
+  updates.updated_by_email = currentUser?.email || null;
+
+  const btn = document.getElementById(`qo-save-${optionId}`);
   btn.disabled = true; btn.textContent = 'Saving…';
+  const { error } = await db.from('quote_options').update(updates).eq('id', optionId);
+  btn.disabled = false; btn.textContent = 'Save';
+  if (error) { alert('Failed to save quote option: ' + error.message); return; }
 
-  const { error } = await db.from('lead_quotes').upsert({
+  const opt = currentQuoteOptions.find(o => o.id === optionId);
+  if (opt) Object.assign(opt, updates);
+  document.getElementById(`qo-status-${optionId}`).textContent = 'Last saved just now';
+  setOptionEditing(optionId, false);
+  loadOptionHistory(optionId);
+}
+
+async function selectQuoteOption(optionId) {
+  const { error } = await db.rpc('select_quote_option', { p_option_id: optionId });
+  if (error) { alert('Failed to mark as selected: ' + error.message); return; }
+  if (currentLead) loadQuoteOptions(currentLead.id); // is_selected changed on every option, not just this one
+}
+
+async function deleteQuoteOption(optionId) {
+  if (!confirm('Delete this quote option? This also removes its documents and edit history.')) return;
+  const { error } = await db.from('quote_options').delete().eq('id', optionId);
+  if (error) { alert('Failed to delete: ' + error.message); return; }
+  currentQuoteOptions = currentQuoteOptions.filter(o => o.id !== optionId);
+  optionCardEl(optionId)?.remove();
+  document.getElementById('quote-options-empty').style.display = currentQuoteOptions.length ? 'none' : 'block';
+}
+
+document.getElementById('add-quote-option-btn').addEventListener('click', async () => {
+  if (!currentLead) return;
+  const position = currentQuoteOptions.length;
+  const { data, error } = await db.from('quote_options').insert({
     prospect_id: currentLead.id,
-    kit_price: inputs.kit.value === '' ? null : Number(inputs.kit.value),
-    scaffold_price: inputs.scaffold.value === '' ? null : Number(inputs.scaffold.value),
-    electrical_cost: inputs.electrical.value === '' ? null : Number(inputs.electrical.value),
-    roofer_cost: inputs.roofer.value === '' ? null : Number(inputs.roofer.value),
-    mcs_cost: inputs.mcs.value === '' ? null : Number(inputs.mcs.value),
-    fuel_cost: inputs.fuel.value === '' ? null : Number(inputs.fuel.value),
-    commission_cost: inputs.commission.value === '' ? null : Number(inputs.commission.value),
-    quote_price: inputs.price.value === '' ? null : Number(inputs.price.value),
-    updated_at: new Date().toISOString(),
+    label: `Option ${position + 1}`,
+    position,
+    created_by_email: currentUser?.email || null,
     updated_by_email: currentUser?.email || null,
-  }, { onConflict: 'prospect_id' });
+  }).select().single();
+  if (error) { alert('Failed to add option: ' + error.message); return; }
 
-  btn.disabled = false; btn.textContent = 'Save quote';
-  if (error) { alert('Failed to save quote: ' + error.message); return; }
-  document.getElementById('q-status').textContent = 'Last saved just now';
-  setQuoteEditing(false);
-  loadQuoteHistory(currentLead.id);
+  currentQuoteOptions.push(data);
+  document.getElementById('quote-options-empty').style.display = 'none';
+  document.getElementById('quote-options-list').insertAdjacentHTML('beforeend', quoteOptionCardHtml(data));
+  loadOptionDocuments(data.id);
+  loadOptionHistory(data.id);
+  setOptionEditing(data.id, true); // straight into edit mode — a freshly added option has nothing worth viewing yet
 });
 
-/* ── Quote edit history (lead_quote_audit, migration 023) — written by a
-   database trigger on every insert/update to lead_quotes, not by this
-   client code, so the log can't be skipped or forged by a rep. ────── */
-async function loadQuoteHistory(prospectId) {
-  const list = document.getElementById('q-history');
+async function loadQuoteOptions(prospectId) {
+  const { data, error } = await db.from('quote_options')
+    .select('id, label, position, kit_price, scaffold_price, electrical_cost, roofer_cost, mcs_cost, fuel_cost, commission_cost, quote_price, is_selected, updated_at')
+    .eq('prospect_id', prospectId)
+    .order('position', { ascending: true });
+  if (!currentLead || currentLead.id !== prospectId) return; // detail view moved on while this was in flight
+  if (error) { console.error('Failed to load quote options:', error); return; }
+
+  currentQuoteOptions = data || [];
+  const listEl = document.getElementById('quote-options-list');
+  listEl.innerHTML = currentQuoteOptions.map(quoteOptionCardHtml).join('');
+  document.getElementById('quote-options-empty').style.display = currentQuoteOptions.length ? 'none' : 'block';
+  currentQuoteOptions.forEach(opt => {
+    loadOptionDocuments(opt.id);
+    loadOptionHistory(opt.id);
+  });
+}
+
+/* ── Per-option edit history (lead_quote_audit, migration 023, extended
+   by 034 with quote_option_id) — written by a database trigger on every
+   insert/update to quote_options, not by this client code. ─────────── */
+async function loadOptionHistory(optionId) {
+  const list = document.getElementById(`qo-history-${optionId}`);
+  if (!list) return;
   list.textContent = 'Loading…';
   const { data, error } = await db.from('lead_quote_audit')
     .select('kit_price, scaffold_price, electrical_cost, roofer_cost, mcs_cost, fuel_cost, commission_cost, quote_price, edited_at, edited_by_email')
-    .eq('prospect_id', prospectId)
+    .eq('quote_option_id', optionId)
     .order('edited_at', { ascending: false });
-  if (!currentLead || currentLead.id !== prospectId) return; // moved on while this was in flight
+  if (!document.getElementById(`qo-history-${optionId}`)) return; // card removed while this was in flight
   if (error) { list.innerHTML = `<div class="doc-empty">Couldn't load edit history.</div>`; return; }
   if (!data.length) { list.innerHTML = `<div class="doc-empty">No edits logged yet.</div>`; return; }
   list.innerHTML = data.map(h => {
-    const total = ['kit_price', 'scaffold_price', 'electrical_cost', 'roofer_cost', 'mcs_cost', 'fuel_cost', 'commission_cost']
-      .reduce((sum, key) => sum + (Number(h[key]) || 0), 0);
-    const price = Number(h.quote_price) || 0;
-    const margin = price - total;
+    const { total, price, margin } = quoteOptionTotals(h);
     return `
       <div class="contact-log-item">
         <div class="clog-top">
@@ -774,6 +856,60 @@ async function loadQuoteHistory(prospectId) {
         <div class="clog-notes">Total cost £${total.toLocaleString()} · Quote price £${price.toLocaleString()} · Margin £${margin.toLocaleString()}</div>
       </div>`;
   }).join('');
+}
+
+/* ── Per-option documents (lead_documents.quote_option_id, migration 034)
+   — same upload mechanism/Storage bucket as the general Documents card
+   below, just scoped to one quote option. ───────────────────────────── */
+async function loadOptionDocuments(optionId) {
+  const list = document.getElementById(`qo-doc-list-${optionId}`);
+  if (!list) return;
+  list.textContent = 'Loading…';
+  const { data, error } = await db.from('lead_documents')
+    .select('file_name, storage_path, uploaded_by, uploaded_at')
+    .eq('quote_option_id', optionId)
+    .order('uploaded_at', { ascending: false });
+  if (!document.getElementById(`qo-doc-list-${optionId}`)) return; // card removed while this was in flight
+  if (error) { list.innerHTML = `<div class="doc-empty">Couldn't load documents.</div>`; return; }
+  list.innerHTML = renderDocumentsList(data || []);
+}
+
+async function uploadOptionDocument(optionId) {
+  if (!currentLead) return;
+  const prospectId = currentLead.id;
+  const fileInput = document.getElementById(`qo-doc-file-${optionId}`);
+  const statusEl = document.getElementById(`qo-doc-status-${optionId}`);
+  const file = fileInput.files[0];
+
+  statusEl.classList.remove('error');
+  statusEl.textContent = '';
+
+  if (!file) { statusEl.textContent = 'Choose a file first.'; statusEl.classList.add('error'); return; }
+  if (!isAllowedDocumentFile(file)) { statusEl.textContent = 'PDF, Word, or image files only.'; statusEl.classList.add('error'); return; }
+  if (file.size > MAX_DOCUMENT_BYTES) { statusEl.textContent = 'File is too large (max 20 MB).'; statusEl.classList.add('error'); return; }
+
+  statusEl.textContent = 'Uploading…';
+  const safeFileName = file.name.replace(/[^\w.\- ]+/g, '_').slice(-120);
+  const storagePath = `${prospectId}/${Date.now()}-${safeFileName}`;
+
+  const { error: uploadError } = await db.storage.from('proposals')
+    .upload(storagePath, file, { contentType: file.type || 'application/octet-stream' });
+  if (uploadError) { statusEl.textContent = `Upload failed: ${uploadError.message || 'try again'}`; statusEl.classList.add('error'); return; }
+
+  const { error: insertError } = await db.from('lead_documents').insert({
+    prospect_id: prospectId,
+    quote_option_id: optionId,
+    file_name: file.name,
+    storage_path: storagePath,
+    file_size_bytes: file.size,
+    uploaded_by: currentUser ? getUserName(currentUser) : 'Unknown',
+    uploaded_by_email: currentUser ? currentUser.email : null,
+  });
+  if (insertError) { statusEl.textContent = `Saved file but failed to record it: ${insertError.message || 'try again'}`; statusEl.classList.add('error'); return; }
+
+  statusEl.textContent = 'Uploaded.';
+  fileInput.value = '';
+  loadOptionDocuments(optionId);
 }
 
 /* ── Documents (lead_documents table, 'proposals' Storage bucket —
@@ -804,9 +940,12 @@ function renderDocumentsList(rows) {
 async function loadLeadDocuments(prospectId) {
   const list = document.getElementById('doc-list');
   list.textContent = 'Loading…';
+  // General documents only — anything tied to a specific quote option
+  // (quote_option_id not null) shows in that option's own card instead.
   const { data, error } = await db.from('lead_documents')
     .select('file_name, storage_path, uploaded_by, uploaded_at')
     .eq('prospect_id', prospectId)
+    .is('quote_option_id', null)
     .order('uploaded_at', { ascending: false });
   if (!currentLead || currentLead.id !== prospectId) return; // detail view moved on while this was in flight
   if (error) { list.innerHTML = `<div class="doc-empty">Couldn't load documents.</div>`; return; }
