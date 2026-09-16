@@ -26,12 +26,25 @@ button { font-family: inherit; cursor: pointer; }
 .nav-link { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; color: var(--text2); text-decoration: none; }
 .nav-link:hover { background: var(--surface2); color: var(--text); text-decoration: none; }
 #sign-out-btn { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; color: var(--text2); }
-#wrap { max-width: 1000px; margin: 0 auto; padding: 24px; }
-.table-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+#wrap { margin: 0 auto; padding: 24px; max-width: 1600px; }
+#detail-view { max-width: 1000px; margin: 0 auto; }
+.leads-layout { display: flex; align-items: flex-start; gap: 20px; }
+.leads-sidebar { width: 230px; flex-shrink: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; position: sticky; top: 80px; }
+.leads-sidebar h4 { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text3); margin: 18px 0 8px; }
+.leads-sidebar h4:first-child { margin-top: 0; }
+.sidebar-chip { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 12.5px; color: var(--text2); cursor: pointer; user-select: none; }
+.sidebar-chip:hover { background: var(--surface2); }
+.sidebar-chip.active { color: var(--text); font-weight: 500; }
+.sidebar-chip.active .sidebar-chip-dot { box-shadow: 0 0 0 3px var(--accentDim); }
+.sidebar-chip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.sidebar-chip-count { margin-left: auto; color: var(--text3); font-size: 11px; }
+.sidebar-reset-btn { font-size: 11.5px; color: var(--accent); background: none; border: none; cursor: pointer; padding: 0; margin-top: 10px; }
+.table-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; flex: 1; min-width: 0; }
 .table-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--border); gap: 12px; }
 .table-header h2 { font-size: 14px; }
 .table-header input { padding: 7px 11px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--surface2); color: var(--text); font-family: inherit; width: 260px; max-width: 50vw; }
 .table-header input:focus { outline: none; border-color: var(--accent); }
+.table-scroll { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 th { text-align: left; padding: 10px 16px; color: var(--text3); font-weight: 500; border-bottom: 1px solid var(--border); white-space: nowrap; }
 td { padding: 10px 16px; border-bottom: 1px solid var(--border); vertical-align: top; }
@@ -144,19 +157,33 @@ tbody tr:hover { background: var(--surface2); }
 <div id="wrap" style="display:none">
 
   <div id="leads-view">
-    <div class="table-card">
-      <div class="table-header">
-        <h2>Manual leads</h2>
-        <input type="text" id="leads-search" placeholder="Search by name, address, phone, email…"/>
-        <button class="btn-primary" id="add-lead-btn">+ Add lead</button>
+    <div class="leads-layout">
+      <aside class="leads-sidebar">
+        <h4>Type</h4>
+        <div id="sidebar-type-list"></div>
+        <h4>Status</h4>
+        <div id="sidebar-status-list"></div>
+        <h4>Install-hub</h4>
+        <div id="sidebar-installhub-list"></div>
+        <button class="sidebar-reset-btn" id="sidebar-reset-btn">Reset filters</button>
+      </aside>
+
+      <div class="table-card">
+        <div class="table-header">
+          <h2>Manual leads</h2>
+          <input type="text" id="leads-search" placeholder="Search by name, address, phone, email…"/>
+          <button class="btn-primary" id="add-lead-btn">+ Add lead</button>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr>
+              <th>Customer</th><th>Type</th><th>Status</th><th>Quote</th><th>Contact</th><th>Address</th><th>Postcode</th><th>Install-hub</th><th>Added</th>
+            </tr></thead>
+            <tbody id="leads-body"></tbody>
+          </table>
+        </div>
+        <div id="empty-state" style="display:none">No manual leads yet — add one from the map.</div>
       </div>
-      <table>
-        <thead><tr>
-          <th>Customer</th><th>Type</th><th>Status</th><th>Contact</th><th>Address</th><th>Added</th>
-        </tr></thead>
-        <tbody id="leads-body"></tbody>
-      </table>
-      <div id="empty-state" style="display:none">No manual leads yet — add one from the map.</div>
     </div>
   </div>
 
@@ -185,8 +212,8 @@ tbody tr:hover { background: var(--surface2); }
       </div>
       <div class="sub"><a id="lead-map-link" href="#">View on map →</a></div>
       <div class="name-history">
-        <div class="quote-status" style="font-weight:600">Edit history</div>
-        <div id="name-history-list" style="margin-top:8px"></div>
+        <button class="btn-secondary" type="button" id="details-history-toggle-btn">Show history</button>
+        <div id="name-history-list" style="margin-top:8px; display:none"></div>
       </div>
     </div>
 
@@ -374,6 +401,18 @@ async function fetchLatestOutcomes(prospectIds) {
   return latest;
 }
 
+// One bulk query for every visible lead's selected quote price (quote_options,
+// migration 034) — same "avoid N+1" reasoning as fetchLatestOutcomes.
+async function fetchSelectedQuotePrices(prospectIds) {
+  if (!prospectIds.length) return {};
+  const { data, error } = await db.from('quote_options')
+    .select('prospect_id, quote_price')
+    .eq('is_selected', true)
+    .in('prospect_id', prospectIds);
+  if (error) { console.error('Failed to load selected quote prices:', error); return {}; }
+  return Object.fromEntries(data.map(r => [r.prospect_id, r.quote_price]));
+}
+
 let currentUser = null;
 let allLeads = [];
 let currentLead = null;
@@ -388,10 +427,74 @@ async function fetchLeads() {
   return data || [];
 }
 
+/* ── Sidebar filters (type/status/install-hub) — same "chip = legend +
+   filter toggle, shows counts" pattern as index.html's map sidebar. ── */
+const NOT_CONTACTED_KEY = '__not_contacted__';
+let activeTypeFilters = new Set(LEAD_TYPE_ORDER);
+let activeStatusFilters = new Set([...CONTACT_OUTCOME_ORDER, NOT_CONTACTED_KEY]);
+let activeInstallHubFilters = new Set(['sent', 'not_sent']);
+
+function sidebarChipHtml(key, dotColor, label, count, activeSet) {
+  return `<div class="sidebar-chip ${activeSet.has(key) ? 'active' : ''}" data-key="${escapeHtml(key)}">
+    <span class="sidebar-chip-dot" style="background:${dotColor}"></span>
+    ${escapeHtml(label)}
+    <span class="sidebar-chip-count">${count}</span>
+  </div>`;
+}
+
+function renderSidebarFilters() {
+  const typeCounts = Object.fromEntries(LEAD_TYPE_ORDER.map(t => [t, 0]));
+  allLeads.forEach(d => { if (d.lead_type in typeCounts) typeCounts[d.lead_type]++; });
+  document.getElementById('sidebar-type-list').innerHTML = LEAD_TYPE_ORDER
+    .map(t => sidebarChipHtml(t, LEAD_TYPE[t].color, LEAD_TYPE[t].label, typeCounts[t], activeTypeFilters))
+    .join('');
+
+  const statusCounts = Object.fromEntries([...CONTACT_OUTCOME_ORDER, NOT_CONTACTED_KEY].map(k => [k, 0]));
+  allLeads.forEach(d => { statusCounts[d.latest_outcome || NOT_CONTACTED_KEY]++; });
+  document.getElementById('sidebar-status-list').innerHTML = [
+    sidebarChipHtml(NOT_CONTACTED_KEY, NOT_CONTACTED_STATUS.color, NOT_CONTACTED_STATUS.label, statusCounts[NOT_CONTACTED_KEY], activeStatusFilters),
+    ...CONTACT_OUTCOME_ORDER.map(o => sidebarChipHtml(o, CONTACT_OUTCOME[o].color, CONTACT_OUTCOME[o].label, statusCounts[o], activeStatusFilters)),
+  ].join('');
+
+  const sentCount = allLeads.filter(d => d.install_hub_job_id).length;
+  document.getElementById('sidebar-installhub-list').innerHTML = [
+    sidebarChipHtml('sent', 'var(--accent)', 'Sent', sentCount, activeInstallHubFilters),
+    sidebarChipHtml('not_sent', 'var(--text3)', 'Not sent', allLeads.length - sentCount, activeInstallHubFilters),
+  ].join('');
+}
+
+function bindSidebarFilterGroup(containerId, activeSet) {
+  document.getElementById(containerId).addEventListener('click', e => {
+    const chip = e.target.closest('.sidebar-chip');
+    if (!chip) return;
+    const key = chip.dataset.key;
+    if (activeSet.has(key)) activeSet.delete(key); else activeSet.add(key);
+    renderSidebarFilters();
+    renderLeadsTable();
+  });
+}
+bindSidebarFilterGroup('sidebar-type-list', activeTypeFilters);
+bindSidebarFilterGroup('sidebar-status-list', activeStatusFilters);
+bindSidebarFilterGroup('sidebar-installhub-list', activeInstallHubFilters);
+
+document.getElementById('sidebar-reset-btn').addEventListener('click', () => {
+  activeTypeFilters.clear(); LEAD_TYPE_ORDER.forEach(t => activeTypeFilters.add(t));
+  activeStatusFilters.clear(); [...CONTACT_OUTCOME_ORDER, NOT_CONTACTED_KEY].forEach(k => activeStatusFilters.add(k));
+  activeInstallHubFilters.clear(); ['sent', 'not_sent'].forEach(k => activeInstallHubFilters.add(k));
+  document.getElementById('leads-search').value = '';
+  renderSidebarFilters();
+  renderLeadsTable();
+});
+
 function renderLeadsTable() {
   const term = document.getElementById('leads-search').value.trim().toLowerCase();
-  const leads = allLeads.filter(d => !term || [d.customer_name, d.address, d.postcode, d.contact_phone, d.contact_email]
-    .some(v => (v || '').toLowerCase().includes(term)));
+  const leads = allLeads.filter(d => {
+    if (term && ![d.customer_name, d.address, d.postcode, d.contact_phone, d.contact_email].some(v => (v || '').toLowerCase().includes(term))) return false;
+    if (!activeTypeFilters.has(d.lead_type)) return false;
+    if (!activeStatusFilters.has(d.latest_outcome || NOT_CONTACTED_KEY)) return false;
+    if (!activeInstallHubFilters.has(d.install_hub_job_id ? 'sent' : 'not_sent')) return false;
+    return true;
+  });
 
   document.getElementById('empty-state').style.display = leads.length ? 'none' : 'block';
   const body = document.getElementById('leads-body');
@@ -403,15 +506,21 @@ function renderLeadsTable() {
       d.contact_phone ? escapeHtml(d.contact_phone) : '',
       d.contact_email ? escapeHtml(d.contact_email) : '',
     ].filter(Boolean).join('<br>') || '—';
-    const address = [escapeHtml(d.address || ''), escapeHtml(d.postcode || '')].filter(Boolean).join('<br>') || '—';
+    const quoteCell = d.selected_quote_price != null ? `£${Number(d.selected_quote_price).toLocaleString()}` : '—';
+    const installHubCell = d.install_hub_job_id
+      ? `<span class="tag"><span class="tag-dot" style="background:var(--accent)"></span>Sent</span>`
+      : '—';
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${escapeHtml(d.customer_name || 'Unnamed lead')}</td>
       <td>${typeTag}</td>
       <td>${statusBadgeHtml(d.latest_outcome)}</td>
+      <td>${quoteCell}</td>
       <td>${contact}</td>
-      <td>${address}</td>
+      <td>${escapeHtml(d.address || '') || '—'}</td>
+      <td>${escapeHtml(d.postcode || '') || '—'}</td>
+      <td>${installHubCell}</td>
       <td>${formatShortDate(d.created_at) || '—'}</td>`;
     tr.addEventListener('click', () => openLeadDetail(d));
     body.appendChild(tr);
@@ -448,7 +557,9 @@ function openLeadDetail(lead) {
   document.getElementById('lead-map-link').href = `index.html?lead=${encodeURIComponent(lead.id)}`;
 
   setDetailsEditing(false);
-  loadDetailsHistory(lead.id);
+  detailsHistoryLoaded = false;
+  document.getElementById('name-history-list').style.display = 'none';
+  document.getElementById('details-history-toggle-btn').textContent = 'Show history';
   loadQuoteOptions(lead.id);
   loadLeadDocuments(lead.id);
   renderInstallHubStatus();
@@ -524,6 +635,7 @@ document.getElementById('details-save-btn').addEventListener('click', async () =
   Object.assign(currentLead, updates);
   const listRow = allLeads.find(l => l.id === currentLead.id);
   if (listRow) Object.assign(listRow, updates);
+  renderSidebarFilters();
   renderLeadsTable();
   populateLeadFields(currentLead);
   setDetailsEditing(false);
@@ -563,6 +675,17 @@ async function loadDetailsHistory(prospectId) {
       <div class="clog-notes">${detailsHistoryChanges(h).join('<br>')}</div>
     </div>`).join('');
 }
+
+let detailsHistoryLoaded = false;
+document.getElementById('details-history-toggle-btn').addEventListener('click', () => {
+  const list = document.getElementById('name-history-list');
+  const btn = document.getElementById('details-history-toggle-btn');
+  const showing = list.style.display !== 'none';
+  if (showing) { list.style.display = 'none'; btn.textContent = 'Show history'; return; }
+  list.style.display = '';
+  btn.textContent = 'Hide history';
+  if (!detailsHistoryLoaded) { detailsHistoryLoaded = true; loadDetailsHistory(currentLead.id); }
+});
 
 /* ── Contact log history (migration 021 opened prospect_contacts' read
    up to any Turbine Energy rep, not just the manager) ────── */
@@ -731,8 +854,10 @@ function quoteOptionCardHtml(opt) {
         <button type="button" class="doc-upload-btn" onclick="uploadOptionDocument('${id}')">Upload</button>
       </div>
       <div class="doc-upload-status" id="qo-doc-status-${id}"></div>
-      <div class="quote-status" style="margin-top:16px;font-weight:600">Edit history</div>
-      <div id="qo-history-${id}" style="margin-top:8px"></div>
+      <div style="margin-top:16px">
+        <button class="btn-secondary" type="button" id="qo-history-toggle-${id}" onclick="toggleOptionHistory('${id}')">Show history</button>
+        <div id="qo-history-${id}" style="margin-top:8px; display:none"></div>
+      </div>
     </div>`;
 }
 
@@ -776,22 +901,43 @@ async function saveQuoteOption(optionId) {
   if (opt) Object.assign(opt, updates);
   document.getElementById(`qo-status-${optionId}`).textContent = 'Last saved just now';
   setOptionEditing(optionId, false);
-  loadOptionHistory(optionId);
+  // Refresh now only if the history is already open; otherwise just mark
+  // it stale so the next "Show history" click fetches the fresh row.
+  const historyList = document.getElementById(`qo-history-${optionId}`);
+  if (historyList.style.display !== 'none') loadOptionHistory(optionId);
+  else historyList.dataset.loaded = 'false';
+  if (opt?.is_selected) syncLeadSelectedQuotePrice();
+}
+
+// Keeps the leads table's "Quote" column in sync with whichever option is
+// currently selected for this lead — the table itself isn't visible while
+// on the detail view, but re-rendering it now means it's already correct
+// whenever the rep clicks "Back to leads", no re-fetch needed there.
+function syncLeadSelectedQuotePrice() {
+  if (!currentLead) return;
+  const listRow = allLeads.find(l => l.id === currentLead.id);
+  if (!listRow) return;
+  const selected = currentQuoteOptions.find(o => o.is_selected);
+  listRow.selected_quote_price = selected?.quote_price ?? null;
+  renderLeadsTable();
 }
 
 async function selectQuoteOption(optionId) {
   const { error } = await db.rpc('select_quote_option', { p_option_id: optionId });
   if (error) { alert('Failed to mark as selected: ' + error.message); return; }
-  if (currentLead) loadQuoteOptions(currentLead.id); // is_selected changed on every option, not just this one
+  if (currentLead) await loadQuoteOptions(currentLead.id); // is_selected changed on every option, not just this one
+  syncLeadSelectedQuotePrice();
 }
 
 async function deleteQuoteOption(optionId) {
   if (!confirm('Delete this quote option? This also removes its documents and edit history.')) return;
+  const wasSelected = currentQuoteOptions.find(o => o.id === optionId)?.is_selected;
   const { error } = await db.from('quote_options').delete().eq('id', optionId);
   if (error) { alert('Failed to delete: ' + error.message); return; }
   currentQuoteOptions = currentQuoteOptions.filter(o => o.id !== optionId);
   optionCardEl(optionId)?.remove();
   document.getElementById('quote-options-empty').style.display = currentQuoteOptions.length ? 'none' : 'block';
+  if (wasSelected) syncLeadSelectedQuotePrice();
 }
 
 document.getElementById('add-quote-option-btn').addEventListener('click', async () => {
@@ -810,7 +956,6 @@ document.getElementById('add-quote-option-btn').addEventListener('click', async 
   document.getElementById('quote-options-empty').style.display = 'none';
   document.getElementById('quote-options-list').insertAdjacentHTML('beforeend', quoteOptionCardHtml(data));
   loadOptionDocuments(data.id);
-  loadOptionHistory(data.id);
   setOptionEditing(data.id, true); // straight into edit mode — a freshly added option has nothing worth viewing yet
 });
 
@@ -826,10 +971,17 @@ async function loadQuoteOptions(prospectId) {
   const listEl = document.getElementById('quote-options-list');
   listEl.innerHTML = currentQuoteOptions.map(quoteOptionCardHtml).join('');
   document.getElementById('quote-options-empty').style.display = currentQuoteOptions.length ? 'none' : 'block';
-  currentQuoteOptions.forEach(opt => {
-    loadOptionDocuments(opt.id);
-    loadOptionHistory(opt.id);
-  });
+  currentQuoteOptions.forEach(opt => loadOptionDocuments(opt.id));
+}
+
+function toggleOptionHistory(optionId) {
+  const list = document.getElementById(`qo-history-${optionId}`);
+  const btn = document.getElementById(`qo-history-toggle-${optionId}`);
+  const showing = list.style.display !== 'none';
+  if (showing) { list.style.display = 'none'; btn.textContent = 'Show history'; return; }
+  list.style.display = '';
+  btn.textContent = 'Hide history';
+  if (list.dataset.loaded !== 'true') { list.dataset.loaded = 'true'; loadOptionHistory(optionId); }
 }
 
 /* ── Per-option edit history (lead_quote_audit, migration 023, extended
@@ -1132,6 +1284,7 @@ document.getElementById('cm-submit').addEventListener('click', async () => {
   // status without waiting on a re-fetch.
   const row = allLeads.find(l => l.id === prospectId);
   if (row) row.latest_outcome = outcome;
+  renderSidebarFilters();
   renderLeadsTable();
   if (currentLead && currentLead.id === prospectId) {
     currentLead.latest_outcome = outcome;
@@ -1240,7 +1393,9 @@ document.getElementById('lm-submit').addEventListener('click', async () => {
 
   closeLeadModal();
   inserted.latest_outcome = null;
+  inserted.selected_quote_price = null;
   allLeads.unshift(inserted);
+  renderSidebarFilters();
   renderLeadsTable();
   openLeadDetail(inserted);
 });
@@ -1251,8 +1406,13 @@ async function boot(user) {
   document.getElementById('nav-dashboard-link').style.display = isAdmin(user) ? '' : 'none';
   document.getElementById('wrap').style.display = 'block';
   allLeads = await fetchLeads();
-  const outcomes = await fetchLatestOutcomes(allLeads.map(l => l.id));
-  allLeads.forEach(l => { l.latest_outcome = outcomes[l.id] || null; });
+  const ids = allLeads.map(l => l.id);
+  const [outcomes, quotePrices] = await Promise.all([fetchLatestOutcomes(ids), fetchSelectedQuotePrices(ids)]);
+  allLeads.forEach(l => {
+    l.latest_outcome = outcomes[l.id] || null;
+    l.selected_quote_price = quotePrices[l.id] ?? null;
+  });
+  renderSidebarFilters();
   renderLeadsTable();
 }
 
