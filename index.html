@@ -1302,10 +1302,16 @@ async function removeDocument(linkEl) {
   if (!confirm('Remove this document? It can be restored later from the CRM\'s "Recently deleted" section.')) return;
   const docId = linkEl.dataset.docId;
   const prospectId = linkEl.dataset.prospectId;
-  const { error } = await window.db.from('lead_documents')
+  // .select() so an update blocked by RLS (0 rows matched) surfaces as an
+  // empty result rather than a silent, false "success" — see crm.html's
+  // removeLeadDocument for the real incident this guards against
+  // (lead_documents had no UPDATE policy at all until migration 038).
+  const { data, error } = await window.db.from('lead_documents')
     .update({ deleted_at: new Date().toISOString(), deleted_by_email: currentUser?.email || null })
-    .eq('id', docId);
+    .eq('id', docId)
+    .select();
   if (error) { alert('Failed to remove: ' + error.message); return; }
+  if (!data?.length) { alert("Couldn't remove this document — it may already be removed, or you may not have permission."); return; }
   loadDocuments({ id: prospectId });
 }
 

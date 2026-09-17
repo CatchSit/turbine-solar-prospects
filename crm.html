@@ -1289,10 +1289,18 @@ async function removeLeadDocument(linkEl) {
   if (!confirm('Remove this document? It can be restored later from "Recently deleted".')) return;
   const docId = linkEl.dataset.docId;
   const reloadContext = linkEl.dataset.reloadContext;
-  const { error } = await db.from('lead_documents')
+  // .select() so an update blocked by RLS (0 rows matched) surfaces as an
+  // empty result rather than a silent, false "success" — a plain .update()
+  // with no error still returns 200/no error when a policy filters out the
+  // row, since RLS acts as a row filter, not a hard error (the exact bug
+  // that shipped here initially: lead_documents had no UPDATE policy at
+  // all until migration 038, so this always silently affected 0 rows).
+  const { data, error } = await db.from('lead_documents')
     .update({ deleted_at: new Date().toISOString(), deleted_by_email: currentUser?.email || null })
-    .eq('id', docId);
+    .eq('id', docId)
+    .select();
   if (error) { alert('Failed to remove: ' + error.message); return; }
+  if (!data?.length) { alert("Couldn't remove this document — it may already be removed, or you may not have permission."); return; }
   if (reloadContext === 'general') {
     if (currentLead) {
       loadLeadDocuments(currentLead.id);
@@ -1318,10 +1326,12 @@ function renderDeletedDocsHtml(rows, reloadContext) {
 }
 
 async function restoreLeadDocument(docId, reloadContext) {
-  const { error } = await db.from('lead_documents')
+  const { data, error } = await db.from('lead_documents')
     .update({ deleted_at: null, restored_at: new Date().toISOString(), restored_by_email: currentUser?.email || null })
-    .eq('id', docId);
+    .eq('id', docId)
+    .select();
   if (error) { alert('Failed to restore: ' + error.message); return; }
+  if (!data?.length) { alert("Couldn't restore this document — you may not have permission."); return; }
   if (reloadContext === 'general') {
     if (currentLead) { loadLeadDocuments(currentLead.id); loadDeletedLeadDocuments(currentLead.id); }
   } else {
