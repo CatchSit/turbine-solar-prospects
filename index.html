@@ -1292,15 +1292,19 @@ function renderDocumentsList(rows, prospectId) {
     </div>`).join('');
 }
 
-// Removes the lead_documents row only — the underlying file stays in the
-// 'proposals' Storage bucket (deliberate soft-delete-by-metadata, see
-// migration 036). The deletion itself is captured in lead_document_audit
-// by a database trigger, not by this client code.
+// Soft delete (deleted_at set, migration 037) — the row and the
+// underlying file both stay in place, genuinely restorable, not just
+// logged after the fact. Restoring is done from crm.html's "General
+// documents" → "Recently deleted" instead of duplicating that UI here —
+// the map popup stays a quick-glance/quick-action surface, not the full
+// management view.
 async function removeDocument(linkEl) {
-  if (!confirm('Remove this document? It will no longer show in the app.')) return;
+  if (!confirm('Remove this document? It can be restored later from the CRM\'s "Recently deleted" section.')) return;
   const docId = linkEl.dataset.docId;
   const prospectId = linkEl.dataset.prospectId;
-  const { error } = await window.db.from('lead_documents').delete().eq('id', docId);
+  const { error } = await window.db.from('lead_documents')
+    .update({ deleted_at: new Date().toISOString(), deleted_by_email: currentUser?.email || null })
+    .eq('id', docId);
   if (error) { alert('Failed to remove: ' + error.message); return; }
   loadDocuments({ id: prospectId });
 }
@@ -1313,6 +1317,7 @@ async function loadDocuments(d) {
     .from('lead_documents')
     .select('id, file_name, storage_path, uploaded_by, uploaded_at')
     .eq('prospect_id', d.id)
+    .is('deleted_at', null)
     .order('uploaded_at', { ascending: false });
 
   // The popup may have closed (or a different one opened) while this was in flight.

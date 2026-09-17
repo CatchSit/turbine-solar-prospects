@@ -232,6 +232,10 @@ tbody tr:hover { background: var(--surface2); }
       </div>
       <div id="quote-options-list"></div>
       <div id="quote-options-empty" class="doc-empty" style="display:none">No quote options yet — add one to get started.</div>
+      <div id="deleted-options-section" style="display:none; margin-top:16px">
+        <button class="btn-secondary" type="button" id="deleted-options-toggle-btn" onclick="toggleDeletedOptions()">Show recently deleted</button>
+        <div id="deleted-options-list" style="margin-top:8px; display:none"></div>
+      </div>
     </div>
 
     <div class="card">
@@ -243,6 +247,10 @@ tbody tr:hover { background: var(--surface2); }
         <button type="button" class="doc-upload-btn" id="doc-upload-btn">Upload</button>
       </div>
       <div class="doc-upload-status" id="doc-upload-status"></div>
+      <div style="margin-top:14px">
+        <button class="btn-secondary" type="button" id="deleted-docs-toggle-btn" onclick="toggleDeletedLeadDocs()">Show recently deleted</button>
+        <div id="deleted-docs-list" style="margin-top:8px; display:none"></div>
+      </div>
     </div>
 
     <div class="card">
@@ -410,6 +418,7 @@ async function fetchSelectedQuotePrices(prospectIds) {
   const { data, error } = await db.from('quote_options')
     .select('prospect_id, quote_price')
     .eq('is_selected', true)
+    .is('deleted_at', null)
     .in('prospect_id', prospectIds);
   if (error) { console.error('Failed to load selected quote prices:', error); return {}; }
   return Object.fromEntries(data.map(r => [r.prospect_id, r.quote_price]));
@@ -562,6 +571,17 @@ function openLeadDetail(lead) {
   detailsHistoryLoaded = false;
   document.getElementById('name-history-list').style.display = 'none';
   document.getElementById('details-history-toggle-btn').textContent = 'Show history';
+
+  deletedOptionsLoaded = false;
+  document.getElementById('deleted-options-section').style.display = isAdmin(currentUser) ? '' : 'none';
+  document.getElementById('deleted-options-list').style.display = 'none';
+  document.getElementById('deleted-options-toggle-btn').textContent = 'Show recently deleted';
+
+  const deletedDocsList = document.getElementById('deleted-docs-list');
+  deletedDocsList.style.display = 'none';
+  deletedDocsList.dataset.loaded = 'false';
+  document.getElementById('deleted-docs-toggle-btn').textContent = 'Show recently deleted';
+
   loadQuoteOptions(lead.id);
   loadLeadDocuments(lead.id);
   renderInstallHubStatus();
@@ -856,6 +876,10 @@ function quoteOptionCardHtml(opt) {
         <button type="button" class="doc-upload-btn" onclick="uploadOptionDocument('${id}')">Upload</button>
       </div>
       <div class="doc-upload-status" id="qo-doc-status-${id}"></div>
+      <div style="margin-top:14px">
+        <button class="btn-secondary" type="button" id="qo-deleted-docs-toggle-${id}" onclick="toggleDeletedOptionDocs('${id}')">Show recently deleted</button>
+        <div id="qo-deleted-docs-${id}" style="margin-top:8px; display:none"></div>
+      </div>
       <div style="margin-top:16px">
         <button class="btn-secondary" type="button" id="qo-history-toggle-${id}" onclick="toggleOptionHistory('${id}')">Show history</button>
         <div id="qo-history-${id}" style="margin-top:8px; display:none"></div>
@@ -932,19 +956,69 @@ async function selectQuoteOption(optionId) {
 }
 
 async function deleteQuoteOption(optionId) {
-  if (!confirm('Delete this quote option? Its attached documents will be removed too — this is logged in the audit trail and can be reviewed later, but the option itself cannot be restored from the app.')) return;
+  if (!confirm('Delete this quote option? It can be restored later from "Recently deleted" below.')) return;
   const wasSelected = currentQuoteOptions.find(o => o.id === optionId)?.is_selected;
-  // .select() so a delete blocked by RLS (0 rows matched) surfaces as an
-  // empty result rather than a silent, false "success" — a plain
-  // .delete() with no error still returns 200/no error when the policy
-  // filters out the row, since RLS acts as a row filter, not a hard error.
-  const { data, error } = await db.from('quote_options').delete().eq('id', optionId).select();
+  // Soft delete (deleted_at set), not a real DELETE — trg_guard_quote_
+  // option_soft_delete (037) rejects this update outright for a
+  // non-manager, so a permission failure surfaces as a genuine error here,
+  // not a silently-empty result.
+  const { error } = await db.from('quote_options')
+    .update({ deleted_at: new Date().toISOString(), deleted_by_email: currentUser?.email || null })
+    .eq('id', optionId);
   if (error) { alert('Failed to delete: ' + error.message); return; }
-  if (!data?.length) { alert("You don't have permission to delete quote options — this is an admin-only action."); return; }
   currentQuoteOptions = currentQuoteOptions.filter(o => o.id !== optionId);
   optionCardEl(optionId)?.remove();
   document.getElementById('quote-options-empty').style.display = currentQuoteOptions.length ? 'none' : 'block';
   if (wasSelected) syncLeadSelectedQuotePrice();
+  if (currentLead && document.getElementById('deleted-options-list').style.display !== 'none') {
+    loadDeletedQuoteOptions(currentLead.id);
+  }
+}
+
+/* ── Recently deleted quote options (soft-delete, migration 037) —
+   admin-only, same as deleting one. Lazy-loaded like edit history. ── */
+let deletedOptionsLoaded = false;
+function toggleDeletedOptions() {
+  const list = document.getElementById('deleted-options-list');
+  const btn = document.getElementById('deleted-options-toggle-btn');
+  const showing = list.style.display !== 'none';
+  if (showing) { list.style.display = 'none'; btn.textContent = 'Show recently deleted'; return; }
+  list.style.display = '';
+  btn.textContent = 'Hide recently deleted';
+  if (!deletedOptionsLoaded) { deletedOptionsLoaded = true; loadDeletedQuoteOptions(currentLead.id); }
+}
+
+async function loadDeletedQuoteOptions(prospectId) {
+  const list = document.getElementById('deleted-options-list');
+  list.textContent = 'Loading…';
+  const { data, error } = await db.from('quote_options')
+    .select('id, label, quote_price, deleted_at, deleted_by_email')
+    .eq('prospect_id', prospectId)
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false });
+  if (!currentLead || currentLead.id !== prospectId) return;
+  if (error) { list.innerHTML = `<div class="doc-empty">Couldn't load recently deleted options.</div>`; return; }
+  if (!data.length) { list.innerHTML = `<div class="doc-empty">Nothing deleted recently.</div>`; return; }
+  list.innerHTML = data.map(o => `
+    <div class="contact-log-item">
+      <div class="clog-top">
+        <span class="clog-meta">${escapeHtml(o.label || 'Untitled option')} · deleted by ${escapeHtml(o.deleted_by_email || 'Unknown')} · ${formatShortDate(o.deleted_at)}</span>
+        <button class="btn-secondary" type="button" onclick="restoreQuoteOption('${o.id}')">Restore</button>
+      </div>
+      <div class="clog-notes">${o.quote_price != null ? `Quote price £${Number(o.quote_price).toLocaleString()}` : 'No quote price set'}</div>
+    </div>`).join('');
+}
+
+async function restoreQuoteOption(optionId) {
+  const { error } = await db.from('quote_options')
+    .update({ deleted_at: null, restored_at: new Date().toISOString(), restored_by_email: currentUser?.email || null })
+    .eq('id', optionId);
+  if (error) { alert('Failed to restore: ' + error.message); return; }
+  if (currentLead) {
+    await loadQuoteOptions(currentLead.id);
+    await loadDeletedQuoteOptions(currentLead.id);
+    syncLeadSelectedQuotePrice();
+  }
 }
 
 document.getElementById('add-quote-option-btn').addEventListener('click', async () => {
@@ -970,6 +1044,7 @@ async function loadQuoteOptions(prospectId) {
   const { data, error } = await db.from('quote_options')
     .select('id, label, position, kit_price, scaffold_price, electrical_cost, roofer_cost, mcs_cost, fuel_cost, commission_cost, quote_price, is_selected, updated_at')
     .eq('prospect_id', prospectId)
+    .is('deleted_at', null)
     .order('position', { ascending: true });
   if (!currentLead || currentLead.id !== prospectId) return; // detail view moved on while this was in flight
   if (error) { console.error('Failed to load quote options:', error); return; }
@@ -1027,10 +1102,35 @@ async function loadOptionDocuments(optionId) {
   const { data, error } = await db.from('lead_documents')
     .select('id, file_name, storage_path, uploaded_by, uploaded_at')
     .eq('quote_option_id', optionId)
+    .is('deleted_at', null)
     .order('uploaded_at', { ascending: false });
   if (!document.getElementById(`qo-doc-list-${optionId}`)) return; // card removed while this was in flight
   if (error) { list.innerHTML = `<div class="doc-empty">Couldn't load documents.</div>`; return; }
   list.innerHTML = renderDocumentsList(data || [], optionId);
+}
+
+async function loadDeletedOptionDocuments(optionId) {
+  const list = document.getElementById(`qo-deleted-docs-${optionId}`);
+  if (!list) return;
+  list.textContent = 'Loading…';
+  const { data, error } = await db.from('lead_documents')
+    .select('id, file_name, deleted_at, deleted_by_email')
+    .eq('quote_option_id', optionId)
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false });
+  if (!document.getElementById(`qo-deleted-docs-${optionId}`)) return;
+  if (error) { list.innerHTML = `<div class="doc-empty">Couldn't load recently deleted documents.</div>`; return; }
+  list.innerHTML = renderDeletedDocsHtml(data || [], optionId);
+}
+
+function toggleDeletedOptionDocs(optionId) {
+  const list = document.getElementById(`qo-deleted-docs-${optionId}`);
+  const btn = document.getElementById(`qo-deleted-docs-toggle-${optionId}`);
+  const showing = list.style.display !== 'none';
+  if (showing) { list.style.display = 'none'; btn.textContent = 'Show recently deleted'; return; }
+  list.style.display = '';
+  btn.textContent = 'Hide recently deleted';
+  if (list.dataset.loaded !== 'true') { list.dataset.loaded = 'true'; loadDeletedOptionDocuments(optionId); }
 }
 
 async function uploadOptionDocument(optionId) {
@@ -1102,20 +1202,52 @@ function renderDocumentsList(rows, reloadContext) {
     </div>`).join('');
 }
 
-// Removes the lead_documents row only — the underlying file stays in the
-// 'proposals' Storage bucket (deliberate: see migration 036's comment).
-// The deletion itself is captured in lead_document_audit by a database
-// trigger, not by this client code, so it can't be skipped or forged.
+// Soft delete (deleted_at set, migration 037) — the row (and the
+// underlying file in the 'proposals' Storage bucket) both stay in place,
+// so this is genuinely restorable via "Recently deleted", not just
+// recorded in an audit log after the fact.
 async function removeLeadDocument(linkEl) {
-  if (!confirm('Remove this document? It will no longer show in the app.')) return;
+  if (!confirm('Remove this document? It can be restored later from "Recently deleted".')) return;
   const docId = linkEl.dataset.docId;
   const reloadContext = linkEl.dataset.reloadContext;
-  const { error } = await db.from('lead_documents').delete().eq('id', docId);
+  const { error } = await db.from('lead_documents')
+    .update({ deleted_at: new Date().toISOString(), deleted_by_email: currentUser?.email || null })
+    .eq('id', docId);
   if (error) { alert('Failed to remove: ' + error.message); return; }
   if (reloadContext === 'general') {
-    if (currentLead) loadLeadDocuments(currentLead.id);
+    if (currentLead) {
+      loadLeadDocuments(currentLead.id);
+      if (document.getElementById('deleted-docs-list').style.display !== 'none') loadDeletedLeadDocuments(currentLead.id);
+    }
   } else {
     loadOptionDocuments(reloadContext);
+    const deletedList = document.getElementById(`qo-deleted-docs-${reloadContext}`);
+    if (deletedList && deletedList.style.display !== 'none') loadDeletedOptionDocuments(reloadContext);
+  }
+}
+
+function renderDeletedDocsHtml(rows, reloadContext) {
+  if (!rows.length) return `<div class="doc-empty">Nothing deleted recently.</div>`;
+  return rows.map(d => `
+    <div class="doc-item">
+      <div>
+        <div class="doc-name">${escapeHtml(d.file_name)}</div>
+        <div class="doc-meta">Deleted by ${escapeHtml(d.deleted_by_email || 'Unknown')} · ${formatShortDate(d.deleted_at)}</div>
+      </div>
+      <span class="doc-open-link" onclick="restoreLeadDocument('${escapeHtml(d.id)}', '${escapeHtml(reloadContext)}')">Restore</span>
+    </div>`).join('');
+}
+
+async function restoreLeadDocument(docId, reloadContext) {
+  const { error } = await db.from('lead_documents')
+    .update({ deleted_at: null, restored_at: new Date().toISOString(), restored_by_email: currentUser?.email || null })
+    .eq('id', docId);
+  if (error) { alert('Failed to restore: ' + error.message); return; }
+  if (reloadContext === 'general') {
+    if (currentLead) { loadLeadDocuments(currentLead.id); loadDeletedLeadDocuments(currentLead.id); }
+  } else {
+    loadOptionDocuments(reloadContext);
+    loadDeletedOptionDocuments(reloadContext);
   }
 }
 
@@ -1128,10 +1260,35 @@ async function loadLeadDocuments(prospectId) {
     .select('id, file_name, storage_path, uploaded_by, uploaded_at')
     .eq('prospect_id', prospectId)
     .is('quote_option_id', null)
+    .is('deleted_at', null)
     .order('uploaded_at', { ascending: false });
   if (!currentLead || currentLead.id !== prospectId) return; // detail view moved on while this was in flight
   if (error) { list.innerHTML = `<div class="doc-empty">Couldn't load documents.</div>`; return; }
   list.innerHTML = renderDocumentsList(data || [], 'general');
+}
+
+async function loadDeletedLeadDocuments(prospectId) {
+  const list = document.getElementById('deleted-docs-list');
+  list.textContent = 'Loading…';
+  const { data, error } = await db.from('lead_documents')
+    .select('id, file_name, deleted_at, deleted_by_email')
+    .eq('prospect_id', prospectId)
+    .is('quote_option_id', null)
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false });
+  if (!currentLead || currentLead.id !== prospectId) return;
+  if (error) { list.innerHTML = `<div class="doc-empty">Couldn't load recently deleted documents.</div>`; return; }
+  list.innerHTML = renderDeletedDocsHtml(data || [], 'general');
+}
+
+function toggleDeletedLeadDocs() {
+  const list = document.getElementById('deleted-docs-list');
+  const btn = document.getElementById('deleted-docs-toggle-btn');
+  const showing = list.style.display !== 'none';
+  if (showing) { list.style.display = 'none'; btn.textContent = 'Show recently deleted'; return; }
+  list.style.display = '';
+  btn.textContent = 'Hide recently deleted';
+  if (list.dataset.loaded !== 'true') { list.dataset.loaded = 'true'; loadDeletedLeadDocuments(currentLead.id); }
 }
 
 document.getElementById('doc-upload-btn').addEventListener('click', async () => {
