@@ -844,7 +844,7 @@ function quoteOptionCardHtml(opt) {
           <button class="btn-secondary" id="qo-cancel-${id}" style="display:none" onclick="cancelQuoteOptionEdit('${id}')">Cancel</button>
           <button class="btn-secondary" id="qo-edit-${id}" onclick="editQuoteOption('${id}')">Edit</button>
           <button class="btn-primary" id="qo-save-${id}" style="display:none" onclick="saveQuoteOption('${id}')">Save</button>
-          <button class="btn-secondary" onclick="deleteQuoteOption('${id}')">Delete</button>
+          ${isAdmin(currentUser) ? `<button class="btn-secondary" onclick="deleteQuoteOption('${id}')">Delete</button>` : ''}
         </div>
       </div>
       <div class="quote-status" style="margin-top:16px;font-weight:600">Documents</div>
@@ -932,8 +932,13 @@ async function selectQuoteOption(optionId) {
 async function deleteQuoteOption(optionId) {
   if (!confirm('Delete this quote option? This also removes its documents and edit history.')) return;
   const wasSelected = currentQuoteOptions.find(o => o.id === optionId)?.is_selected;
-  const { error } = await db.from('quote_options').delete().eq('id', optionId);
+  // .select() so a delete blocked by RLS (0 rows matched) surfaces as an
+  // empty result rather than a silent, false "success" — a plain
+  // .delete() with no error still returns 200/no error when the policy
+  // filters out the row, since RLS acts as a row filter, not a hard error.
+  const { data, error } = await db.from('quote_options').delete().eq('id', optionId).select();
   if (error) { alert('Failed to delete: ' + error.message); return; }
+  if (!data?.length) { alert("You don't have permission to delete quote options — this is an admin-only action."); return; }
   currentQuoteOptions = currentQuoteOptions.filter(o => o.id !== optionId);
   optionCardEl(optionId)?.remove();
   document.getElementById('quote-options-empty').style.display = currentQuoteOptions.length ? 'none' : 'block';
