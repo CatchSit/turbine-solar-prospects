@@ -261,7 +261,9 @@
     .proposal-item:first-child { border-top: none; }
     .proposal-name { font-weight: 500; color: var(--text); font-size: 12.5px; }
     .proposal-meta { color: var(--text3); font-size: 11px; margin-top: 1px; }
+    .proposal-actions { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
     .proposal-open-link { color: var(--accent); font-size: 12px; white-space: nowrap; cursor: pointer; }
+    .proposal-remove-link { color: var(--alert); font-size: 12px; white-space: nowrap; cursor: pointer; }
     .proposals-empty { color: var(--text3); font-size: 12px; padding: 4px 0; }
     .contact-log-list { padding: 0 20px; }
     .contact-log-item { padding: 8px 0; border-top: 1px solid var(--border); }
@@ -1275,7 +1277,7 @@ function documentsEmptyHtml() {
   return `<div class="proposals-empty">No documents attached yet.</div>`;
 }
 
-function renderDocumentsList(rows) {
+function renderDocumentsList(rows, prospectId) {
   if (!rows.length) return documentsEmptyHtml();
   return rows.map(p => `
     <div class="proposal-item">
@@ -1283,8 +1285,24 @@ function renderDocumentsList(rows) {
         <div class="proposal-name">${escapeHtml(p.file_name)}</div>
         <div class="proposal-meta">${escapeHtml(p.uploaded_by)} · ${formatShortDate(p.uploaded_at)}</div>
       </div>
-      <span class="proposal-open-link" data-storage-path="${escapeHtml(p.storage_path)}" onclick="openDocument(this)">Open</span>
+      <div class="proposal-actions">
+        <span class="proposal-open-link" data-storage-path="${escapeHtml(p.storage_path)}" onclick="openDocument(this)">Open</span>
+        <span class="proposal-remove-link" data-doc-id="${escapeHtml(p.id)}" data-prospect-id="${escapeHtml(prospectId)}" onclick="removeDocument(this)">Remove</span>
+      </div>
     </div>`).join('');
+}
+
+// Removes the lead_documents row only — the underlying file stays in the
+// 'proposals' Storage bucket (deliberate soft-delete-by-metadata, see
+// migration 036). The deletion itself is captured in lead_document_audit
+// by a database trigger, not by this client code.
+async function removeDocument(linkEl) {
+  if (!confirm('Remove this document? It will no longer show in the app.')) return;
+  const docId = linkEl.dataset.docId;
+  const prospectId = linkEl.dataset.prospectId;
+  const { error } = await window.db.from('lead_documents').delete().eq('id', docId);
+  if (error) { alert('Failed to remove: ' + error.message); return; }
+  loadDocuments({ id: prospectId });
 }
 
 async function loadDocuments(d) {
@@ -1293,7 +1311,7 @@ async function loadDocuments(d) {
 
   const { data, error } = await window.db
     .from('lead_documents')
-    .select('file_name, storage_path, uploaded_by, uploaded_at')
+    .select('id, file_name, storage_path, uploaded_by, uploaded_at')
     .eq('prospect_id', d.id)
     .order('uploaded_at', { ascending: false });
 
@@ -1306,7 +1324,7 @@ async function loadDocuments(d) {
     list.innerHTML = `<div class="proposals-empty">Couldn't load documents. <span class="proposal-open-link" onclick="loadDocuments({id: '${escapeHtml(d.id)}'})">Retry</span></div>`;
     return;
   }
-  list.innerHTML = renderDocumentsList(data || []);
+  list.innerHTML = renderDocumentsList(data || [], d.id);
 }
 
 // Contact log's read was manager-only until migration 021 opened it up to

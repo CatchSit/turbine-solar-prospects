@@ -88,7 +88,9 @@ tbody tr:hover { background: var(--surface2); }
 .doc-item:first-child { border-top: none; }
 .doc-name { font-weight: 500; color: var(--text); font-size: 12.5px; }
 .doc-meta { color: var(--text3); font-size: 11px; margin-top: 1px; }
+.doc-actions { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
 .doc-open-link { color: var(--accent); font-size: 12px; white-space: nowrap; cursor: pointer; }
+.doc-remove-link { color: var(--alert); font-size: 12px; white-space: nowrap; cursor: pointer; }
 .doc-empty { color: var(--text3); font-size: 12px; padding: 4px 0; }
 .contact-log-item { padding: 10px 0; border-top: 1px solid var(--border); }
 .contact-log-item:first-child { border-top: none; }
@@ -930,7 +932,7 @@ async function selectQuoteOption(optionId) {
 }
 
 async function deleteQuoteOption(optionId) {
-  if (!confirm('Delete this quote option? This also removes its documents and edit history.')) return;
+  if (!confirm('Delete this quote option? Its attached documents will be removed too — this is logged in the audit trail and can be reviewed later, but the option itself cannot be restored from the app.')) return;
   const wasSelected = currentQuoteOptions.find(o => o.id === optionId)?.is_selected;
   // .select() so a delete blocked by RLS (0 rows matched) surfaces as an
   // empty result rather than a silent, false "success" — a plain
@@ -1023,12 +1025,12 @@ async function loadOptionDocuments(optionId) {
   if (!list) return;
   list.textContent = 'Loading…';
   const { data, error } = await db.from('lead_documents')
-    .select('file_name, storage_path, uploaded_by, uploaded_at')
+    .select('id, file_name, storage_path, uploaded_by, uploaded_at')
     .eq('quote_option_id', optionId)
     .order('uploaded_at', { ascending: false });
   if (!document.getElementById(`qo-doc-list-${optionId}`)) return; // card removed while this was in flight
   if (error) { list.innerHTML = `<div class="doc-empty">Couldn't load documents.</div>`; return; }
-  list.innerHTML = renderDocumentsList(data || []);
+  list.innerHTML = renderDocumentsList(data || [], optionId);
 }
 
 async function uploadOptionDocument(optionId) {
@@ -1082,7 +1084,10 @@ function isAllowedDocumentFile(file) {
   return ALLOWED_DOCUMENT_TYPES.has(file.type) || ALLOWED_DOCUMENT_EXTENSIONS.test(file.name);
 }
 
-function renderDocumentsList(rows) {
+// reloadContext identifies which list to refresh after a successful
+// delete: the literal string 'general' for the lead-level Documents card,
+// or a quote option's id for that option's own document list.
+function renderDocumentsList(rows, reloadContext) {
   if (!rows.length) return `<div class="doc-empty">No documents attached yet.</div>`;
   return rows.map(p => `
     <div class="doc-item">
@@ -1090,8 +1095,28 @@ function renderDocumentsList(rows) {
         <div class="doc-name">${escapeHtml(p.file_name)}</div>
         <div class="doc-meta">${escapeHtml(p.uploaded_by)} · ${formatShortDate(p.uploaded_at)}</div>
       </div>
-      <span class="doc-open-link" data-storage-path="${escapeHtml(p.storage_path)}" onclick="openLeadDocument(this)">Open</span>
+      <div class="doc-actions">
+        <span class="doc-open-link" data-storage-path="${escapeHtml(p.storage_path)}" onclick="openLeadDocument(this)">Open</span>
+        <span class="doc-remove-link" data-doc-id="${escapeHtml(p.id)}" data-reload-context="${escapeHtml(reloadContext)}" onclick="removeLeadDocument(this)">Remove</span>
+      </div>
     </div>`).join('');
+}
+
+// Removes the lead_documents row only — the underlying file stays in the
+// 'proposals' Storage bucket (deliberate: see migration 036's comment).
+// The deletion itself is captured in lead_document_audit by a database
+// trigger, not by this client code, so it can't be skipped or forged.
+async function removeLeadDocument(linkEl) {
+  if (!confirm('Remove this document? It will no longer show in the app.')) return;
+  const docId = linkEl.dataset.docId;
+  const reloadContext = linkEl.dataset.reloadContext;
+  const { error } = await db.from('lead_documents').delete().eq('id', docId);
+  if (error) { alert('Failed to remove: ' + error.message); return; }
+  if (reloadContext === 'general') {
+    if (currentLead) loadLeadDocuments(currentLead.id);
+  } else {
+    loadOptionDocuments(reloadContext);
+  }
 }
 
 async function loadLeadDocuments(prospectId) {
@@ -1100,13 +1125,13 @@ async function loadLeadDocuments(prospectId) {
   // General documents only — anything tied to a specific quote option
   // (quote_option_id not null) shows in that option's own card instead.
   const { data, error } = await db.from('lead_documents')
-    .select('file_name, storage_path, uploaded_by, uploaded_at')
+    .select('id, file_name, storage_path, uploaded_by, uploaded_at')
     .eq('prospect_id', prospectId)
     .is('quote_option_id', null)
     .order('uploaded_at', { ascending: false });
   if (!currentLead || currentLead.id !== prospectId) return; // detail view moved on while this was in flight
   if (error) { list.innerHTML = `<div class="doc-empty">Couldn't load documents.</div>`; return; }
-  list.innerHTML = renderDocumentsList(data || []);
+  list.innerHTML = renderDocumentsList(data || [], 'general');
 }
 
 document.getElementById('doc-upload-btn').addEventListener('click', async () => {
