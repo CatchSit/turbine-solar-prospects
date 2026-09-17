@@ -823,6 +823,7 @@ const QUOTE_COST_FIELDS = [
   { key: 'mcs_cost', label: 'MCS cost (£)' },
   { key: 'fuel_cost', label: 'Fuel costs (£)' },
   { key: 'commission_cost', label: 'Commission (£)' },
+  { key: 'heat_loss_epc_cost', label: 'Heat loss and EPC (£)' },
 ];
 let currentQuoteOptions = [];
 
@@ -1121,7 +1122,7 @@ document.getElementById('add-quote-option-btn').addEventListener('click', async 
 
 async function loadQuoteOptions(prospectId) {
   const { data, error } = await db.from('quote_options')
-    .select('id, label, position, kit_price, scaffold_price, electrical_cost, roofer_cost, mcs_cost, fuel_cost, commission_cost, quote_price, is_selected, updated_at')
+    .select('id, label, position, kit_price, scaffold_price, electrical_cost, roofer_cost, mcs_cost, fuel_cost, commission_cost, heat_loss_epc_cost, quote_price, is_selected, updated_at')
     .eq('prospect_id', prospectId)
     .is('deleted_at', null)
     .order('position', { ascending: true });
@@ -1153,7 +1154,7 @@ async function loadOptionHistory(optionId) {
   if (!list) return;
   list.textContent = 'Loading…';
   const { data, error } = await db.from('lead_quote_audit')
-    .select('kit_price, scaffold_price, electrical_cost, roofer_cost, mcs_cost, fuel_cost, commission_cost, quote_price, edited_at, edited_by_email')
+    .select('kit_price, scaffold_price, electrical_cost, roofer_cost, mcs_cost, fuel_cost, commission_cost, heat_loss_epc_cost, quote_price, edited_at, edited_by_email')
     .eq('quote_option_id', optionId)
     .order('edited_at', { ascending: false });
   if (!document.getElementById(`qo-history-${optionId}`)) return; // card removed while this was in flight
