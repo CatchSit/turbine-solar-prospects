@@ -105,13 +105,30 @@ tbody tr:hover { background: var(--surface2); }
 .doc-upload-btn { padding: 6px 14px; background: var(--accentDim); color: var(--accentDk); border: none; border-radius: 6px; font-size: 12px; font-weight: 500; }
 .doc-upload-status { padding-top: 6px; font-size: 11.5px; color: var(--text3); }
 .doc-upload-status.error { color: #c0392b; }
-.quote-option-card { border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
-.quote-option-card:last-child { margin-bottom: 0; }
 .quote-option-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .quote-option-label-input { font-size: 14px; font-weight: 600; padding: 6px 9px; border: 1px solid transparent; border-radius: 8px; font-family: inherit; background: transparent; color: var(--text); flex: 1; min-width: 120px; }
 .quote-option-label-input:not(:disabled) { border-color: var(--border); background: var(--surface2); }
 .quote-option-label-input:disabled { opacity: 1; }
-.selected-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 100px; font-size: 11.5px; font-weight: 500; background: var(--accentDim); color: var(--accentDk); white-space: nowrap; }
+.selected-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 100px; font-size: 11.5px; font-weight: 500; background: var(--accentDim); color: var(--accentDk); white-space: nowrap; margin-left: 8px; vertical-align: middle; }
+.margin-positive { color: var(--accent); }
+.margin-negative { color: var(--alert); }
+
+/* ── Quote options table (brainstormed 2026-09-17 — "table rows" over a
+   stat-strip/accordion/ratio-bar mockup) ─────────────────────────────── */
+.qo-table-wrap { overflow-x: auto; }
+.qo-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.qo-table thead th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--text3); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.qo-table thead th.num-col { text-align: right; }
+.qo-table td.num-col { text-align: right; font-variant-numeric: tabular-nums; }
+.qo-summary-row td { padding: 11px 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.qo-summary-row:hover td { background: var(--surface2); }
+.qo-summary-row .row-name { font-weight: 600; }
+.qo-summary-row.is-selected-row td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.row-actions { white-space: nowrap; text-align: right; }
+.row-action-link { color: var(--accent); font-size: 12px; cursor: pointer; margin-left: 12px; }
+.row-action-link.row-action-delete { color: var(--alert); }
+.qo-detail-row td { padding: 16px 10px; border-bottom: 1px solid var(--border); }
+.qo-detail-row:last-child td { border-bottom: none; }
 
 /* ── Log Contact modal (ported from index.html) ─────────── */
 #contact-modal-overlay, #lead-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(17,24,39,0.4); z-index: 2000; align-items: center; justify-content: center; }
@@ -230,7 +247,14 @@ tbody tr:hover { background: var(--surface2); }
         <h3 style="margin-bottom:0">Quote options</h3>
         <button class="btn-secondary" id="add-quote-option-btn">+ Add option</button>
       </div>
-      <div id="quote-options-list"></div>
+      <div class="qo-table-wrap">
+        <table class="qo-table">
+          <thead><tr>
+            <th>Option</th><th class="num-col">Cost</th><th class="num-col">Quote price</th><th class="num-col">Margin</th><th></th>
+          </tr></thead>
+          <tbody id="quote-options-list"></tbody>
+        </table>
+      </div>
       <div id="quote-options-empty" class="doc-empty" style="display:none">No quote options yet — add one to get started.</div>
       <div id="deleted-options-section" style="display:none; margin-top:16px">
         <button class="btn-secondary" type="button" id="deleted-options-toggle-btn" onclick="toggleDeletedOptions()">Show recently deleted</button>
@@ -804,7 +828,7 @@ let currentQuoteOptions = [];
 
 function qoFieldId(optionId, field) { return `qo-${field}-${optionId}`; }
 function qoInput(optionId, field) { return document.getElementById(qoFieldId(optionId, field)); }
-function optionCardEl(optionId) { return document.querySelector(`.quote-option-card[data-option-id="${CSS.escape(optionId)}"]`); }
+function optionRowsEl(optionId) { return document.querySelectorAll(`tr[data-option-id="${CSS.escape(optionId)}"]`); }
 
 function quoteOptionTotals(values) {
   const total = QUOTE_COST_FIELDS.reduce((sum, f) => sum + (Number(values[f.key]) || 0), 0);
@@ -833,7 +857,32 @@ function updateOptionTotals(optionId) {
   marginEl.classList.toggle('margin-negative', margin < 0);
 }
 
-function quoteOptionCardHtml(opt) {
+// Table-row display (brainstormed with the user, 2026-09-17 — "table
+// rows" chosen over a stat-strip/accordion/ratio-bar mockup): each option
+// is a compact summary row (name, cost, quote price, margin) by default,
+// expanding in place into today's full editable form — same fields, same
+// behavior, just collapsed until you actually need to touch it. A left
+// accent stripe marks the selected option instead of always showing a
+// badge, so the table's lines stay clean at a glance.
+function marginClass(margin) { return margin > 0 ? 'margin-positive' : margin < 0 ? 'margin-negative' : ''; }
+
+function quoteOptionSummaryRowHtml(opt) {
+  const { total, price, margin, marginPct } = quoteOptionTotals(opt);
+  const id = opt.id;
+  return `
+    <tr class="qo-summary-row ${opt.is_selected ? 'is-selected-row' : ''}" id="qo-summary-${id}" data-option-id="${escapeHtml(id)}" onclick="editQuoteOption('${id}')">
+      <td class="row-name">${escapeHtml(opt.label || 'Untitled option')}${opt.is_selected ? `<span class="selected-badge">✓ Selected</span>` : ''}</td>
+      <td class="num-col num" id="qo-row-cost-${id}">£${total.toLocaleString()}</td>
+      <td class="num-col num" id="qo-row-price-${id}">£${price.toLocaleString()}</td>
+      <td class="num-col num ${marginClass(margin)}" id="qo-row-margin-${id}">£${margin.toLocaleString()} (${marginPct.toFixed(1)}%)</td>
+      <td class="row-actions" onclick="event.stopPropagation()">
+        ${!opt.is_selected ? `<span class="row-action-link" onclick="selectQuoteOption('${id}')">Select</span>` : ''}
+        ${isAdmin(currentUser) ? `<span class="row-action-link row-action-delete" onclick="deleteQuoteOption('${id}')">Delete</span>` : ''}
+      </td>
+    </tr>`;
+}
+
+function quoteOptionDetailRowHtml(opt) {
   const { total, margin, marginPct } = quoteOptionTotals(opt);
   const id = opt.id;
   const costFieldsHtml = QUOTE_COST_FIELDS.map(f => `
@@ -842,7 +891,8 @@ function quoteOptionCardHtml(opt) {
     </div>`).join('');
 
   return `
-    <div class="quote-option-card" data-option-id="${escapeHtml(id)}">
+    <tr class="qo-detail-row" id="qo-detail-${id}" data-option-id="${escapeHtml(id)}" style="display:none">
+      <td colspan="5">
       <div class="quote-option-header">
         <input type="text" class="quote-option-label-input" id="${qoFieldId(id, 'label')}" value="${escapeHtml(opt.label || '')}" placeholder="Option label (e.g. 16 panels + battery)" disabled/>
         ${opt.is_selected
@@ -858,14 +908,13 @@ function quoteOptionCardHtml(opt) {
       </div>
       <div class="quote-total">
         <span>Margin</span>
-        <strong id="qo-margin-${id}" class="${margin > 0 ? 'margin-positive' : margin < 0 ? 'margin-negative' : ''}">£${margin.toLocaleString()} (${marginPct.toFixed(1)}%)</strong>
+        <strong id="qo-margin-${id}" class="${marginClass(margin)}">£${margin.toLocaleString()} (${marginPct.toFixed(1)}%)</strong>
       </div>
       <div class="quote-footer">
         <span class="quote-status" id="qo-status-${id}">${opt.updated_at ? 'Last saved ' + formatShortDate(opt.updated_at) : ''}</span>
         <div>
-          <button class="btn-secondary" id="qo-cancel-${id}" style="display:none" onclick="cancelQuoteOptionEdit('${id}')">Cancel</button>
-          <button class="btn-secondary" id="qo-edit-${id}" onclick="editQuoteOption('${id}')">Edit</button>
-          <button class="btn-primary" id="qo-save-${id}" style="display:none" onclick="saveQuoteOption('${id}')">Save</button>
+          <button class="btn-secondary" id="qo-cancel-${id}" onclick="cancelQuoteOptionEdit('${id}')">Cancel</button>
+          <button class="btn-primary" id="qo-save-${id}" onclick="saveQuoteOption('${id}')">Save</button>
           ${isAdmin(currentUser) ? `<button class="btn-secondary" onclick="deleteQuoteOption('${id}')">Delete</button>` : ''}
         </div>
       </div>
@@ -884,17 +933,46 @@ function quoteOptionCardHtml(opt) {
         <button class="btn-secondary" type="button" id="qo-history-toggle-${id}" onclick="toggleOptionHistory('${id}')">Show history</button>
         <div id="qo-history-${id}" style="margin-top:8px; display:none"></div>
       </div>
-    </div>`;
+      </td>
+    </tr>`;
 }
 
+function quoteOptionRowsHtml(opt) {
+  return quoteOptionSummaryRowHtml(opt) + quoteOptionDetailRowHtml(opt);
+}
+
+// Re-renders just the summary row's cells from the option's current
+// (post-save) data — called instead of a full table re-render so the
+// detail row's open/loaded state (documents, history) isn't disturbed.
+function refreshSummaryRow(opt) {
+  const { total, price, margin, marginPct } = quoteOptionTotals(opt);
+  const row = document.getElementById(`qo-summary-${opt.id}`);
+  if (!row) return;
+  row.classList.toggle('is-selected-row', !!opt.is_selected);
+  row.querySelector('.row-name').innerHTML = `${escapeHtml(opt.label || 'Untitled option')}${opt.is_selected ? `<span class="selected-badge">✓ Selected</span>` : ''}`;
+  document.getElementById(`qo-row-cost-${opt.id}`).textContent = `£${total.toLocaleString()}`;
+  document.getElementById(`qo-row-price-${opt.id}`).textContent = `£${price.toLocaleString()}`;
+  const marginCell = document.getElementById(`qo-row-margin-${opt.id}`);
+  marginCell.textContent = `£${margin.toLocaleString()} (${marginPct.toFixed(1)}%)`;
+  marginCell.className = `num-col num ${marginClass(margin)}`;
+  const actionsCell = row.querySelector('.row-actions');
+  actionsCell.innerHTML = `
+    ${!opt.is_selected ? `<span class="row-action-link" onclick="selectQuoteOption('${opt.id}')">Select</span>` : ''}
+    ${isAdmin(currentUser) ? `<span class="row-action-link row-action-delete" onclick="deleteQuoteOption('${opt.id}')">Delete</span>` : ''}`;
+}
+
+// "Editing" now means "expanded" — the summary row (name/cost/price/
+// margin) and detail row (the full form) are mutually exclusive views of
+// the same option, not a disabled/enabled toggle within one fixed card.
 function setOptionEditing(optionId, editing) {
+  const summaryRow = document.getElementById(`qo-summary-${optionId}`);
+  const detailRow = document.getElementById(`qo-detail-${optionId}`);
+  if (summaryRow) summaryRow.style.display = editing ? 'none' : '';
+  if (detailRow) detailRow.style.display = editing ? '' : 'none';
   [...QUOTE_COST_FIELDS.map(f => f.key), 'quote_price', 'label'].forEach(field => {
     const el = qoInput(optionId, field);
     if (el) el.disabled = !editing;
   });
-  document.getElementById(`qo-edit-${optionId}`).style.display = editing ? 'none' : '';
-  document.getElementById(`qo-cancel-${optionId}`).style.display = editing ? '' : 'none';
-  document.getElementById(`qo-save-${optionId}`).style.display = editing ? '' : 'none';
 }
 
 function editQuoteOption(optionId) { setOptionEditing(optionId, true); }
@@ -927,6 +1005,7 @@ async function saveQuoteOption(optionId) {
   if (opt) Object.assign(opt, updates);
   document.getElementById(`qo-status-${optionId}`).textContent = 'Last saved just now';
   setOptionEditing(optionId, false);
+  if (opt) refreshSummaryRow(opt);
   // Refresh now only if the history is already open; otherwise just mark
   // it stale so the next "Show history" click fetches the fresh row.
   const historyList = document.getElementById(`qo-history-${optionId}`);
@@ -967,7 +1046,7 @@ async function deleteQuoteOption(optionId) {
     .eq('id', optionId);
   if (error) { alert('Failed to delete: ' + error.message); return; }
   currentQuoteOptions = currentQuoteOptions.filter(o => o.id !== optionId);
-  optionCardEl(optionId)?.remove();
+  optionRowsEl(optionId).forEach(row => row.remove());
   document.getElementById('quote-options-empty').style.display = currentQuoteOptions.length ? 'none' : 'block';
   if (wasSelected) syncLeadSelectedQuotePrice();
   if (currentLead && document.getElementById('deleted-options-list').style.display !== 'none') {
@@ -1035,7 +1114,7 @@ document.getElementById('add-quote-option-btn').addEventListener('click', async 
 
   currentQuoteOptions.push(data);
   document.getElementById('quote-options-empty').style.display = 'none';
-  document.getElementById('quote-options-list').insertAdjacentHTML('beforeend', quoteOptionCardHtml(data));
+  document.getElementById('quote-options-list').insertAdjacentHTML('beforeend', quoteOptionRowsHtml(data));
   loadOptionDocuments(data.id);
   setOptionEditing(data.id, true); // straight into edit mode — a freshly added option has nothing worth viewing yet
 });
@@ -1051,7 +1130,7 @@ async function loadQuoteOptions(prospectId) {
 
   currentQuoteOptions = data || [];
   const listEl = document.getElementById('quote-options-list');
-  listEl.innerHTML = currentQuoteOptions.map(quoteOptionCardHtml).join('');
+  listEl.innerHTML = currentQuoteOptions.map(quoteOptionRowsHtml).join('');
   document.getElementById('quote-options-empty').style.display = currentQuoteOptions.length ? 'none' : 'block';
   currentQuoteOptions.forEach(opt => loadOptionDocuments(opt.id));
 }
