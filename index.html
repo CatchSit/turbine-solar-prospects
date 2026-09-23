@@ -1122,7 +1122,7 @@ function buildPopup(d) {
     ? `<div class="solar-est">☀ Estimated roof potential: ${d.solar_max_panels ? `up to <strong>${d.solar_max_panels}</strong> panels` : ''}${d.solar_max_panels && d.solar_yearly_energy_kwh ? ' · ' : ''}${d.solar_yearly_energy_kwh ? `~<strong>${Math.round(d.solar_yearly_energy_kwh).toLocaleString()}</strong> kWh/year` : ''}</div>`
     : '';
   const heatingGrantInfo = isHeatingGrant
-    ? `<div class="solar-est">🔥 ${escapeHtml(d.main_fuel || 'Off-grid')} heating${d.tenure ? ` · ${escapeHtml(d.tenure)}` : ''} — eligible for the <strong>£9,000 Boiler Upgrade Scheme</strong> grant (oil/LPG homes, until 31 Mar 2027)</div>`
+    ? `<div class="solar-est">🔥 ${escapeHtml(d.main_fuel || 'Off-grid')} heating${d.tenure ? ` · ${escapeHtml(d.tenure)}` : ''} — eligible for the <strong>£9,000 Boiler Upgrade Scheme</strong> grant (oil/LPG homes, until 31 Mar 2027)${recDate ? `<br><span style="opacity:.7">EPC lodged ${recDate} — how recent this "still oil/LPG" reading is</span>` : ''}</div>`
     : '';
 
   return `
