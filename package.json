@@ -10,6 +10,7 @@
     "geocode": "node scripts/geocode-postcodes.mjs",
     "ingest-recommendations": "node scripts/ingest-epc-recommendations.mjs",
     "ingest-business-rates": "node scripts/ingest-business-rates.mjs",
+    "ingest-heating-grant-leads": "node scripts/ingest-heating-grant-leads.mjs",
     "classify-companies": "node scripts/classify-companies.mjs",
     "match-ownership": "node scripts/match-ownership.mjs"
   },

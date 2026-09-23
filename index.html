@@ -498,6 +498,17 @@
   </div>
 
   <div class="section">
+    <h3>Lead category</h3>
+    <div class="chip-list">
+      <label class="chip on" id="heating-grant-chip">
+        <input type="checkbox" id="heating-grant-filter" checked/>
+        <span class="dot" id="heating-grant-dot"></span>
+        Oil/LPG BUS Grant Leads<span class="chip-n" id="heating-grant-count"></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="section">
     <h3>Grant funding area</h3>
     <div id="grant-area-list" class="chip-list"></div>
   </div>
@@ -687,6 +698,7 @@
 <script src="shared/contact-outcome-config.js"></script>
 <script src="shared/grant-area-config.js"></script>
 <script src="shared/lead-type-config.js"></script>
+<script src="shared/heating-grant-config.js"></script>
 <script src="shared/ownership-status-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
@@ -898,6 +910,7 @@ let recommendationYearOrder = []; // set alongside activeRecommendationYears
 let activeSolarStatuses = new Set(['prospect']); // default: only show fresh prospects
 let filterEpcSolar = false;      // opt-in: when true, only show prospects with epc_recommends_solar
 let filterEpcEfficiency = false; // opt-in: when true, only show prospects with epc_recommends_efficiency
+let showHeatingGrantLeads = true; // opt-out: oil/LPG BUS-grant leads (source:'oil-lpg-bus') shown by default
 let searchTerm = "";
 
 // Real spread of solar-recommendation dates in the loaded data, computed
@@ -954,6 +967,17 @@ function makeManualLeadIcon(d) {
   return L.divIcon({ html, className: '', iconSize: [size, size], iconAnchor: [size/2, size/2] });
 }
 
+// Oil/LPG BUS-grant leads (source:'oil-lpg-bus') get a diamond pin — a third
+// distinct shape so it's never confused with the pipeline's teardrop or a
+// manual lead's circle, colored from HEATING_GRANT's own amber identity
+// (not SOLAR_STATUS or LEAD_TYPE, since solar_status is meaningless here —
+// see the statusOk exemption in applyFilters()).
+function makeHeatingGrantIcon() {
+  const size = 16;
+  const html = `<div class="day-marker" style="width:${size}px;height:${size}px;background:${HEATING_GRANT.color};border:2px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,.35);transform:rotate(45deg);"></div>`;
+  return L.divIcon({ html, className: '', iconSize: [size, size], iconAnchor: [size/2, size/2] });
+}
+
 // Shared by the initial bulk load (initMap) and a freshly-added manual
 // lead (lm-submit handler) so both go through identical bucket/marker/
 // popup/drag wiring instead of two copies drifting apart.
@@ -963,8 +987,9 @@ function createMarker(d) {
   d._maturity = bucketCompanyMaturity(d.company_classifications || {});
   d._recommendationYear = (d.epc_recommends_solar && d.lodgement_date) ? new Date(d.lodgement_date).getFullYear() : null;
   const isManual = d.source === 'manual';
+  const isHeatingGrant = d.source === 'oil-lpg-bus';
   const marker = L.marker([d.lat, d.lng], {
-    icon: isManual ? makeManualLeadIcon(d) : makeMarkerIcon(d),
+    icon: isManual ? makeManualLeadIcon(d) : isHeatingGrant ? makeHeatingGrantIcon() : makeMarkerIcon(d),
     draggable: isManual,
   });
   marker.bindTooltip(d.customer_name || d.address || d.postcode || 'Unnamed building', { direction: "top", offset: [0, -10], className: 'day-tooltip', opacity: 0.96 });
@@ -1040,18 +1065,29 @@ function formatShortDate(dateStr) {
 }
 function buildPopup(d) {
   const isManual = d.source === 'manual';
+  const isHeatingGrant = d.source === 'oil-lpg-bus';
   const solarCfg = SOLAR_STATUS[d.solar_status] || { color: '#999', soft: '#eee', label: d.solar_status };
   const epcCfg = EPC_RATING[d.epc_rating] || null;
   const bucket = bucketPropertyType(d.property_type);
 
-  const statusPill = `<span class="status-pill" style="background:${solarCfg.soft};color:${solarCfg.color}"><span class="pill-dot" style="background:${solarCfg.color}"></span>${solarCfg.label}</span>`;
+  // solar_status is seeded 'no_coverage' for every heating-grant lead (never
+  // actually screened — see the ingest script) so its pill would misleadingly
+  // read "No imagery coverage"; suppress it and show the grant tag instead.
+  const statusPill = isHeatingGrant ? '' : `<span class="status-pill" style="background:${solarCfg.soft};color:${solarCfg.color}"><span class="pill-dot" style="background:${solarCfg.color}"></span>${solarCfg.label}</span>`;
+  const heatingGrantTag = isHeatingGrant
+    ? `<span class="tag"><span class="tag-dot" style="background:${HEATING_GRANT.color}"></span>${escapeHtml(d.main_fuel || 'Oil/LPG')} heating</span>`
+    : '';
   const epcTag = epcCfg
     ? `<span class="tag"><span class="tag-dot" style="background:${epcCfg.color}"></span>EPC ${epcCfg.label}</span>`
     : '';
   // Building-type is meaningless for a manual lead (property_type is always
   // null for source:'manual') — bucketPropertyType(null) still resolves to
-  // "Other", which would otherwise render a nonsense tag on every one.
-  const typeTag = isManual ? '' : `<span class="tag"><span class="tag-dot" style="background:${BUILDING_TYPE_COLORS[bucket]}"></span>${escapeHtml(bucket)}</span>`;
+  // "Other", which would otherwise render a nonsense tag on every one. Same
+  // reasoning extends to heating-grant leads: bucketPropertyType expects
+  // commercial categories (Office/Retail/...), so a domestic property_type
+  // (House/Bungalow/Flat) would only ever bucket into "Other" — already
+  // shown as plain text in the facts line below, no tag needed here.
+  const typeTag = (isManual || isHeatingGrant) ? '' : `<span class="tag"><span class="tag-dot" style="background:${BUILDING_TYPE_COLORS[bucket]}"></span>${escapeHtml(bucket)}</span>`;
   const leadTypeCfg = isManual ? LEAD_TYPE[d.lead_type] : null;
   const leadTypeTag = leadTypeCfg
     ? `<span class="tag"><span class="tag-dot" style="background:${leadTypeCfg.color}"></span>${leadTypeCfg.label}</span>`
@@ -1085,16 +1121,19 @@ function buildPopup(d) {
   const solarEst = (d.solar_status === 'prospect' && (d.solar_max_panels || d.solar_yearly_energy_kwh))
     ? `<div class="solar-est">☀ Estimated roof potential: ${d.solar_max_panels ? `up to <strong>${d.solar_max_panels}</strong> panels` : ''}${d.solar_max_panels && d.solar_yearly_energy_kwh ? ' · ' : ''}${d.solar_yearly_energy_kwh ? `~<strong>${Math.round(d.solar_yearly_energy_kwh).toLocaleString()}</strong> kWh/year` : ''}</div>`
     : '';
+  const heatingGrantInfo = isHeatingGrant
+    ? `<div class="solar-est">🔥 ${escapeHtml(d.main_fuel || 'Off-grid')} heating${d.tenure ? ` · ${escapeHtml(d.tenure)}` : ''} — eligible for the <strong>£9,000 Boiler Upgrade Scheme</strong> grant (oil/LPG homes, until 31 Mar 2027)</div>`
+    : '';
 
   return `
     <div class="popup">
       <div class="popup-header">
-        <div class="popup-eyebrow">${isManual ? 'Manual lead' : 'Commercial prospect'}</div>
+        <div class="popup-eyebrow">${isManual ? 'Manual lead' : isHeatingGrant ? HEATING_GRANT.label : 'Commercial prospect'}</div>
         <div class="popup-name">${escapeHtml(isManual && d.customer_name ? d.customer_name : (d.address ? d.address.split(',')[0] : (d.postcode || 'Unnamed building')))}</div>
         ${d.postcode ? `<div class="popup-meta">${escapeHtml(d.postcode)}</div>` : ''}
-        <div class="tags">${leadTypeTag}${statusPill}${epcTag}${typeTag}${solarRecTag}${efficiencyRecTag}${sectorTag}${maturityTag}</div>
+        <div class="tags">${leadTypeTag}${heatingGrantTag}${statusPill}${epcTag}${typeTag}${solarRecTag}${efficiencyRecTag}${sectorTag}${maturityTag}</div>
       </div>
-      ${solarEst}
+      ${solarEst}${heatingGrantInfo}
       <div class="popup-facts">${addr}${contactInfo}${facts}</div>
       <div class="enrich-panel" id="enrich-panel-${escapeHtml(d.id)}">
         <button class="enrich-toggle-btn" type="button" onclick="toggleEnrichPanel(${escapeHtml(JSON.stringify(d.id))})">🔍 Find more info</button>
@@ -1788,6 +1827,8 @@ function initMap(data, grantAreaStatus) {
   buildSolarStatusChips(data);
   applyEpcRecommendationConfig();
   buildEpcRecommendationCounts(data);
+  applyHeatingGrantConfig();
+  buildHeatingGrantCount(data);
 }
 
 // Sidebar's "EPC recommendations" chips are static markup (unlike the other
@@ -1799,6 +1840,18 @@ function applyEpcRecommendationConfig() {
   document.getElementById('epc-solar-label').textContent = EPC_RECOMMENDATION.solar.label;
   document.getElementById('epc-efficiency-dot').style.background = EPC_RECOMMENDATION.efficiency.color;
   document.getElementById('epc-efficiency-label').textContent = EPC_RECOMMENDATION.efficiency.label;
+}
+
+// "Lead category" chip is static markup, same reasoning as the EPC
+// recommendations chips above — source its colour from HEATING_GRANT
+// (shared/heating-grant-config.js) instead of hardcoding it a second time.
+function applyHeatingGrantConfig() {
+  document.getElementById('heating-grant-dot').style.background = HEATING_GRANT.color;
+}
+
+function buildHeatingGrantCount(data) {
+  const count = data.filter(d => d.source === 'oil-lpg-bus').length;
+  document.getElementById('heating-grant-count').textContent = count.toLocaleString();
 }
 
 /* ── Grant funding areas ─────────────────────────────────── */
@@ -2008,6 +2061,11 @@ document.getElementById('epc-solar-filter').addEventListener('change', e => {
   document.getElementById('epc-solar-chip').classList.toggle('on', filterEpcSolar);
   applyFilters();
 });
+document.getElementById('heating-grant-filter').addEventListener('change', e => {
+  showHeatingGrantLeads = e.target.checked;
+  document.getElementById('heating-grant-chip').classList.toggle('on', showHeatingGrantLeads);
+  applyFilters();
+});
 document.getElementById('epc-efficiency-filter').addEventListener('change', e => {
   filterEpcEfficiency = e.target.checked;
   document.getElementById('epc-efficiency-chip').classList.toggle('on', filterEpcEfficiency);
@@ -2069,12 +2127,18 @@ function applyFilters() {
     // row), but the solar-status filter defaults to showing only
     // 'prospect' — a rep's own just-added lead would otherwise vanish
     // behind that default the moment they close the modal.
-    const statusOk = d.source === 'manual' || activeSolarStatuses.has(d.solar_status);
+    // oil-lpg-bus leads are exempted the same way manual leads are — their
+    // solar_status is seeded 'no_coverage' (never screened, see ingest
+    // script), which is meaningless to gate on and isn't the default-shown
+    // 'prospect' bucket, so without this exemption they'd only appear when
+    // a rep happens to have the "no_coverage" solar-status chip checked.
+    const statusOk = d.source === 'manual' || d.source === 'oil-lpg-bus' || activeSolarStatuses.has(d.solar_status);
     const epcSolarOk = !filterEpcSolar || d.epc_recommends_solar === true;
     const epcEfficiencyOk = !filterEpcEfficiency || d.epc_recommends_efficiency === true;
+    const heatingGrantOk = d.source !== 'oil-lpg-bus' || showHeatingGrantLeads;
     const searchOk = !term || (d.address||'').toLowerCase().includes(term) || (d.postcode||'').toLowerCase().includes(term) || (d.customer_name||'').toLowerCase().includes(term);
 
-    if (areaOk && typeOk && ratingOk && sectorOk && maturityOk && ownershipOk && recommendationYearOk && statusOk && epcSolarOk && epcEfficiencyOk && searchOk) {
+    if (areaOk && typeOk && ratingOk && sectorOk && maturityOk && ownershipOk && recommendationYearOk && statusOk && epcSolarOk && epcEfficiencyOk && heatingGrantOk && searchOk) {
       toShow.push(m);
       shown++;
     }
@@ -2127,6 +2191,9 @@ document.getElementById("reset").addEventListener("click", () => {
   document.getElementById('epc-solar-chip').classList.remove('on');
   document.getElementById('epc-efficiency-filter').checked = false;
   document.getElementById('epc-efficiency-chip').classList.remove('on');
+  showHeatingGrantLeads = true;
+  document.getElementById('heating-grant-filter').checked = true;
+  document.getElementById('heating-grant-chip').classList.add('on');
   applyFilters();
 });
 
