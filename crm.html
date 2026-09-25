@@ -67,7 +67,7 @@ tbody tr:hover { background: var(--surface2); }
 .name-input:focus { outline: none; border-color: var(--accent); }
 .name-history { margin-top: 12px; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
-.card h3 { font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+.card h3 { font-size: 18px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; margin-bottom: 14px; }
 .quote-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 12px; }
 .quote-field label { display: block; font-size: 11.5px; color: var(--text2); margin-bottom: 5px; }
 .quote-field input { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 13px; background: var(--surface2); color: var(--text); }
@@ -1123,14 +1123,23 @@ document.getElementById('add-quote-option-btn').addEventListener('click', async 
 
 async function loadQuoteOptions(prospectId) {
   const { data, error } = await db.from('quote_options')
-    .select('id, label, position, kit_price, scaffold_price, electrical_cost, roofer_cost, mcs_cost, fuel_cost, commission_cost, heat_loss_epc_cost, plumbing_cost, quote_price, is_selected, updated_at')
+    .select('id, prospect_id, label, position, kit_price, scaffold_price, electrical_cost, roofer_cost, mcs_cost, fuel_cost, commission_cost, heat_loss_epc_cost, plumbing_cost, quote_price, is_selected, updated_at')
     .eq('prospect_id', prospectId)
     .is('deleted_at', null)
     .order('position', { ascending: true });
   if (!currentLead || currentLead.id !== prospectId) return; // detail view moved on while this was in flight
   if (error) { console.error('Failed to load quote options:', error); return; }
 
-  currentQuoteOptions = data || [];
+  // Belt-and-braces after a 2026-09-23 report of a quote option briefly
+  // rendering under the wrong customer with no reproducible cause found —
+  // don't just trust the .eq('prospect_id', ...) filter, verify each row
+  // actually belongs here before it ever reaches the screen.
+  const mismatched = (data || []).filter(o => o.prospect_id !== prospectId);
+  if (mismatched.length) {
+    console.error('loadQuoteOptions: dropped option(s) with mismatched prospect_id', { expected: prospectId, mismatched });
+  }
+
+  currentQuoteOptions = (data || []).filter(o => o.prospect_id === prospectId);
   const listEl = document.getElementById('quote-options-list');
   listEl.innerHTML = currentQuoteOptions.map(quoteOptionRowsHtml).join('');
   document.getElementById('quote-options-empty').style.display = currentQuoteOptions.length ? 'none' : 'block';
@@ -1181,13 +1190,23 @@ async function loadOptionDocuments(optionId) {
   if (!list) return;
   list.textContent = 'Loading…';
   const { data, error } = await db.from('lead_documents')
-    .select('id, file_name, storage_path, uploaded_by, uploaded_at')
+    .select('id, prospect_id, file_name, storage_path, uploaded_by, uploaded_at')
     .eq('quote_option_id', optionId)
     .is('deleted_at', null)
     .order('uploaded_at', { ascending: false });
   if (!document.getElementById(`qo-doc-list-${optionId}`)) return; // card removed while this was in flight
   if (error) { list.innerHTML = `<div class="doc-empty">Couldn't load documents.</div>`; return; }
-  list.innerHTML = renderDocumentsList(data || [], optionId);
+
+  // Same belt-and-braces as loadQuoteOptions above — verify against the
+  // customer actually open right now, not just the quote_option_id filter.
+  const docs = (data || []).filter(d => {
+    if (currentLead && d.prospect_id !== currentLead.id) {
+      console.error('loadOptionDocuments: dropped document with mismatched prospect_id', { expected: currentLead.id, doc: d });
+      return false;
+    }
+    return true;
+  });
+  list.innerHTML = renderDocumentsList(docs, optionId);
 }
 
 async function loadDeletedOptionDocuments(optionId) {
