@@ -184,6 +184,8 @@ tbody tr:hover { background: var(--surface2); }
         <div id="sidebar-status-list"></div>
         <h4>Install-hub</h4>
         <div id="sidebar-installhub-list"></div>
+        <h4>Assigned to</h4>
+        <div id="sidebar-assigned-list"></div>
         <button class="sidebar-reset-btn" id="sidebar-reset-btn">Reset filters</button>
       </aside>
 
@@ -196,7 +198,7 @@ tbody tr:hover { background: var(--surface2); }
         <div class="table-scroll">
           <table>
             <thead><tr>
-              <th>Customer</th><th>Type</th><th>Status</th><th>Quote</th><th>Contact</th><th>Address</th><th>Postcode</th><th>Install-hub</th><th>Added</th>
+              <th>Customer</th><th>Type</th><th>Status</th><th>Quote</th><th>Contact</th><th>Address</th><th>Postcode</th><th>Install-hub</th><th>Assigned to</th><th>Added</th>
             </tr></thead>
             <tbody id="leads-body"></tbody>
           </table>
@@ -223,6 +225,10 @@ tbody tr:hover { background: var(--surface2); }
       <div class="quote-field">
         <label>Type</label>
         <div class="outcome-chips disabled" id="ld-type-chips"></div>
+      </div>
+      <div class="quote-field">
+        <label>Assigned to</label>
+        <div class="outcome-chips disabled" id="ld-assigned-chips"></div>
       </div>
       <div style="display:flex; gap:8px; margin:4px 0 12px">
         <button class="btn-secondary" id="details-edit-btn">Edit</button>
@@ -384,6 +390,7 @@ tbody tr:hover { background: var(--surface2); }
 <script src="shared/escape-html.js"></script>
 <script src="shared/lead-type-config.js"></script>
 <script src="shared/contact-outcome-config.js"></script>
+<script src="shared/rep-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
 
@@ -455,7 +462,7 @@ let currentLead = null;
 /* ── Leads table ─────────────────────────────────────────── */
 async function fetchLeads() {
   const { data, error } = await db.from('prospects')
-    .select('id, customer_name, lead_type, contact_phone, contact_email, address, postcode, created_at, install_hub_job_id, sent_to_install_hub_at, sent_to_install_hub_by_email')
+    .select('id, customer_name, lead_type, contact_phone, contact_email, address, postcode, created_at, install_hub_job_id, sent_to_install_hub_at, sent_to_install_hub_by_email, assigned_to_email')
     .eq('source', 'manual')
     .order('created_at', { ascending: false });
   if (error) { console.error('Failed to load leads:', error); return []; }
@@ -465,9 +472,11 @@ async function fetchLeads() {
 /* ── Sidebar filters (type/status/install-hub) — same "chip = legend +
    filter toggle, shows counts" pattern as index.html's map sidebar. ── */
 const NOT_CONTACTED_KEY = '__not_contacted__';
+const UNASSIGNED_KEY = '__unassigned__';
 let activeTypeFilters = new Set(LEAD_TYPE_ORDER);
 let activeStatusFilters = new Set([...CONTACT_OUTCOME_ORDER, NOT_CONTACTED_KEY]);
 let activeInstallHubFilters = new Set(['sent', 'not_sent']);
+let activeAssignedFilters = new Set([...REP_ORDER, UNASSIGNED_KEY]);
 
 function sidebarChipHtml(key, dotColor, label, count, activeSet) {
   return `<div class="sidebar-chip ${activeSet.has(key) ? 'active' : ''}" data-key="${escapeHtml(key)}">
@@ -496,6 +505,13 @@ function renderSidebarFilters() {
     sidebarChipHtml('sent', 'var(--accent)', 'Sent', sentCount, activeInstallHubFilters),
     sidebarChipHtml('not_sent', 'var(--text3)', 'Not sent', allLeads.length - sentCount, activeInstallHubFilters),
   ].join('');
+
+  const assignedCounts = Object.fromEntries([...REP_ORDER, UNASSIGNED_KEY].map(k => [k, 0]));
+  allLeads.forEach(d => { assignedCounts[d.assigned_to_email || UNASSIGNED_KEY]++; });
+  document.getElementById('sidebar-assigned-list').innerHTML = [
+    ...REP_ORDER.map(email => sidebarChipHtml(email, REP[email].color, REP[email].name, assignedCounts[email], activeAssignedFilters)),
+    sidebarChipHtml(UNASSIGNED_KEY, '#94a3b8', 'Unassigned', assignedCounts[UNASSIGNED_KEY], activeAssignedFilters),
+  ].join('');
 }
 
 function bindSidebarFilterGroup(containerId, activeSet) {
@@ -511,10 +527,12 @@ function bindSidebarFilterGroup(containerId, activeSet) {
 bindSidebarFilterGroup('sidebar-type-list', activeTypeFilters);
 bindSidebarFilterGroup('sidebar-status-list', activeStatusFilters);
 bindSidebarFilterGroup('sidebar-installhub-list', activeInstallHubFilters);
+bindSidebarFilterGroup('sidebar-assigned-list', activeAssignedFilters);
 
 document.getElementById('sidebar-reset-btn').addEventListener('click', () => {
   activeTypeFilters.clear(); LEAD_TYPE_ORDER.forEach(t => activeTypeFilters.add(t));
   activeStatusFilters.clear(); [...CONTACT_OUTCOME_ORDER, NOT_CONTACTED_KEY].forEach(k => activeStatusFilters.add(k));
+  activeAssignedFilters.clear(); [...REP_ORDER, UNASSIGNED_KEY].forEach(k => activeAssignedFilters.add(k));
   activeInstallHubFilters.clear(); ['sent', 'not_sent'].forEach(k => activeInstallHubFilters.add(k));
   document.getElementById('leads-search').value = '';
   renderSidebarFilters();
@@ -528,6 +546,7 @@ function renderLeadsTable() {
     if (!activeTypeFilters.has(d.lead_type)) return false;
     if (!activeStatusFilters.has(d.latest_outcome || NOT_CONTACTED_KEY)) return false;
     if (!activeInstallHubFilters.has(d.install_hub_job_id ? 'sent' : 'not_sent')) return false;
+    if (!activeAssignedFilters.has(d.assigned_to_email || UNASSIGNED_KEY)) return false;
     return true;
   });
 
@@ -545,6 +564,9 @@ function renderLeadsTable() {
     const installHubCell = d.install_hub_job_id
       ? `<span class="tag"><span class="tag-dot" style="background:var(--accent)"></span>Sent</span>`
       : '—';
+    const assignedCell = d.assigned_to_email
+      ? `<span class="tag"><span class="tag-dot" style="background:${REP[d.assigned_to_email]?.color || '#94a3b8'}"></span>${escapeHtml(repName(d.assigned_to_email))}</span>`
+      : '—';
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -556,6 +578,7 @@ function renderLeadsTable() {
       <td>${escapeHtml(d.address || '') || '—'}</td>
       <td>${escapeHtml(d.postcode || '') || '—'}</td>
       <td>${installHubCell}</td>
+      <td>${assignedCell}</td>
       <td>${formatShortDate(d.created_at) || '—'}</td>`;
     tr.addEventListener('click', () => openLeadDetail(d));
     body.appendChild(tr);
@@ -580,6 +603,14 @@ function populateLeadFields(lead) {
     c.classList.toggle('on', on);
     c.style.background = on ? cfg.color : '';
     c.style.borderColor = on ? cfg.color : '';
+  });
+  selectedEditAssignedTo = lead.assigned_to_email || '';
+  document.querySelectorAll('#ld-assigned-chips .outcome-chip').forEach(c => {
+    const color = ASSIGNED_CHIP_COLOR[c.dataset.value];
+    const on = c.dataset.value === selectedEditAssignedTo;
+    c.classList.toggle('on', on);
+    c.style.background = on ? color : '';
+    c.style.borderColor = on ? color : '';
   });
 }
 
@@ -637,11 +668,39 @@ let selectedEditLeadType = null;
   });
 })();
 
+// "Assigned to" chips (migration 042) — same click-to-select pattern as
+// the Type chips above, but with an explicit "Unassigned" option (empty
+// string) since, unlike lead_type, having no assignee is a valid state,
+// not something details-save-btn should block on.
+let selectedEditAssignedTo = '';
+const ASSIGNED_CHIP_COLOR = Object.assign({ '': '#94a3b8' }, Object.fromEntries(REP_ORDER.map(email => [email, REP[email].color])));
+(function initAssignedChips() {
+  const chipsEl = document.getElementById('ld-assigned-chips');
+  ['', ...REP_ORDER].forEach(email => {
+    const label = email ? REP[email].name : 'Unassigned';
+    const color = ASSIGNED_CHIP_COLOR[email];
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'outcome-chip';
+    chip.dataset.value = email;
+    chip.innerHTML = `<span class="chip-dot" style="background:${color}"></span>${escapeHtml(label)}`;
+    chip.addEventListener('click', () => {
+      chipsEl.querySelectorAll('.outcome-chip').forEach(c => { c.classList.remove('on'); c.style.background = ''; c.style.borderColor = ''; });
+      chip.classList.add('on');
+      chip.style.background = color;
+      chip.style.borderColor = color;
+      selectedEditAssignedTo = email;
+    });
+    chipsEl.appendChild(chip);
+  });
+})();
+
 function setDetailsEditing(editing) {
   ['ld-name', 'ld-address', 'ld-postcode', 'ld-phone', 'ld-email'].forEach(id => {
     document.getElementById(id).disabled = !editing;
   });
   document.getElementById('ld-type-chips').classList.toggle('disabled', !editing);
+  document.getElementById('ld-assigned-chips').classList.toggle('disabled', !editing);
   document.getElementById('details-edit-btn').style.display = editing ? 'none' : '';
   document.getElementById('details-cancel-btn').style.display = editing ? '' : 'none';
   document.getElementById('details-save-btn').style.display = editing ? '' : 'none';
@@ -666,6 +725,7 @@ document.getElementById('details-save-btn').addEventListener('click', async () =
 
   const btn = document.getElementById('details-save-btn');
   btn.disabled = true; btn.textContent = 'Saving…';
+  const previousAssignedTo = currentLead.assigned_to_email || null;
   const updates = {
     customer_name: newName,
     address: newAddress,
@@ -673,10 +733,19 @@ document.getElementById('details-save-btn').addEventListener('click', async () =
     contact_phone: newPhone || null,
     contact_email: newEmail || null,
     lead_type: selectedEditLeadType,
+    assigned_to_email: selectedEditAssignedTo || null,
   };
   const { error } = await db.from('prospects').update(updates).eq('id', currentLead.id);
   btn.disabled = false; btn.textContent = 'Save';
   if (error) { alert('Failed to save: ' + error.message); return; }
+
+  // Fire-and-forget — a notification failure shouldn't block or roll back
+  // the save that already succeeded. Only fires on a genuine new
+  // assignment, not on every save or on clearing one (Phase 2, 2026-09-29).
+  if (updates.assigned_to_email && updates.assigned_to_email !== previousAssignedTo) {
+    db.functions.invoke('notify-assignment', { body: { prospect_id: currentLead.id } })
+      .then(({ error: notifyError }) => { if (notifyError) console.error('notify-assignment failed:', notifyError); });
+  }
 
   Object.assign(currentLead, updates);
   const listRow = allLeads.find(l => l.id === currentLead.id);
@@ -700,6 +769,9 @@ function detailsHistoryChanges(h) {
     const newLabel = LEAD_TYPE[h.new_lead_type]?.label || h.new_lead_type || '(empty)';
     changes.push(`Type: "${escapeHtml(oldLabel)}" → "${escapeHtml(newLabel)}"`);
   }
+  if (h.old_assigned_to_email !== h.new_assigned_to_email) {
+    changes.push(`Assigned to: "${escapeHtml(repName(h.old_assigned_to_email))}" → "${escapeHtml(repName(h.new_assigned_to_email))}"`);
+  }
   return changes;
 }
 
@@ -707,7 +779,7 @@ async function loadDetailsHistory(prospectId) {
   const list = document.getElementById('name-history-list');
   list.textContent = 'Loading…';
   const { data, error } = await db.from('prospect_name_audit')
-    .select('old_name, new_name, old_address, new_address, old_postcode, new_postcode, old_contact_phone, new_contact_phone, old_contact_email, new_contact_email, old_lead_type, new_lead_type, edited_at, edited_by_email')
+    .select('old_name, new_name, old_address, new_address, old_postcode, new_postcode, old_contact_phone, new_contact_phone, old_contact_email, new_contact_email, old_lead_type, new_lead_type, old_assigned_to_email, new_assigned_to_email, edited_at, edited_by_email')
     .eq('prospect_id', prospectId)
     .order('edited_at', { ascending: false });
   if (!currentLead || currentLead.id !== prospectId) return; // moved on while this was in flight

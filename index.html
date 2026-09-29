@@ -230,6 +230,8 @@
     .popup-facts { padding: 2px 20px 10px; font-size: 12.5px; color: var(--text2); }
     .popup-facts p { padding: 3px 0; }
     .popup-facts p a { color: var(--accent); }
+    .popup-assign { display: flex; align-items: center; gap: 8px; padding: 0 20px 10px; font-size: 12.5px; color: var(--text2); }
+    .popup-assign select { font-family: inherit; font-size: 12.5px; color: var(--text); background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; }
     .solar-est {
       margin: 2px 20px 12px; padding: 8px 12px;
       background: var(--accentDim); color: var(--accentDk);
@@ -700,6 +702,7 @@
 <script src="shared/lead-type-config.js"></script>
 <script src="shared/heating-grant-config.js"></script>
 <script src="shared/ownership-status-config.js"></script>
+<script src="shared/rep-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
 
@@ -1063,6 +1066,45 @@ function formatShortDate(dateStr) {
   if (isNaN(d)) return '';
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
+/* ── Lead assignment (prospects.assigned_to_email, migration 042) — same
+   roster/tag-only semantics as crm.html's "Assigned to" chips, just a
+   plain <select> here since the popup card has no separate edit mode:
+   picking a rep saves immediately, same "instant action" feel as the
+   enrichment buttons and the draggable-pin save above. ─────────────── */
+function assignSelectHtml(d) {
+  const options = ['', ...REP_ORDER].map(email => {
+    const label = email ? REP[email].name : 'Unassigned';
+    const selected = (d.assigned_to_email || '') === email ? 'selected' : '';
+    return `<option value="${escapeHtml(email)}" ${selected}>${escapeHtml(label)}</option>`;
+  }).join('');
+  return `<div class="popup-assign">
+    <label for="assign-select-${escapeHtml(d.id)}">Assigned to</label>
+    <select id="assign-select-${escapeHtml(d.id)}" onchange="assignLead(${escapeHtml(JSON.stringify(d.id))}, this.value)">${options}</select>
+  </div>`;
+}
+
+async function assignLead(id, email) {
+  const select = document.getElementById(`assign-select-${id}`);
+  if (select) select.disabled = true;
+  const marker = allMarkers.find(m => m._d.id === id);
+  const previousAssignedTo = marker?._d.assigned_to_email || null;
+  const { error } = await window.db.from('prospects').update({ assigned_to_email: email || null }).eq('id', id);
+  if (select) select.disabled = false;
+  if (error) {
+    console.error('Failed to save assignment:', error);
+    alert('Failed to save assignment — see console.');
+    return;
+  }
+  if (marker) marker._d.assigned_to_email = email || null;
+
+  // Same "fire-and-forget, only on a genuine new assignment" reasoning as
+  // crm.html's details-save-btn handler (Phase 2, 2026-09-29).
+  if (email && email !== previousAssignedTo) {
+    window.db.functions.invoke('notify-assignment', { body: { prospect_id: id } })
+      .then(({ error: notifyError }) => { if (notifyError) console.error('notify-assignment failed:', notifyError); });
+  }
+}
+
 function buildPopup(d) {
   const isManual = d.source === 'manual';
   const isHeatingGrant = d.source === 'oil-lpg-bus';
@@ -1117,6 +1159,7 @@ function buildPopup(d) {
   ].filter(Boolean);
   const facts = factParts.length ? `<p>${factParts.join(' · ')}</p>` : '';
   const contactInfo = `<p id="contact-info-${escapeHtml(d.id)}">${contactInfoHtml(d)}</p>`;
+  const assignRow = assignSelectHtml(d);
 
   const solarEst = (d.solar_status === 'prospect' && (d.solar_max_panels || d.solar_yearly_energy_kwh))
     ? `<div class="solar-est">☀ Estimated roof potential: ${d.solar_max_panels ? `up to <strong>${d.solar_max_panels}</strong> panels` : ''}${d.solar_max_panels && d.solar_yearly_energy_kwh ? ' · ' : ''}${d.solar_yearly_energy_kwh ? `~<strong>${Math.round(d.solar_yearly_energy_kwh).toLocaleString()}</strong> kWh/year` : ''}</div>`
@@ -1135,6 +1178,7 @@ function buildPopup(d) {
       </div>
       ${solarEst}${heatingGrantInfo}
       <div class="popup-facts">${addr}${contactInfo}${facts}</div>
+      ${assignRow}
       <div class="enrich-panel" id="enrich-panel-${escapeHtml(d.id)}">
         <button class="enrich-toggle-btn" type="button" onclick="toggleEnrichPanel(${escapeHtml(JSON.stringify(d.id))})">🔍 Find more info</button>
         <div class="enrich-options" style="display:none"></div>
@@ -2225,7 +2269,13 @@ async function fetchAllProspects(onProgress) {
   // manual one, and the default solar-status filter (which manual leads
   // are otherwise exempted from) silently hides it. Bit us live 2026-09-07:
   // a lead added fine in one session vanished after a reload.
-  const PROSPECT_COLUMNS = 'id, address, postcode, lat, lng, property_type, floor_area:total_floor_area, epc_rating:current_energy_rating, local_authority, solar_status, solar_max_panels, solar_yearly_energy_kwh, current_energy_efficiency, epc_recommends_solar, epc_recommends_efficiency, lodgement_date, source, customer_name, lead_type, contact_phone, contact_email, created_at, ownership_status, business_rates_matches(hereditaments, no_match), company_classifications(company_name, sic_codes, incorporated_on, accounts_type, no_match)';
+  // main_fuel/tenure (migration 041) were missing from this list entirely
+  // until now — every oil/lpg-bus popup was silently falling back to the
+  // generic "Oil/LPG"/no-tenure text in buildPopup() instead of the real
+  // per-property value, since the row simply never carried those columns
+  // client-side. Found and fixed 2026-09-29 while adding assigned_to_email
+  // alongside it.
+  const PROSPECT_COLUMNS = 'id, address, postcode, lat, lng, property_type, floor_area:total_floor_area, epc_rating:current_energy_rating, local_authority, solar_status, solar_max_panels, solar_yearly_energy_kwh, current_energy_efficiency, epc_recommends_solar, epc_recommends_efficiency, lodgement_date, source, customer_name, lead_type, contact_phone, contact_email, created_at, ownership_status, main_fuel, tenure, assigned_to_email, business_rates_matches(hereditaments, no_match), company_classifications(company_name, sic_codes, incorporated_on, accounts_type, no_match)';
 
   // head:true returns only a count, no rows — safe from the max-rows cap
   // that bit the id-list fetch (2026-08-21 live incident), and cheap since
