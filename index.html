@@ -511,6 +511,11 @@
   </div>
 
   <div class="section">
+    <h3>Oil/LPG lead EPC lodged</h3>
+    <div id="lpg-epc-year-list" class="chip-list"></div>
+  </div>
+
+  <div class="section">
     <h3>Grant funding area</h3>
     <div id="grant-area-list" class="chip-list"></div>
   </div>
@@ -910,6 +915,8 @@ let activeMaturities = new Set(MATURITY_ORDER);
 let activeOwnershipStatuses = new Set(OWNERSHIP_STATUS_ORDER);
 let activeRecommendationYears = new Set(); // populated once buildRecommendationYearChips runs (years are data-driven, not a fixed enum)
 let recommendationYearOrder = []; // set alongside activeRecommendationYears
+let activeLpgEpcYears = new Set(); // populated once buildLpgEpcYearChips runs — narrows oil-lpg-bus leads by how recent their EPC lodgement is (2026-09-29)
+let lpgEpcYearOrder = []; // set alongside activeLpgEpcYears
 let activeSolarStatuses = new Set(['prospect']); // default: only show fresh prospects
 let filterEpcSolar = false;      // opt-in: when true, only show prospects with epc_recommends_solar
 let filterEpcEfficiency = false; // opt-in: when true, only show prospects with epc_recommends_efficiency
@@ -989,6 +996,12 @@ function createMarker(d) {
   d._sicSector = bucketSicSector(d.company_classifications?.sic_codes);
   d._maturity = bucketCompanyMaturity(d.company_classifications || {});
   d._recommendationYear = (d.epc_recommends_solar && d.lodgement_date) ? new Date(d.lodgement_date).getFullYear() : null;
+  // How recent the "still oil/LPG" EPC reading is (requested 2026-09-29,
+  // narrowing down oil-lpg-bus leads by lodgement recency) — same year-
+  // bucket idea as _recommendationYear above, but keyed off source rather
+  // than epc_recommends_solar, and scoped to oil-lpg-bus rows only (see
+  // epcLpgYearOk in applyFilters — every other row passes through untouched).
+  d._lpgEpcYear = (d.source === 'oil-lpg-bus' && d.lodgement_date) ? new Date(d.lodgement_date).getFullYear() : null;
   const isManual = d.source === 'manual';
   const isHeatingGrant = d.source === 'oil-lpg-bus';
   const marker = L.marker([d.lat, d.lng], {
@@ -1868,6 +1881,7 @@ function initMap(data, grantAreaStatus) {
   buildMaturityChips(data);
   buildOwnershipStatusChips(data);
   buildRecommendationYearChips(data);
+  buildLpgEpcYearChips(data);
   buildSolarStatusChips(data);
   applyEpcRecommendationConfig();
   buildEpcRecommendationCounts(data);
@@ -2073,6 +2087,34 @@ function buildRecommendationYearChips(data) {
   });
 }
 
+// Narrows oil-lpg-bus leads by how recent their "still oil/LPG" EPC reading
+// is (requested 2026-09-29) — same year-chip shape as
+// buildRecommendationYearChips above, but counted over oil-lpg-bus rows
+// only (a year with zero oil-lpg-bus leads just doesn't get a chip), and
+// with no recency-gradient dot since that gradient is specific to the
+// _recommendationYear/marker-color system above, not reused here.
+function buildLpgEpcYearChips(data) {
+  const counts = {};
+  data.forEach(d => { if (d.source === 'oil-lpg-bus' && d._lpgEpcYear) counts[d._lpgEpcYear] = (counts[d._lpgEpcYear] || 0) + 1; });
+  lpgEpcYearOrder = Object.keys(counts).map(Number).sort((a, b) => b - a); // newest first
+  activeLpgEpcYears = new Set(lpgEpcYearOrder);
+  const el = document.getElementById("lpg-epc-year-list");
+  el.innerHTML = '';
+  lpgEpcYearOrder.forEach(year => {
+    const row = document.createElement("label");
+    row.className = "chip on";
+    row.innerHTML = `<input type="checkbox" checked data-year="${year}"/>
+      <span class="dot" style="background:${HEATING_GRANT.color}"></span>
+      ${year}<span class="chip-n">${counts[year].toLocaleString()}</span>`;
+    row.querySelector("input").addEventListener("change", e => {
+      e.target.checked ? activeLpgEpcYears.add(year) : activeLpgEpcYears.delete(year);
+      row.classList.toggle('on', e.target.checked);
+      applyFilters();
+    });
+    el.appendChild(row);
+  });
+}
+
 function buildSolarStatusChips(data) {
   const counts = {};
   data.forEach(d => { counts[d.solar_status] = (counts[d.solar_status] || 0) + 1; });
@@ -2180,9 +2222,17 @@ function applyFilters() {
     const epcSolarOk = !filterEpcSolar || d.epc_recommends_solar === true;
     const epcEfficiencyOk = !filterEpcEfficiency || d.epc_recommends_efficiency === true;
     const heatingGrantOk = d.source !== 'oil-lpg-bus' || showHeatingGrantLeads;
+    // Deliberately NOT the same strict-once-touched rule as recommendationYearOk
+    // above — this filter is scoped to oil-lpg-bus rows only (requested
+    // 2026-09-29), so every EPC/VOA/manual row passes through untouched
+    // regardless of which year chips are checked, rather than disappearing
+    // the moment a rep narrows down the oil/LPG leads by recency.
+    const lpgEpcYearOk = d.source !== 'oil-lpg-bus'
+      || activeLpgEpcYears.size === lpgEpcYearOrder.length
+      || (d._lpgEpcYear !== null && activeLpgEpcYears.has(d._lpgEpcYear));
     const searchOk = !term || (d.address||'').toLowerCase().includes(term) || (d.postcode||'').toLowerCase().includes(term) || (d.customer_name||'').toLowerCase().includes(term);
 
-    if (areaOk && typeOk && ratingOk && sectorOk && maturityOk && ownershipOk && recommendationYearOk && statusOk && epcSolarOk && epcEfficiencyOk && heatingGrantOk && searchOk) {
+    if (areaOk && typeOk && ratingOk && sectorOk && maturityOk && ownershipOk && recommendationYearOk && statusOk && epcSolarOk && epcEfficiencyOk && heatingGrantOk && lpgEpcYearOk && searchOk) {
       toShow.push(m);
       shown++;
     }
@@ -2217,12 +2267,13 @@ document.getElementById("reset").addEventListener("click", () => {
   activeMaturities = new Set(MATURITY_ORDER);
   activeOwnershipStatuses = new Set(OWNERSHIP_STATUS_ORDER);
   activeRecommendationYears = new Set(recommendationYearOrder);
+  activeLpgEpcYears = new Set(lpgEpcYearOrder);
   activeSolarStatuses = new Set(['prospect']);
   filterEpcSolar = false;
   filterEpcEfficiency = false;
   searchTerm = "";
   document.getElementById("search").value = "";
-  document.querySelectorAll("#grant-area-list input, #building-type-list input, #epc-rating-list input, #sic-sector-list input, #maturity-list input, #ownership-status-list input, #recommendation-year-list input").forEach(cb => {
+  document.querySelectorAll("#grant-area-list input, #building-type-list input, #epc-rating-list input, #sic-sector-list input, #maturity-list input, #ownership-status-list input, #recommendation-year-list input, #lpg-epc-year-list input").forEach(cb => {
     cb.checked = true;
     cb.closest('.chip').classList.add('on');
   });

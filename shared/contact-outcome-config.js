@@ -13,6 +13,7 @@ const CONTACT_OUTCOME = {
   "Completed":         { color: "#1f8a52", soft: "#dcf0e4", label: "Completed",         requiresDate: false },
   "Not Interested":    { color: "#8e9080", soft: "#ececdf", label: "Not interested",    requiresDate: false },
   "Already Has Solar": { color: "#6f5b94", soft: "#e2dcec", label: "Already has solar", requiresDate: false },
+  "Enquiring Only":    { color: "#b8912f", soft: "#f3ecd6", label: "Enquiring only",    requiresDate: false },
 };
 const CONTACT_OUTCOME_ORDER = Object.keys(CONTACT_OUTCOME);
 
