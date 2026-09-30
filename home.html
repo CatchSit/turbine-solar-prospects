@@ -465,7 +465,7 @@ function sourceLabel(p) {
 function leadName(p) { return p.customer_name || p.address || p.postcode || 'Unnamed lead'; }
 function leadLink(p) { return p.source === 'manual' ? `crm.html?lead=${encodeURIComponent(p.id)}` : `index.html?lead=${encodeURIComponent(p.id)}`; }
 
-const LEAD_COLUMNS = 'id, source, customer_name, address, postcode, lead_type, assigned_to_email, created_at, install_hub_job_id';
+const LEAD_COLUMNS = 'id, source, customer_name, address, postcode, lead_type, assigned_to_email, created_at, install_hub_job_id, install_scheduled_date';
 // Same cost fields and margin formula as crm.html's QUOTE_COST_FIELDS /
 // quoteOptionTotals(): margin = quote price − sum of costs.
 const QUOTE_COST_FIELDS = ['kit_price', 'scaffold_price', 'electrical_cost', 'roofer_cost', 'mcs_cost',
@@ -505,7 +505,12 @@ async function loadPipelineData() {
       || priced.reduce((best, o) => (!best || Number(o.quote_price) > Number(best.quote_price) ? o : best), null);
     const value = valueOption ? Number(valueOption.quote_price) : null;
     const wonContact = [...cs].reverse().find(c => WON_OUTCOMES.has(c.outcome)); // earliest win
-    return { ...p, contacts: cs, latest, stage, value, valueOption, wonAt: wonContact?.contacted_at || null };
+    // Install date: the most recent "Scheduled for Install" contact's date,
+    // else the date mirrored from install-hub when the job was sent there.
+    const scheduledContact = cs.find(c => c.outcome === 'Scheduled for Install' && c.follow_up_date);
+    const installDate = scheduledContact?.follow_up_date || p.install_scheduled_date || null;
+    const completedAt = cs.find(c => c.outcome === 'Completed')?.contacted_at || null;
+    return { ...p, contacts: cs, latest, stage, value, valueOption, installDate, completedAt, wonAt: wonContact?.contacted_at || null };
   });
 }
 
@@ -662,6 +667,21 @@ function marginCell(value, costs) {
   return `<span class="${m < 0 ? 'neg' : ''}">${money(m)}</span> <span class="muted">${value ? Math.round((m / value) * 100) + '%' : ''}</span>`;
 }
 
+function installCell(l) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const lines = [];
+  if (l.installDate) {
+    const upcoming = new Date(l.installDate) >= today;
+    lines.push(`${fmtDate(l.installDate)}${upcoming && l.stage !== 'completed' ? ' <span class="stage-tag">Upcoming</span>' : ''}`);
+  } else if (l.stage !== 'completed') {
+    lines.push('<span class="muted">Not booked</span>');
+  } else {
+    lines.push('<span class="muted">—</span>');
+  }
+  if (l.stage === 'completed' && l.completedAt) lines.push(`<div class="muted">Completed ${fmtDate(l.completedAt)}</div>`);
+  return lines.join('');
+}
+
 function renderWon() {
   const el = document.getElementById('won-card');
   if (!el) return;
@@ -731,17 +751,18 @@ function renderWon() {
     <tr><td><a href="${leadLink(l)}">${escapeHtml(leadName(l))}</a>${l.valueOption?.label ? `<div class="muted">${escapeHtml(l.valueOption.label)}</div>` : ''}</td>
     <td>${jobTypeLabel(l)}</td><td>${stageTag(l.stage)}</td>
     <td style="white-space:nowrap">${l.wonAt ? fmtDate(l.wonAt) : '<span class="muted">—</span>'}</td>
+    <td style="white-space:nowrap">${installCell(l)}</td>
     <td>${l.assigned_to_email ? escapeHtml(repName(l.assigned_to_email)) : '<span class="muted">Unassigned</span>'}</td>
     <td class="num">${l.value != null ? money(l.value) : '<span class="muted">No quote</span>'}</td>
     <td class="num">${costs != null ? money(costs) : '<span class="muted">—</span>'}</td>
-    <td class="num">${marginCell(l.value, costs)}</td></tr>`).join('');
+    <td class="num" style="white-space:nowrap">${marginCell(l.value, costs)}</td></tr>`).join('');
 
   el.innerHTML = `<div class="card">
     <div class="card-head"><h2>Jobs won</h2><div class="chips">${chips}</div></div>
     <div class="card-body">${stats}<div class="grid-2 inner">${typeCard}${monthCard}</div></div>
-    <table><thead><tr><th>Customer</th><th>Type</th><th>Status</th><th>Won on</th><th>Owner</th><th class="num">Value</th><th class="num">Costs</th><th class="num">Margin</th></tr></thead>
-    <tbody>${jobRows || '<tr><td colspan="8" class="empty">No jobs won in this period.</td></tr>'}</tbody>
-    ${jobs.length ? `<tfoot><tr><td colspan="5"><strong>Total</strong></td><td class="num"><strong>${money(total)}</strong></td><td></td>
+    <table><thead><tr><th>Customer</th><th>Type</th><th>Status</th><th>Won on</th><th>Install date</th><th>Owner</th><th class="num">Value</th><th class="num">Costs</th><th class="num">Margin</th></tr></thead>
+    <tbody>${jobRows || '<tr><td colspan="9" class="empty">No jobs won in this period.</td></tr>'}</tbody>
+    ${jobs.length ? `<tfoot><tr><td colspan="6"><strong>Total</strong></td><td class="num"><strong>${money(total)}</strong></td><td></td>
       <td class="num">${costed.length ? `<strong>${money(costedMargin)}</strong>` : ''}</td></tr></tfoot>` : ''}</table>
   </div>`;
   el.querySelectorAll('[data-won-period]').forEach(b => b.addEventListener('click', () => { wonPeriod = b.dataset.wonPeriod; renderWon(); }));
