@@ -441,6 +441,7 @@
     <div class="nav-avatar" id="nav-avatar"></div>
     <a class="nav-dashboard-link" href="crm.html">CRM</a>
     <button class="nav-add-lead-btn" id="add-lead-btn">+ Add lead</button>
+    <a class="nav-dashboard-link" id="nav-home-link" href="home.html" style="display:none">Home</a>
     <a class="nav-dashboard-link" id="nav-dashboard-link" href="dashboard.html" style="display:none">Dashboard</a>
     <button class="nav-signout-btn" id="sign-out-btn">Sign out</button>
   </div>
@@ -697,6 +698,7 @@
 <script src="shared/solar-status-config.js"></script>
 <script src="shared/epc-rating-config.js"></script>
 <script src="shared/escape-html.js"></script>
+<script src="shared/manager-config.js"></script>
 <script src="shared/building-types.js"></script>
 <script src="shared/sic-codes.js"></script>
 <script src="shared/sic-sector-config.js"></script>
@@ -724,8 +726,7 @@ window.db = createClient(
 /* ── Auth ────────────────────────────────────────────────── */
 let currentUser = null;
 
-const ADMIN_EMAILS = ['greg@turbineenergyuk.co.uk'];
-function isAdmin(user) { return ADMIN_EMAILS.includes((user?.email || '').toLowerCase()); }
+// ADMIN_EMAILS / isAdmin() live in shared/manager-config.js (loaded above).
 
 function getUserName(user) {
   return user.user_metadata?.full_name
@@ -763,6 +764,7 @@ function onAuthenticated(user) {
   document.getElementById('nav-user-name').textContent = name;
   document.getElementById('nav-avatar').textContent = getInitials(name);
   document.getElementById('nav-dashboard-link').style.display = isAdmin(user) ? '' : 'none';
+  document.getElementById('nav-home-link').style.display = isAdmin(user) ? '' : 'none';
   return true;
 }
 

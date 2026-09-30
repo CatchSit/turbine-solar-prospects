@@ -168,6 +168,7 @@ tbody tr:hover { background: var(--surface2); }
   <div><span class="nav-brand">Turbine Energy</span><span class="nav-brand-sub">CRM</span></div>
   <div class="nav-right">
     <a class="nav-link" href="index.html">Map</a>
+    <a class="nav-link" id="nav-home-link" href="home.html" style="display:none">Home</a>
     <a class="nav-link" id="nav-dashboard-link" href="dashboard.html" style="display:none">Dashboard</a>
     <button id="sign-out-btn">Sign out</button>
   </div>
@@ -388,6 +389,7 @@ tbody tr:hover { background: var(--surface2); }
 </div>
 
 <script src="shared/escape-html.js"></script>
+<script src="shared/manager-config.js"></script>
 <script src="shared/lead-type-config.js"></script>
 <script src="shared/contact-outcome-config.js"></script>
 <script src="shared/rep-config.js"></script>
@@ -401,8 +403,7 @@ const db = createClient(
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdrdnJvcGhlcWt0eXRnaG1pd2dwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5Mjg2NjAsImV4cCI6MjEwMTUwNDY2MH0.swu4sPPi2X9fS-DQEh-cW-ypWZqbWNHXLnGHaKWMxI8'
 );
 
-const ADMIN_EMAILS = ['greg@turbineenergyuk.co.uk'];
-function isAdmin(user) { return ADMIN_EMAILS.includes((user?.email || '').toLowerCase()); }
+// ADMIN_EMAILS / isAdmin() live in shared/manager-config.js (loaded above).
 function getUserName(user) {
   return user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'User';
 }
@@ -1773,6 +1774,7 @@ document.getElementById('lm-submit').addEventListener('click', async () => {
 async function boot(user) {
   currentUser = user;
   document.getElementById('nav-dashboard-link').style.display = isAdmin(user) ? '' : 'none';
+  document.getElementById('nav-home-link').style.display = isAdmin(user) ? '' : 'none';
   document.getElementById('wrap').style.display = 'block';
   allLeads = await fetchLeads();
   const ids = allLeads.map(l => l.id);
@@ -1783,6 +1785,11 @@ async function boot(user) {
   });
   renderSidebarFilters();
   renderLeadsTable();
+  // home.html's pipeline links here as crm.html?lead=<id> (same convention
+  // as index.html?lead=<id>).
+  const leadId = new URLSearchParams(location.search).get('lead');
+  const linked = leadId && allLeads.find(l => l.id === leadId);
+  if (linked) openLeadDetail(linked);
 }
 
 document.getElementById('sign-out-btn').addEventListener('click', async () => { await db.auth.signOut(); location.href = 'index.html'; });

@@ -11,3 +11,6 @@ verify_jwt = true
 # validateTwilioSignature() in index.ts) — never trust this endpoint on
 # verify_jwt alone the way the other functions do.
 verify_jwt = false
+
+[functions.manager-health]
+verify_jwt = true

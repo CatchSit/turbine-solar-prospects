@@ -54,6 +54,7 @@ td { padding: 10px 16px; border-bottom: 1px solid var(--border); vertical-align:
 <div id="top-nav">
   <div><span class="nav-brand">Turbine Energy</span><span class="nav-brand-sub">Dashboard</span></div>
   <div class="nav-right">
+    <a class="nav-map-link" href="home.html">Home</a>
     <a class="nav-map-link" href="index.html">Map</a>
     <a class="nav-map-link" href="crm.html">CRM</a>
     <button id="sign-out-btn">Sign out</button>
@@ -134,6 +135,7 @@ td { padding: 10px 16px; border-bottom: 1px solid var(--border); vertical-align:
 <div id="denied-state" style="display:none">This page is restricted to managers.</div>
 
 <script src="shared/escape-html.js"></script>
+<script src="shared/manager-config.js"></script>
 <script src="shared/contact-outcome-config.js"></script>
 <script src="shared/grant-area-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
@@ -145,8 +147,7 @@ const db = createClient(
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdrdnJvcGhlcWt0eXRnaG1pd2dwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5Mjg2NjAsImV4cCI6MjEwMTUwNDY2MH0.swu4sPPi2X9fS-DQEh-cW-ypWZqbWNHXLnGHaKWMxI8'
 );
 
-const ADMIN_EMAILS = ['greg@turbineenergyuk.co.uk'];
-function isAdmin(user) { return ADMIN_EMAILS.includes((user?.email || '').toLowerCase()); }
+// ADMIN_EMAILS / isAdmin() live in shared/manager-config.js (loaded above).
 
 let allData = [];
 let currentUser = null;

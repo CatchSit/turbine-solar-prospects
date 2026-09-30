@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Turbine Energy — Manager Home</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+/* Manager Home — see docs/superpowers/specs/2026-09-30-manager-home-design.md.
+   Same tokens as dashboard.html/crm.html so the pages read as one app. */
+:root {
+  --bg: #f8f9fa; --surface: #ffffff; --surface2: #eef1ec;
+  --border: rgba(17,24,39,0.12); --borderH: rgba(17,24,39,0.18);
+  --text: #111827; --text2: #6b7280; --text3: rgba(17,24,39,0.45);
+  --accent: #2ba45e; --accentDim: rgba(43,164,94,0.12); --accentDk: #1f8a52; --accentTrack: #d6eedf;
+  --alert: #b85544; --alertSoft: #f0d3ce;
+  /* Status palette — reserved for state, always paired with an icon + label. */
+  --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b; --neutral: #9ca3af;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.45; }
+a { color: var(--accentDk); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button { font-family: inherit; cursor: pointer; }
+
+#top-nav { background: var(--surface); border-bottom: 1px solid var(--border); height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; position: sticky; top: 0; z-index: 10; }
+.nav-brand { font-weight: 600; font-size: 15px; }
+.nav-brand-sub { font-size: 11.5px; color: var(--text3); margin-left: 6px; }
+.nav-right { display: flex; align-items: center; gap: 10px; }
+.nav-user { font-size: 12.5px; color: var(--text2); margin-right: 4px; }
+.nav-link, #sign-out-btn { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; color: var(--text2); text-decoration: none; }
+.nav-link:hover, #sign-out-btn:hover { background: var(--surface2); color: var(--text); text-decoration: none; }
+
+#app { display: none; grid-template-columns: 208px 1fr; min-height: calc(100vh - 56px); }
+#app.visible { display: grid; }
+#rail { border-right: 1px solid var(--border); background: var(--surface); padding: 18px 12px; display: flex; flex-direction: column; gap: 2px; }
+.rail-btn { text-align: left; background: none; border: 0; border-radius: 8px; padding: 9px 12px; font-size: 13.5px; color: var(--text2); }
+.rail-btn:hover { background: var(--surface2); color: var(--text); }
+.rail-btn.active { background: var(--accentDim); color: var(--accentDk); font-weight: 600; }
+.rail-foot { margin-top: auto; padding: 12px; font-size: 11.5px; color: var(--text3); line-height: 1.5; }
+
+main { padding: 28px 32px 48px; max-width: 1180px; width: 100%; }
+.section { display: none; }
+.section.active { display: block; }
+.section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+.section-head h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+.section-head p { font-size: 13px; color: var(--text2); margin-top: 4px; max-width: 720px; }
+.refresh-btn { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; color: var(--text2); white-space: nowrap; }
+.refresh-btn:hover { background: var(--surface2); color: var(--text); }
+.stamp { font-size: 11.5px; color: var(--text3); margin-right: 8px; }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 18px; }
+.card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.card-head h2 { font-size: 14px; font-weight: 600; }
+.card-head .hint { font-size: 12px; color: var(--text3); }
+.card-body { padding: 16px 18px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.grid-2 > .card { margin-bottom: 0; }
+.grid-2 + .card, .grid-2 + .grid-2 { margin-top: 18px; }
+.card + .grid-2 { margin-top: 0; }
+
+/* Stat tiles */
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+.tile-label { font-size: 12.5px; color: var(--text2); }
+.tile-value { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; margin-top: 6px; }
+.tile-sub { font-size: 12px; color: var(--text3); margin-top: 2px; }
+
+/* Funnel — single series, one hue, direct-labelled */
+.funnel-row { display: grid; grid-template-columns: 150px 1fr 150px; align-items: center; gap: 12px; padding: 5px 0; border-radius: 6px; }
+.funnel-row:hover { background: var(--surface2); }
+.funnel-label { font-size: 13px; color: var(--text); padding-left: 6px; }
+.funnel-track { height: 18px; position: relative; }
+.funnel-bar { height: 100%; background: var(--accent); border-radius: 0 4px 4px 0; min-width: 2px; }
+.funnel-row.lost .funnel-bar { background: var(--neutral); }
+.funnel-val { font-size: 12.5px; color: var(--text2); text-align: right; padding-right: 6px; font-variant-numeric: tabular-nums; }
+.funnel-val strong { color: var(--text); font-weight: 600; }
+.funnel-sep { border-top: 1px dashed var(--border); margin: 6px 0; }
+
+#tooltip { position: fixed; pointer-events: none; background: var(--text); color: #fff; font-size: 12px; line-height: 1.5; padding: 8px 10px; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.18); display: none; z-index: 50; max-width: 260px; }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+th { text-align: left; padding: 9px 12px; color: var(--text3); font-weight: 500; border-bottom: 1px solid var(--border); white-space: nowrap; }
+td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.stage-tag { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px 2px 7px; border-radius: 100px; font-size: 11.5px; background: var(--surface2); color: var(--text2); white-space: nowrap; }
+.stage-tag .dot { width: 6px; height: 6px; border-radius: 50%; }
+.empty { text-align: center; color: var(--text3); padding: 26px 12px; font-size: 13px; }
+.muted { color: var(--text3); }
+
+/* Status rows (health) */
+.status-list { display: flex; flex-direction: column; }
+.status-row { display: grid; grid-template-columns: 24px 1fr auto; gap: 10px; align-items: start; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.status-row:last-child { border-bottom: 0; }
+.status-icon { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; margin-top: 1px; }
+.status-icon.good { background: var(--good); }
+.status-icon.warning { background: var(--warning); color: #3b2a00; }
+.status-icon.serious { background: var(--serious); }
+.status-icon.critical { background: var(--critical); }
+.status-icon.neutral { background: var(--neutral); }
+.status-title { font-size: 13px; font-weight: 500; }
+.status-detail { font-size: 12px; color: var(--text2); margin-top: 1px; }
+.status-word { font-size: 12px; color: var(--text2); white-space: nowrap; }
+
+/* Meters (quotas) */
+.meter { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.meter:last-child { border-bottom: 0; }
+.meter-top { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+.meter-top .figure { color: var(--text2); font-variant-numeric: tabular-nums; }
+.meter-top .figure strong { color: var(--text); }
+.meter-track { height: 8px; border-radius: 4px; background: var(--accentTrack); margin-top: 8px; overflow: hidden; }
+.meter-fill { height: 100%; border-radius: 4px; background: var(--accent); }
+.meter-track.warning { background: #fdefcc; } .meter-track.warning .meter-fill { background: var(--warning); }
+.meter-track.critical { background: #f5d4d4; } .meter-track.critical .meter-fill { background: var(--critical); }
+.meter-note { font-size: 12px; color: var(--text3); margin-top: 6px; }
+
+/* Marketing connection cards */
+.conn-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.conn { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; }
+.conn h3 { font-size: 14px; font-weight: 600; }
+.conn p { font-size: 12.5px; color: var(--text2); }
+.conn .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; margin-top: 4px; }
+.conn .stats div { font-size: 12px; color: var(--text2); }
+.conn .stats strong { display: block; font-size: 18px; color: var(--text); font-weight: 600; }
+
+.filters { display: flex; gap: 8px; align-items: center; }
+.filters select { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; background: var(--surface2); font-family: inherit; }
+
+.error-box { background: var(--alertSoft); color: var(--alert); border-radius: 8px; padding: 10px 12px; font-size: 12.5px; }
+.loading { color: var(--text3); font-size: 13px; padding: 18px 0; }
+
+/* ── Login / denied ── */
+#login-screen, #denied-state { display: none; position: fixed; inset: 0; background: var(--bg); z-index: 100; align-items: center; justify-content: center; padding: 24px; }
+#login-screen.visible, #denied-state.visible { display: flex; }
+.login-card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 44px 40px; width: 440px; max-width: 100%; box-shadow: 0 24px 64px rgba(0,0,0,.08); }
+.login-card .eyebrow { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .08em; }
+.login-card h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; margin-top: 6px; }
+.login-card p { font-size: 14px; color: var(--text2); margin-top: 8px; line-height: 1.55; }
+#ms-btn { margin-top: 28px; width: 100%; padding: 14px 0; background: var(--text); color: #fff; border: 0; border-radius: 12px; font-size: 14px; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 12px; }
+#ms-btn:hover { filter: brightness(1.1); }
+#login-error { margin-top: 14px; font-size: 12.5px; color: var(--alert); padding: 10px 12px; background: var(--alertSoft); border-radius: 8px; display: none; }
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+  <div class="login-card">
+    <div class="eyebrow">Turbine Energy · Manager Home</div>
+    <h1>Sign in</h1>
+    <p>Managers only. Sign in with your Microsoft work account. Every sign-in is recorded in the audit log.</p>
+    <button id="ms-btn">
+      <svg width="18" height="18" viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
+        <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+      </svg>
+      Continue with Microsoft
+    </button>
+    <div id="login-error">Sign-in failed. Please try again.</div>
+  </div>
+</div>
+
+<div id="denied-state">
+  <div class="login-card">
+    <div class="eyebrow">Turbine Energy · Manager Home</div>
+    <h1>Managers only</h1>
+    <p>This page is restricted to managers. <a href="index.html">Go to the prospect map</a> or <a href="crm.html">the CRM</a>.</p>
+  </div>
+</div>
+
+<div id="top-nav">
+  <div><span class="nav-brand">Turbine Energy</span><span class="nav-brand-sub">Manager Home</span></div>
+  <div class="nav-right">
+    <span class="nav-user" id="nav-user"></span>
+    <a class="nav-link" href="index.html">Map</a>
+    <a class="nav-link" href="crm.html">CRM</a>
+    <a class="nav-link" href="dashboard.html">Dashboard</a>
+    <button id="sign-out-btn">Sign out</button>
+  </div>
+</div>
+
+<div id="app">
+  <nav id="rail" aria-label="Sections">
+    <button class="rail-btn" data-section="pipeline">Pipeline</button>
+    <button class="rail-btn" data-section="marketing">Marketing &amp; analytics</button>
+    <button class="rail-btn" data-section="api">API usage &amp; quotas</button>
+    <button class="rail-btn" data-section="health">System health</button>
+    <button class="rail-btn" data-section="audit">Audit log</button>
+    <div class="rail-foot">Visits to this page are recorded in the audit log.</div>
+  </nav>
+
+  <main>
+    <!-- ── Pipeline ── -->
+    <section class="section" id="sec-pipeline">
+      <div class="section-head">
+        <div>
+          <h1>Pipeline</h1>
+          <p>Every lead in the sales process: CRM leads, plus any map prospect with a logged contact. Each lead's stage comes from its most recent contact outcome. Values use the selected quote option, or the highest option if none is selected yet.</p>
+        </div>
+        <div><span class="stamp" id="pipeline-stamp"></span><button class="refresh-btn" data-refresh="pipeline">Refresh</button></div>
+      </div>
+      <div id="pipeline-body"><div class="loading">Loading pipeline…</div></div>
+    </section>
+
+    <!-- ── Marketing ── -->
+    <section class="section" id="sec-marketing">
+      <div class="section-head">
+        <div>
+          <h1>Marketing &amp; analytics</h1>
+          <p>Website traffic, paid social and email performance. Channels show as not connected until their account is linked.</p>
+        </div>
+        <div><button class="refresh-btn" data-refresh="marketing">Refresh</button></div>
+      </div>
+      <div id="marketing-body"><div class="loading">Loading…</div></div>
+    </section>
+
+    <!-- ── API usage ── -->
+    <section class="section" id="sec-api">
+      <div class="section-head">
+        <div>
+          <h1>API usage &amp; quotas</h1>
+          <p>This calendar month's usage against each service's free allowance or self-imposed cap.</p>
+        </div>
+        <div><span class="stamp" id="api-stamp"></span><button class="refresh-btn" data-refresh="api">Refresh</button></div>
+      </div>
+      <div id="api-body"><div class="loading">Loading…</div></div>
+    </section>
+
+    <!-- ── Health ── -->
+    <section class="section" id="sec-health">
+      <div class="section-head">
+        <div>
+          <h1>System health</h1>
+          <p>Live checks of the website, email sending, the CRM's backend functions and data pipeline.</p>
+        </div>
+        <div><span class="stamp" id="health-stamp"></span><button class="refresh-btn" data-refresh="health">Run checks again</button></div>
+      </div>
+      <div id="health-body"><div class="loading">Running checks…</div></div>
+    </section>
+
+    <!-- ── Audit ── -->
+    <section class="section" id="sec-audit">
+      <div class="section-head">
+        <div>
+          <h1>Audit log</h1>
+          <p>Manager sign-ins and which sections of this page were viewed. Entries can't be edited or deleted.</p>
+        </div>
+        <div class="filters">
+          <select id="audit-person"><option value="">Everyone</option></select>
+          <button class="refresh-btn" data-refresh="audit">Refresh</button>
+        </div>
+      </div>
+      <div id="audit-body"><div class="loading">Loading…</div></div>
+    </section>
+  </main>
+</div>
+
+<div id="tooltip" role="tooltip"></div>
+
+<script src="shared/escape-html.js"></script>
+<script src="shared/contact-outcome-config.js"></script>
+<script src="shared/rep-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+const { createClient } = supabase;
+const db = createClient(
+  'https://gkvropheqktytghmiwgp.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdrdnJvcGhlcWt0eXRnaG1pd2dwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5Mjg2NjAsImV4cCI6MjEwMTUwNDY2MH0.swu4sPPi2X9fS-DQEh-cW-ypWZqbWNHXLnGHaKWMxI8'
+);
+
+/* ── Formatting ─────────────────────────────────────────── */
+const GBP = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 });
+function money(n) { return n == null ? '—' : GBP.format(n); }
+function moneyCompact(n) {
+  if (n == null) return '—';
+  if (Math.abs(n) >= 1e6) return '£' + (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (Math.abs(n) >= 1e5) return '£' + Math.round(n / 1e3) + 'K';
+  return GBP.format(n);
+}
+function num(n) { return (n ?? 0).toLocaleString('en-GB'); }
+function pct(a, b) { return b ? Math.round((a / b) * 100) + '%' : '—'; }
+function fmtDate(d) { return d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''; }
+function fmtDateTime(d) { return new Date(d).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+function daysSince(d) { return Math.floor((Date.now() - new Date(d).getTime()) / 86400000); }
+function stamp(id) { document.getElementById(id).textContent = 'Updated ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); }
+function errorHtml(msg) { return `<div class="error-box">${escapeHtml(msg)}</div>`; }
+
+/* ── Auth + manager gate ────────────────────────────────── */
+let currentUser = null;
+let booted = false;
+
+function getUserName(user) {
+  return user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'User';
+}
+
+async function onSession(user) {
+  if (booted) return;
+  if (!user.email?.toLowerCase().endsWith('@turbineenergyuk.co.uk')) {
+    await db.auth.signOut();
+    const err = document.getElementById('login-error');
+    err.textContent = 'Access restricted to @turbineenergyuk.co.uk accounts.';
+    err.style.display = 'block';
+    document.getElementById('login-screen').classList.add('visible');
+    return;
+  }
+  // The database is the source of truth for who's a manager (migration 043).
+  const { data: isManager, error } = await db.rpc('is_manager');
+  if (error || isManager !== true) {
+    if (error) console.error('is_manager check failed:', error);
+    document.getElementById('login-screen').classList.remove('visible');
+    document.getElementById('denied-state').classList.add('visible');
+    return;
+  }
+  booted = true;
+  currentUser = user;
+  document.getElementById('login-screen').classList.remove('visible');
+  document.getElementById('nav-user').textContent = getUserName(user);
+  document.getElementById('app').classList.add('visible');
+  logSignInOnce(user);
+  showSection(initialSection());
+}
+
+document.getElementById('ms-btn').addEventListener('click', async () => {
+  document.getElementById('login-error').style.display = 'none';
+  const { error } = await db.auth.signInWithOAuth({
+    provider: 'azure',
+    options: { scopes: 'email profile openid', redirectTo: window.location.href.split('#')[0] },
+  });
+  if (error) document.getElementById('login-error').style.display = 'block';
+});
+
+document.getElementById('sign-out-btn').addEventListener('click', async () => {
+  await db.auth.signOut();
+  location.reload();
+});
+
+db.auth.getSession().then(({ data: { session } }) => {
+  if (session?.user) onSession(session.user);
+  else document.getElementById('login-screen').classList.add('visible');
+});
+db.auth.onAuthStateChange((event, session) => {
+  if (event === 'SIGNED_IN' && session?.user) onSession(session.user);
+});
+
+/* ── Audit logging ──────────────────────────────────────────
+   General depth, as agreed: one 'sign_in' row per browser session and one
+   'view_section' row the first time each section is opened per page load.
+   A failed audit write never blocks the page — it's logged to the console. */
+async function audit(action, section = null) {
+  const { error } = await db.from('manager_audit_log').insert({
+    user_email: currentUser.email.toLowerCase(),
+    user_name: getUserName(currentUser),
+    action,
+    section,
+    user_agent: navigator.userAgent.slice(0, 300),
+  });
+  if (error) console.error('Audit log write failed:', error);
+}
+
+function logSignInOnce(user) {
+  // Keyed on last_sign_in_at so a fresh Microsoft sign-in logs again, but
+  // reloading or navigating back within the same session doesn't.
+  const key = 'mh-signin:' + user.id + ':' + (user.last_sign_in_at || '');
+  let seen = false;
+  try { seen = sessionStorage.getItem(key) === '1'; } catch { /* storage blocked — log anyway */ }
+  if (seen) return;
+  audit('sign_in');
+  try { sessionStorage.setItem(key, '1'); } catch { /* ignore */ }
+}
+
+/* ── Section switching ──────────────────────────────────── */
+const SECTIONS = ['pipeline', 'marketing', 'api', 'health', 'audit'];
+const LOADERS = {};          // filled in below, one per section
+const loaded = new Set();    // sections loaded at least once this page load
+const viewed = new Set();    // sections audit-logged this page load
+
+function initialSection() {
+  try { const s = localStorage.getItem('mh-section'); if (SECTIONS.includes(s)) return s; } catch { /* ignore */ }
+  return 'pipeline';
+}
+
+function showSection(name) {
+  document.querySelectorAll('.rail-btn').forEach(b => b.classList.toggle('active', b.dataset.section === name));
+  document.querySelectorAll('.section').forEach(s => s.classList.toggle('active', s.id === 'sec-' + name));
+  try { localStorage.setItem('mh-section', name); } catch { /* ignore */ }
+  if (!viewed.has(name)) { viewed.add(name); audit('view_section', name); }
+  if (!loaded.has(name)) { loaded.add(name); LOADERS[name](); }
+}
+
+document.querySelectorAll('.rail-btn').forEach(b => b.addEventListener('click', () => showSection(b.dataset.section)));
+document.querySelectorAll('[data-refresh]').forEach(b => b.addEventListener('click', () => LOADERS[b.dataset.refresh]()));
+
+/* ── Shared data fetches (cached per page load, cleared on refresh) ── */
+let statsPromise = null;
+let healthPromise = null;
+function getStats(force) {
+  if (force || !statsPromise) statsPromise = db.rpc('manager_system_stats').then(({ data, error }) => { if (error) throw error; return data; });
+  return statsPromise;
+}
+function getHealth(force) {
+  if (force || !healthPromise) {
+    healthPromise = db.functions.invoke('manager-health', { body: {} }).then(async ({ data, error }) => {
+      if (error) {
+        let detail = error.message;
+        try { const body = await error.context.clone().json(); if (body?.error) detail = body.error; } catch { /* not JSON */ }
+        throw new Error(detail);
+      }
+      return data;
+    });
+  }
+  return healthPromise;
+}
+
+// PostgREST caps unpaginated results at 1,000 rows — page past it explicitly.
+async function fetchAll(buildQuery) {
+  const rows = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await buildQuery().range(from, from + 999);
+    if (error) throw error;
+    rows.push(...data);
+    if (data.length < 1000) return rows;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
+   PIPELINE
+   ════════════════════════════════════════════════════════════ */
+const STAGES = [
+  { key: 'new',       label: 'New',              outcomes: [] },
+  { key: 'contacted', label: 'Contacted',        outcomes: ['No Answer', 'Follow Up', 'Enquiring Only'] },
+  { key: 'engaged',   label: 'Meeting / survey', outcomes: ['Meeting Booked', 'Survey Booked'] },
+  { key: 'quoted',    label: 'Quote sent',       outcomes: ['Quote Sent'] },
+  { key: 'won',       label: 'Won',              outcomes: ['Converted'] },
+  { key: 'scheduled', label: 'Scheduled',        outcomes: ['Scheduled for Install'] },
+  { key: 'completed', label: 'Completed',        outcomes: ['Completed'] },
+  { key: 'lost',      label: 'Lost',             outcomes: ['Not Interested', 'Already Has Solar'] },
+];
+const STAGE_BY_OUTCOME = {};
+STAGES.forEach(s => s.outcomes.forEach(o => { STAGE_BY_OUTCOME[o] = s.key; }));
+const STAGE_INDEX = Object.fromEntries(STAGES.map((s, i) => [s.key, i]));
+const WON_STAGES = new Set(['won', 'scheduled', 'completed']);
+const CLOSED_STAGES = new Set(['won', 'scheduled', 'completed', 'lost']);
+const WON_OUTCOMES = new Set(['Converted', 'Scheduled for Install', 'Completed']);
+
+function sourceLabel(p) {
+  if (p.source === 'manual') return p.lead_type === 'commercial' ? 'CRM lead — commercial' : p.lead_type === 'domestic' ? 'CRM lead — domestic' : 'CRM lead';
+  if (p.source === 'website') return 'Website enquiry';
+  if (p.source === 'oil-lpg-bus') return 'Oil/LPG BUS lead';
+  return 'Map prospect (commercial)';
+}
+function leadName(p) { return p.customer_name || p.address || p.postcode || 'Unnamed lead'; }
+function leadLink(p) { return p.source === 'manual' ? `crm.html?lead=${encodeURIComponent(p.id)}` : `index.html?lead=${encodeURIComponent(p.id)}`; }
+
+const LEAD_COLUMNS = 'id, source, customer_name, address, postcode, lead_type, assigned_to_email, created_at, install_hub_job_id';
+
+async function loadPipelineData() {
+  const [manual, contacts, options] = await Promise.all([
+    fetchAll(() => db.from('prospects').select(LEAD_COLUMNS).eq('source', 'manual').order('id')),
+    fetchAll(() => db.from('prospect_contacts').select('prospect_id, outcome, contacted_at, follow_up_date').is('deleted_at', null).order('contacted_at', { ascending: false })),
+    fetchAll(() => db.from('quote_options').select('prospect_id, quote_price, is_selected').is('deleted_at', null).order('id')),
+  ]);
+
+  // Map prospects (EPC/VOA/oil-lpg) only enter the pipeline once someone logs a contact.
+  const leads = new Map(manual.map(p => [p.id, p]));
+  const extraIds = [...new Set(contacts.map(c => c.prospect_id))].filter(id => !leads.has(id));
+  for (let i = 0; i < extraIds.length; i += 150) {
+    const chunk = extraIds.slice(i, i + 150);
+    const { data, error } = await db.from('prospects').select(LEAD_COLUMNS).in('id', chunk);
+    if (error) throw error;
+    data.forEach(p => leads.set(p.id, p));
+  }
+
+  const contactsByLead = {};
+  contacts.forEach(c => { (contactsByLead[c.prospect_id] ||= []).push(c); }); // newest first
+  const optionsByLead = {};
+  options.forEach(o => { (optionsByLead[o.prospect_id] ||= []).push(o); });
+
+  return [...leads.values()].map(p => {
+    const cs = contactsByLead[p.id] || [];
+    const latest = cs[0] || null;
+    let stage = latest ? (STAGE_BY_OUTCOME[latest.outcome] || 'contacted') : 'new';
+    // Sent to install-hub means at least scheduled, even if no outcome says so.
+    if (p.install_hub_job_id && STAGE_INDEX[stage] < STAGE_INDEX.scheduled && stage !== 'lost') stage = 'scheduled';
+    const opts = optionsByLead[p.id] || [];
+    const selected = opts.find(o => o.is_selected && o.quote_price != null);
+    const prices = opts.map(o => o.quote_price).filter(v => v != null);
+    const value = selected ? Number(selected.quote_price) : prices.length ? Math.max(...prices.map(Number)) : null;
+    const wonContact = [...cs].reverse().find(c => WON_OUTCOMES.has(c.outcome)); // earliest win
+    return { ...p, contacts: cs, latest, stage, value, wonAt: wonContact?.contacted_at || null };
+  });
+}
+
+function attentionReason(l) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  if (l.stage === 'new') {
+    const d = daysSince(l.created_at);
+    return d >= 2 ? { days: d, text: `No contact logged — added ${d} days ago` } : null;
+  }
+  if (l.stage === 'quoted') {
+    const d = daysSince(l.latest.contacted_at);
+    return d >= 7 ? { days: d, text: `Quote sent ${d} days ago, nothing logged since` } : null;
+  }
+  if (l.stage === 'scheduled' && l.latest?.follow_up_date && new Date(l.latest.follow_up_date) < today) {
+    return { days: daysSince(l.latest.follow_up_date), text: `Install date ${fmtDate(l.latest.follow_up_date)} has passed — not marked completed` };
+  }
+  if ((l.stage === 'contacted' || l.stage === 'engaged') && l.latest?.follow_up_date && new Date(l.latest.follow_up_date) < today) {
+    return { days: daysSince(l.latest.follow_up_date), text: `${CONTACT_OUTCOME[l.latest.outcome]?.label || l.latest.outcome} date ${fmtDate(l.latest.follow_up_date)} has passed — no update logged` };
+  }
+  return null;
+}
+
+function stageTag(stageKey) {
+  const s = STAGES[STAGE_INDEX[stageKey]];
+  const latestOutcome = s.outcomes[0];
+  const color = stageKey === 'new' ? '#9ca3af' : (CONTACT_OUTCOME[latestOutcome]?.color || '#9ca3af');
+  return `<span class="stage-tag"><span class="dot" style="background:${color}"></span>${escapeHtml(s.label)}</span>`;
+}
+
+LOADERS.pipeline = async function () {
+  const body = document.getElementById('pipeline-body');
+  body.innerHTML = '<div class="loading">Loading pipeline…</div>';
+  let leads;
+  try { leads = await loadPipelineData(); }
+  catch (e) { console.error(e); body.innerHTML = errorHtml('Couldn\'t load the pipeline: ' + (e.message || e)); return; }
+  stamp('pipeline-stamp');
+
+  const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+  const open = leads.filter(l => !CLOSED_STAGES.has(l.stage));
+  const quoted = leads.filter(l => l.stage === 'quoted');
+  const wonThisMonth = leads.filter(l => l.wonAt && new Date(l.wonAt) >= monthStart);
+  const attention = leads.map(l => ({ l, r: attentionReason(l) })).filter(x => x.r).sort((a, b) => b.r.days - a.r.days);
+  const sum = arr => arr.reduce((t, l) => t + (l.value || 0), 0);
+
+  const tiles = `
+    <div class="tiles">
+      <div class="tile"><div class="tile-label">Open leads</div><div class="tile-value">${num(open.length)}</div><div class="tile-sub">${num(leads.length)} in the pipeline overall</div></div>
+      <div class="tile"><div class="tile-label">Quotes awaiting a decision</div><div class="tile-value">${moneyCompact(sum(quoted))}</div><div class="tile-sub">${num(quoted.length)} quote${quoted.length === 1 ? '' : 's'} sent</div></div>
+      <div class="tile"><div class="tile-label">Won this month</div><div class="tile-value">${moneyCompact(sum(wonThisMonth))}</div><div class="tile-sub">${num(wonThisMonth.length)} job${wonThisMonth.length === 1 ? '' : 's'} since ${monthStart.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</div></div>
+      <div class="tile"><div class="tile-label">Needs attention</div><div class="tile-value">${num(attention.length)}</div><div class="tile-sub">Overdue or gone quiet</div></div>
+    </div>`;
+
+  // Funnel — count per stage (bar length) with value as a direct label.
+  const byStage = Object.fromEntries(STAGES.map(s => [s.key, leads.filter(l => l.stage === s.key)]));
+  const maxCount = Math.max(1, ...STAGES.map(s => byStage[s.key].length));
+  const funnelRow = s => {
+    const rows = byStage[s.key];
+    const v = sum(rows);
+    return `<div class="funnel-row ${s.key === 'lost' ? 'lost' : ''}" data-tip="${escapeHtml(`<strong>${s.label}</strong><br>${rows.length} lead${rows.length === 1 ? '' : 's'} · ${pct(rows.length, leads.length)} of pipeline<br>Quoted value ${money(v)}`)}">
+      <div class="funnel-label">${escapeHtml(s.label)}</div>
+      <div class="funnel-track"><div class="funnel-bar" style="width:${(rows.length / maxCount) * 100}%"></div></div>
+      <div class="funnel-val"><strong>${rows.length}</strong>${v ? ' · ' + moneyCompact(v) : ''}</div>
+    </div>`;
+  };
+  const funnel = `
+    <div class="card">
+      <div class="card-head"><h2>Leads by stage</h2><span class="hint">Bar = number of leads · label = count · quoted value</span></div>
+      <div class="card-body">
+        ${STAGES.filter(s => s.key !== 'lost').map(funnelRow).join('')}
+        <div class="funnel-sep"></div>
+        ${funnelRow(STAGES[STAGE_INDEX.lost])}
+      </div>
+    </div>`;
+
+  // Conversion by source
+  const sources = {};
+  leads.forEach(l => {
+    const k = sourceLabel(l);
+    const s = (sources[k] ||= { leads: 0, quoted: 0, won: 0, lost: 0, wonValue: 0 });
+    s.leads++;
+    if (STAGE_INDEX[l.stage] >= STAGE_INDEX.quoted && l.stage !== 'lost') s.quoted++;
+    if (WON_STAGES.has(l.stage)) { s.won++; s.wonValue += l.value || 0; }
+    if (l.stage === 'lost') s.lost++;
+  });
+  const sourceRows = Object.entries(sources).sort((a, b) => b[1].leads - a[1].leads).map(([k, s]) => `
+    <tr><td>${escapeHtml(k)}</td><td class="num">${s.leads}</td><td class="num">${s.quoted}</td><td class="num">${s.won}</td>
+    <td class="num">${pct(s.won, s.leads)}</td><td class="num">${money(s.wonValue)}</td></tr>`).join('');
+  const sourceCard = `
+    <div class="card">
+      <div class="card-head"><h2>Conversion by source</h2><span class="hint">Website enquiries appear here once they flow into the CRM</span></div>
+      <table><thead><tr><th>Source</th><th class="num">Leads</th><th class="num">Quoted</th><th class="num">Won</th><th class="num">Win rate</th><th class="num">Won value</th></tr></thead>
+      <tbody>${sourceRows || '<tr><td colspan="6" class="empty">No leads yet.</td></tr>'}</tbody></table>
+    </div>`;
+
+  // By owner
+  const owners = {};
+  leads.forEach(l => {
+    const k = l.assigned_to_email || '';
+    const o = (owners[k] ||= { open: 0, quotedValue: 0, wonMonth: 0, wonMonthValue: 0 });
+    if (!CLOSED_STAGES.has(l.stage)) o.open++;
+    if (l.stage === 'quoted') o.quotedValue += l.value || 0;
+    if (l.wonAt && new Date(l.wonAt) >= monthStart) { o.wonMonth++; o.wonMonthValue += l.value || 0; }
+  });
+  const ownerOrder = [...REP_ORDER, ''].filter(k => owners[k]).concat(Object.keys(owners).filter(k => k && !REP_ORDER.includes(k)));
+  const ownerRows = ownerOrder.map(k => { const o = owners[k]; return `
+    <tr><td>${k ? escapeHtml(repName(k)) : '<span class="muted">Unassigned</span>'}</td><td class="num">${o.open}</td>
+    <td class="num">${money(o.quotedValue)}</td><td class="num">${o.wonMonth} · ${money(o.wonMonthValue)}</td></tr>`; }).join('');
+  const ownerCard = `
+    <div class="card">
+      <div class="card-head"><h2>By owner</h2><span class="hint">Assigned rep</span></div>
+      <table><thead><tr><th>Owner</th><th class="num">Open leads</th><th class="num">Awaiting decision</th><th class="num">Won this month</th></tr></thead>
+      <tbody>${ownerRows}</tbody></table>
+    </div>`;
+
+  const ATTENTION_PREVIEW = 10;
+  const attentionRows = attention.map(({ l, r }, i) => `
+    <tr${i >= ATTENTION_PREVIEW ? ' class="attention-more" hidden' : ''}><td><a href="${leadLink(l)}">${escapeHtml(leadName(l))}</a>${l.customer_name && l.postcode ? `<div class="muted">${escapeHtml(l.postcode)}</div>` : ''}</td>
+    <td>${escapeHtml(sourceLabel(l))}</td><td>${stageTag(l.stage)}</td><td>${escapeHtml(r.text)}</td>
+    <td>${l.assigned_to_email ? escapeHtml(repName(l.assigned_to_email)) : '<span class="muted">Unassigned</span>'}</td>
+    <td class="num">${l.value != null ? money(l.value) : '<span class="muted">—</span>'}</td></tr>`).join('');
+  const attentionCard = `
+    <div class="card">
+      <div class="card-head"><h2>Needs attention</h2><span class="hint">No contact after 2 days · quote quiet for 7+ days · follow-up or install date passed</span></div>
+      <table><thead><tr><th>Lead</th><th>Source</th><th>Stage</th><th>Why</th><th>Owner</th><th class="num">Value</th></tr></thead>
+      <tbody>${attentionRows || '<tr><td colspan="6" class="empty">Nothing overdue — every open lead has been followed up on time.</td></tr>'}</tbody></table>
+      ${attention.length > ATTENTION_PREVIEW ? `<div style="padding:10px 12px;border-top:1px solid var(--border)"><button class="refresh-btn" id="attention-toggle">Show all ${attention.length}</button></div>` : ''}
+    </div>`;
+
+  body.innerHTML = tiles + `<div class="grid-2">${funnel}${ownerCard}</div>` + attentionCard + sourceCard;
+  wireTooltips(body);
+  document.getElementById('attention-toggle')?.addEventListener('click', e => {
+    const expand = e.target.textContent.startsWith('Show all');
+    body.querySelectorAll('.attention-more').forEach(tr => { tr.hidden = !expand; });
+    e.target.textContent = expand ? 'Show fewer' : `Show all ${attention.length}`;
+  });
+};
+
+/* Hover tooltip for funnel rows (hit target = the whole row, not just the bar). */
+function wireTooltips(root) {
+  const tip = document.getElementById('tooltip');
+  root.querySelectorAll('[data-tip]').forEach(el => {
+    el.addEventListener('mouseenter', () => { tip.innerHTML = el.dataset.tip; tip.style.display = 'block'; });
+    el.addEventListener('mousemove', e => { tip.style.left = (e.clientX + 14) + 'px'; tip.style.top = (e.clientY + 14) + 'px'; });
+    el.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+  });
+}
+
+/* ════════════════════════════════════════════════════════════
+   STATUS ROWS (shared by health / marketing)
+   ════════════════════════════════════════════════════════════ */
+const STATUS_ICON = { good: '✓', warning: '!', serious: '!', critical: '✕', neutral: '–' };
+const STATUS_WORD = { good: 'OK', warning: 'Check', serious: 'Problem', critical: 'Failing', neutral: 'Not set up' };
+function statusRow(level, title, detail, word) {
+  return `<div class="status-row">
+    <div class="status-icon ${level}" aria-hidden="true">${STATUS_ICON[level]}</div>
+    <div><div class="status-title">${escapeHtml(title)}</div>${detail ? `<div class="status-detail">${detail}</div>` : ''}</div>
+    <div class="status-word">${escapeHtml(word || STATUS_WORD[level])}</div>
+  </div>`;
+}
+
+/* ════════════════════════════════════════════════════════════
+   MARKETING
+   ════════════════════════════════════════════════════════════ */
+const AD_CHANNELS = [
+  { name: 'Website — Google Analytics', note: 'Google Analytics is being added to turbineenergyuk.co.uk. Traffic, top pages and quote-wizard conversions will show here once it has been live for a few days.' },
+  { name: 'Meta Ads (Facebook & Instagram)', note: 'Needs a Meta app with read-only ads access to the ad account. Setup usually takes a few days.' },
+  { name: 'Google Ads', note: 'Needs a Google Ads API developer token (Google reviews the application) plus read-only access. Allow up to two weeks.' },
+  { name: 'LinkedIn Ads', note: 'Needs LinkedIn Advertising API access, which LinkedIn reviews manually. Can take a few weeks — worth applying early.' },
+];
+
+LOADERS.marketing = async function () {
+  const body = document.getElementById('marketing-body');
+  body.innerHTML = '<div class="loading">Loading…</div>';
+  const cards = AD_CHANNELS.map(c => `
+    <div class="conn">
+      <div class="status-row" style="padding:0;border:0"><div class="status-icon neutral" aria-hidden="true">–</div><h3>${escapeHtml(c.name)}</h3><div class="status-word">Not connected</div></div>
+      <p>${escapeHtml(c.note)}</p>
+    </div>`);
+
+  let emailCard;
+  try {
+    const h = await getHealth(true);
+    const b = h.brevo;
+    if (!b.configured) {
+      emailCard = `<div class="conn"><div class="status-row" style="padding:0;border:0"><div class="status-icon neutral">–</div><h3>Email — Brevo</h3><div class="status-word">Not connected</div></div>
+        <p>Add the Brevo API key to this CRM's Supabase project (secret <code>BREVO_API_KEY</code>) to see sending stats. The same key also switches on lead-assignment emails.</p></div>`;
+    } else if (!b.key_valid) {
+      emailCard = `<div class="conn"><div class="status-row" style="padding:0;border:0"><div class="status-icon critical">✕</div><h3>Email — Brevo</h3><div class="status-word">Key rejected</div></div>
+        <p>Brevo rejected the API key (HTTP ${escapeHtml(String(b.status))}). Generate a new key in Brevo account 11558688.</p></div>`;
+    } else {
+      const s = b.last_30_days;
+      emailCard = `<div class="conn"><div class="status-row" style="padding:0;border:0"><div class="status-icon good">✓</div><h3>Email — Brevo</h3><div class="status-word">Last 30 days</div></div>
+        ${s ? `<div class="stats">
+          <div><strong>${num(s.requests)}</strong>Sent</div><div><strong>${pct(s.delivered, s.requests)}</strong>Delivered</div>
+          <div><strong>${num(s.opens)}</strong>Unique opens</div><div><strong>${num(s.hard_bounces + s.soft_bounces + s.blocked)}</strong>Bounced / blocked</div>
+          <div><strong>${num(s.spam_reports)}</strong>Spam reports</div></div>` : '<p>Stats unavailable right now.</p>'}
+        <p class="muted">Website enquiry emails and CRM notifications combined.</p></div>`;
+    }
+  } catch (e) {
+    emailCard = `<div class="conn"><h3>Email — Brevo</h3>${errorHtml('Health check unavailable: ' + (e.message || e))}</div>`;
+  }
+
+  const enquiryCard = `<div class="conn"><div class="status-row" style="padding:0;border:0"><div class="status-icon neutral">–</div><h3>Website enquiries</h3><div class="status-word">Coming next</div></div>
+    <p>Once website forms create CRM leads automatically, enquiries per quote wizard and how fast each was followed up will show here — and in the Pipeline.</p></div>`;
+
+  body.innerHTML = `<div class="conn-grid">${cards.join('')}${emailCard}${enquiryCard}</div>`;
+};
+
+/* ════════════════════════════════════════════════════════════
+   API USAGE & QUOTAS
+   ════════════════════════════════════════════════════════════ */
+function meter(title, used, cap, note, unit = 'this month') {
+  const ratio = cap ? used / cap : 0;
+  const level = ratio >= 0.9 ? 'critical' : ratio >= 0.75 ? 'warning' : '';
+  const figure = cap
+    ? `<strong>${num(used)}</strong> / ${num(cap)} · ${num(Math.max(cap - used, 0))} left`
+    : `<strong>${num(used)}</strong> ${unit}`;
+  return `<div class="meter">
+    <div class="meter-top"><span>${escapeHtml(title)}</span><span class="figure">${figure}</span></div>
+    ${cap ? `<div class="meter-track ${level}" role="img" aria-label="${escapeHtml(title)}: ${Math.round(ratio * 100)}% used"><div class="meter-fill" style="width:${Math.min(ratio, 1) * 100}%"></div></div>` : ''}
+    ${note ? `<div class="meter-note">${note}</div>` : ''}
+  </div>`;
+}
+
+const SOLAR_CAP = 9500;       // self-imposed, solar-enrichment's MONTHLY_CAP
+const MAPS_CAP = 10000;       // Maps JS free tier
+const ENRICH_CAP = 50;        // contact-enrichment's MONTHLY_CAPS placeholder
+
+LOADERS.api = async function () {
+  const body = document.getElementById('api-body');
+  body.innerHTML = '<div class="loading">Loading…</div>';
+  let stats;
+  try { stats = await getStats(true); }
+  catch (e) { body.innerHTML = errorHtml('Couldn\'t load usage: ' + (e.message || e)); return; }
+  stamp('api-stamp');
+
+  const u = stats.api_usage || {};
+  const pendingByArea = stats.solar_pending_by_area || {};
+  const pending = Object.values(pendingByArea).reduce((a, b) => a + b, 0);
+  const solarUsed = u.solar_buildingInsights || 0;
+  const monthsLeft = pending ? Math.ceil(pending / SOLAR_CAP) : 0;
+  const areaList = Object.entries(pendingByArea).sort((a, b) => b[1] - a[1])
+    .map(([a, n]) => `${escapeHtml(a)} ${num(n)}`).join(' · ');
+
+  const google = `
+    <div class="card"><div class="card-head"><h2>Google</h2><span class="hint">Resets on the 1st of each month</span></div><div class="card-body">
+      ${meter('Solar API (roof checks)', solarUsed, SOLAR_CAP,
+        pending ? `${num(pending)} buildings still waiting for a roof check — about ${monthsLeft} more month${monthsLeft === 1 ? '' : 's'} at the full monthly cap.<br>${areaList}` : 'Every geocoded building has been checked.')}
+      ${meter('Maps JavaScript API (satellite view loads)', u.maps_js_load || 0, MAPS_CAP)}
+    </div></div>`;
+
+  const enrich = stats.enrichment_this_month || {};
+  const sms = stats.sms_this_month || {};
+  const other = `
+    <div class="card"><div class="card-head"><h2>Messaging &amp; enrichment</h2><span class="hint">This month</span></div><div class="card-body">
+      ${meter('SMS sent (Twilio)', sms.sent || 0, null, (sms.failed ? `${num(sms.failed)} failed · ` : '') + 'Paid per message — no free allowance.')}
+      ${meter('Apollo contact lookups', enrich.apollo || 0, ENRICH_CAP)}
+      ${meter('Hunter contact lookups', enrich.hunter || 0, ENRICH_CAP)}
+      ${statusRow('good', 'Companies House', 'No monthly limit — rate-limited to 600 requests per 5 minutes.', 'Unlimited')}
+    </div></div>`;
+
+  let brevoCard;
+  try {
+    const h = await getHealth();
+    const b = h.brevo;
+    if (b.configured && b.key_valid && b.plan?.length) {
+      brevoCard = `<div class="card"><div class="card-head"><h2>Brevo email</h2><span class="hint">Plan credits</span></div><div class="card-body">
+        ${b.plan.map(p => meter(`${p.type} plan — ${p.credits_type === 'sendLimit' ? 'emails left today' : p.credits_type || 'credits'}`, p.credits ?? 0, null,
+          p.type === 'free' ? 'The free plan allows 300 emails a day across website enquiries, confirmations and CRM notifications.' : '', 'remaining')).join('')}
+      </div></div>`;
+    } else {
+      brevoCard = `<div class="card"><div class="card-head"><h2>Brevo email</h2></div><div class="card-body">
+        ${statusRow('neutral', 'Brevo not connected to the CRM', 'Add <code>BREVO_API_KEY</code> to this Supabase project to see remaining daily sends.')}</div></div>`;
+    }
+  } catch (e) {
+    brevoCard = `<div class="card"><div class="card-head"><h2>Brevo email</h2></div><div class="card-body">${errorHtml('Health check unavailable: ' + (e.message || e))}</div></div>`;
+  }
+
+  body.innerHTML = `<div class="grid-2">${google}${other}</div>` + `<div class="grid-2">${brevoCard}<div></div></div>`;
+};
+
+/* ════════════════════════════════════════════════════════════
+   SYSTEM HEALTH
+   ════════════════════════════════════════════════════════════ */
+const FUNCTION_LABELS = {
+  'solar-enrichment': 'Solar enrichment', 'company-lookup': 'Companies House lookup',
+  'send-to-install-hub': 'Send to install-hub', 'notify-assignment': 'Lead assignment emails',
+  'sms-scheduler': 'SMS reminders', 'sms-inbound': 'SMS opt-outs (STOP replies)',
+  'contact-enrichment': 'Contact enrichment (Apollo/Hunter)',
+};
+
+LOADERS.health = async function () {
+  const body = document.getElementById('health-body');
+  body.innerHTML = '<div class="loading">Running checks…</div>';
+  const [healthRes, statsRes] = await Promise.allSettled([getHealth(true), getStats(true)]);
+  stamp('health-stamp');
+
+  let websiteCard, emailCard, backendCard;
+  if (healthRes.status === 'fulfilled') {
+    const h = healthRes.value;
+    const w = h.website;
+    const rows = [];
+    rows.push(w.up
+      ? statusRow(w.ms > 4000 ? 'warning' : 'good', 'Website is up', `turbineenergyuk.co.uk answered in ${(w.ms / 1000).toFixed(1)}s`, w.ms > 4000 ? 'Slow' : 'OK')
+      : statusRow('critical', 'Website is not responding', escapeHtml(w.error || `HTTP ${w.status}`)));
+    if (w.rest_page_767_status === 200) rows.push(statusRow('good', 'Serving the current 2026 site', 'The root loader points at the /wordpress/ install.'));
+    else if (w.rest_page_767_status === 404) rows.push(statusRow('critical', 'The old 2024 site is being served', 'public_html/index.php has been flipped back to the old install. Fix: point it at <code>/wordpress/wp-blog-header.php</code> — see the website HANDOVER.md.'));
+    else rows.push(statusRow('warning', 'Couldn\'t confirm which install is served', `WordPress REST check returned HTTP ${w.rest_page_767_status}.`));
+    rows.push(w.has_old_2024_hero
+      ? statusRow('critical', 'Old 2024 homepage content detected', '"Save up to 80%" hero is back on the homepage.')
+      : w.has_current_content
+        ? statusRow('good', 'Current homepage content present', 'Case-study content found; old 2024 hero absent.')
+        : statusRow('warning', 'Homepage content looks unexpected', 'Expected case-study text wasn\'t found — check the homepage.'));
+    websiteCard = `<div class="card"><div class="card-head"><h2>Website</h2><span class="hint">turbineenergyuk.co.uk</span></div><div class="card-body status-list">${rows.join('')}</div></div>`;
+
+    const b = h.brevo;
+    const erows = [];
+    if (!b.configured) erows.push(statusRow('neutral', 'Brevo key not added to the CRM', 'Website enquiry emails send from WordPress and aren\'t affected. Adding <code>BREVO_API_KEY</code> here enables lead-assignment emails and these checks.'));
+    else if (!b.key_valid) erows.push(statusRow('critical', 'Brevo rejected the API key', `HTTP ${escapeHtml(String(b.status))}`));
+    else {
+      erows.push(b.account_matches === false
+        ? statusRow('critical', 'Key belongs to the wrong Brevo account', `Account ${escapeHtml(String(b.account_id))}, expected 11558688. This is what sent enquiries to spam before.`)
+        : statusRow('good', 'Brevo key valid', b.account_id ? `Account ${escapeHtml(String(b.account_id))}` : ''));
+      erows.push(b.domain_authenticated
+        ? statusRow('good', 'turbineenergyuk.co.uk authenticated for sending', 'SPF/DKIM in place — emails send from info@turbineenergyuk.co.uk.')
+        : statusRow('critical', 'Sending domain not authenticated', 'Emails will fall back to a brevosend.com address and land in spam.'));
+      const s = b.last_30_days;
+      if (s && s.requests) {
+        const bad = s.hard_bounces + s.spam_reports + s.blocked;
+        const rate = bad / s.requests;
+        erows.push(statusRow(rate > 0.05 ? 'serious' : 'good', 'Delivery over the last 30 days', `${num(s.delivered)} of ${num(s.requests)} delivered · ${num(s.spam_reports)} spam reports · ${num(s.hard_bounces)} hard bounces`, rate > 0.05 ? 'High bounces' : 'OK'));
+      }
+    }
+    emailCard = `<div class="card"><div class="card-head"><h2>Email sending</h2><span class="hint">Brevo</span></div><div class="card-body status-list">${erows.join('')}</div></div>`;
+
+    const frows = Object.entries(h.functions).map(([name, up]) => up
+      ? statusRow('good', FUNCTION_LABELS[name] || name, `<code>${escapeHtml(name)}</code> is deployed`, 'Deployed')
+      : statusRow('critical', FUNCTION_LABELS[name] || name, `<code>${escapeHtml(name)}</code> isn't deployed — the feature using it won't work.`, 'Not deployed'));
+    const srows = Object.entries(h.secrets).map(([feature, ok]) => ok
+      ? statusRow('good', feature, '', 'Configured')
+      : statusRow('neutral', feature, 'Its API key or secret hasn\'t been added yet.', 'Not set up'));
+    backendCard = `<div class="grid-2">
+      <div class="card"><div class="card-head"><h2>CRM backend functions</h2></div><div class="card-body status-list">${frows.join('')}</div></div>
+      <div class="card"><div class="card-head"><h2>Integrations switched on</h2><span class="hint">Keys present — values never shown</span></div><div class="card-body status-list">${srows.join('')}</div></div>
+    </div>`;
+  } else {
+    const msg = healthRes.reason?.message || String(healthRes.reason);
+    websiteCard = `<div class="card"><div class="card-head"><h2>Website, email &amp; backend</h2></div><div class="card-body">${errorHtml('Live checks unavailable: ' + msg)}</div></div>`;
+    emailCard = ''; backendCard = '';
+  }
+
+  let dataCard;
+  if (statsRes.status === 'fulfilled') {
+    const s = statsRes.value;
+    const ss = s.solar_status || {};
+    const checked = (ss.prospect || 0) + (ss.has_solar || 0) + (ss.no_coverage || 0) + (ss.error || 0);
+    const commercial = checked + (ss.pending || 0);
+    const rows = [
+      statusRow(s.geocoded / s.prospects_total >= 0.95 ? 'good' : 'warning', 'Addresses placed on the map',
+        `${num(s.geocoded)} of ${num(s.prospects_total)} (${pct(s.geocoded, s.prospects_total)}) have map coordinates`),
+      statusRow(s.classified / s.classifiable >= 0.95 ? 'good' : 'warning', 'Companies House sector classification',
+        `${num(s.classified)} of ${num(s.classifiable)} commercial prospects classified (${pct(s.classified, s.classifiable)})`,
+        s.classified / s.classifiable >= 0.95 ? 'OK' : 'In progress'),
+      statusRow(ss.pending ? 'warning' : 'good', 'Solar roof checks',
+        `${num(checked)} of ${num(commercial)} commercial buildings checked (${pct(checked, commercial)}) · ${num(ss.prospect || 0)} good prospects · ${num(ss.has_solar || 0)} already have solar${ss.error ? ` · ${num(ss.error)} errors` : ''}`,
+        ss.pending ? 'In progress' : 'OK'),
+    ];
+    dataCard = `<div class="card"><div class="card-head"><h2>Data pipeline</h2><span class="hint">${num(s.prospects_total)} records</span></div><div class="card-body status-list">${rows.join('')}</div></div>`;
+  } else {
+    dataCard = `<div class="card"><div class="card-head"><h2>Data pipeline</h2></div><div class="card-body">${errorHtml('Couldn\'t load pipeline stats: ' + (statsRes.reason?.message || statsRes.reason))}</div></div>`;
+  }
+
+  body.innerHTML = (emailCard ? `<div class="grid-2">${websiteCard}${emailCard}</div>` : websiteCard) + dataCard + backendCard;
+};
+
+/* ════════════════════════════════════════════════════════════
+   AUDIT LOG
+   ════════════════════════════════════════════════════════════ */
+const SECTION_LABELS = { pipeline: 'Pipeline', marketing: 'Marketing & analytics', api: 'API usage & quotas', health: 'System health', audit: 'Audit log' };
+let auditRows = [];
+
+LOADERS.audit = async function () {
+  const body = document.getElementById('audit-body');
+  body.innerHTML = '<div class="loading">Loading…</div>';
+  const { data, error } = await db.from('manager_audit_log')
+    .select('created_at, user_email, user_name, action, section')
+    .order('created_at', { ascending: false }).limit(500);
+  if (error) { body.innerHTML = errorHtml('Couldn\'t load the audit log: ' + error.message); return; }
+  auditRows = data || [];
+
+  const sel = document.getElementById('audit-person');
+  const current = sel.value;
+  const people = [...new Map(auditRows.map(r => [r.user_email, r.user_name || r.user_email])).entries()];
+  sel.innerHTML = '<option value="">Everyone</option>' + people.map(([e, n]) => `<option value="${escapeHtml(e)}">${escapeHtml(n)}</option>`).join('');
+  sel.value = people.some(([e]) => e === current) ? current : '';
+  renderAudit();
+};
+
+function renderAudit() {
+  const body = document.getElementById('audit-body');
+  const who = document.getElementById('audit-person').value;
+  const rows = auditRows.filter(r => !who || r.user_email === who);
+
+  const lastSignIn = {};
+  auditRows.forEach(r => { if (r.action === 'sign_in' && !lastSignIn[r.user_email]) lastSignIn[r.user_email] = r; });
+  const summary = Object.values(lastSignIn).map(r =>
+    `<div class="tile"><div class="tile-label">${escapeHtml(r.user_name || r.user_email)} — last sign-in</div><div class="tile-value" style="font-size:18px">${escapeHtml(fmtDateTime(r.created_at))}</div><div class="tile-sub">${escapeHtml(r.user_email)}</div></div>`).join('');
+
+  const tableRows = rows.map(r => `<tr>
+    <td style="white-space:nowrap">${escapeHtml(fmtDateTime(r.created_at))}</td>
+    <td>${escapeHtml(r.user_name || r.user_email)}</td>
+    <td>${r.action === 'sign_in' ? 'Signed in' : 'Viewed section'}</td>
+    <td>${r.section ? escapeHtml(SECTION_LABELS[r.section] || r.section) : '<span class="muted">—</span>'}</td></tr>`).join('');
+
+  body.innerHTML = (summary ? `<div class="tiles">${summary}</div>` : '') + `
+    <div class="card"><div class="card-head"><h2>Activity</h2><span class="hint">Latest ${num(auditRows.length)} entries</span></div>
+    <table><thead><tr><th>When</th><th>Who</th><th>What</th><th>Section</th></tr></thead>
+    <tbody>${tableRows || '<tr><td colspan="4" class="empty">No activity yet.</td></tr>'}</tbody></table></div>`;
+}
+document.getElementById('audit-person').addEventListener('change', renderAudit);
+</script>
+</body>
+</html>
