@@ -17,7 +17,19 @@ const CONTACT_OUTCOME = {
 };
 const CONTACT_OUTCOME_ORDER = Object.keys(CONTACT_OUTCOME);
 
+// Groups CONTACT_OUTCOME into a visual pipeline for the Log Contact modal
+// only (crm.html + index.html's #cm-outcome-chips) — brainstormed with the
+// user 2026-09-30. Deliberately scoped: sidebar status filter chips, status
+// badges, and dashboard.html's table/CSV all keep using the flat
+// CONTACT_OUTCOME_ORDER above, unchanged.
+const CONTACT_OUTCOME_SECTIONS = [
+  { label: "Not progressing", outcomes: ["Not Interested", "Already Has Solar", "Enquiring Only", "No Answer"] },
+  { label: "Early contact",   outcomes: ["Follow Up", "Meeting Booked", "Quote Sent"] },
+  { label: "Committed",       outcomes: ["Survey Booked", "Converted", "Scheduled for Install"] },
+  { label: "Done",            outcomes: ["Completed"] },
+];
+
 // For Node.js testing/module consumption
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { CONTACT_OUTCOME, CONTACT_OUTCOME_ORDER };
+  module.exports = { CONTACT_OUTCOME, CONTACT_OUTCOME_ORDER, CONTACT_OUTCOME_SECTIONS };
 }
