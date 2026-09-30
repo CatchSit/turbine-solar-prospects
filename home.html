@@ -141,6 +141,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .sub-card table th:first-child, .sub-card table td:first-child { padding-left: 0; }
 tfoot td { border-top: 1px solid var(--borderH); border-bottom: 0; }
 .neg { color: var(--alert); }
+.prep { display: inline-flex; align-items: center; gap: 6px; }
+.prep .status-icon { width: 16px; height: 16px; font-size: 9px; margin-top: 0; flex-shrink: 0; }
 .error-box { background: var(--alertSoft); color: var(--alert); border-radius: 8px; padding: 10px 12px; font-size: 12.5px; }
 .loading { color: var(--text3); font-size: 13px; padding: 18px 0; }
 
@@ -468,15 +470,25 @@ function leadLink(p) { return p.source === 'manual' ? `crm.html?lead=${encodeURI
 const LEAD_COLUMNS = 'id, source, customer_name, address, postcode, lead_type, assigned_to_email, created_at, install_hub_job_id, install_scheduled_date';
 // Same cost fields and margin formula as crm.html's QUOTE_COST_FIELDS /
 // quoteOptionTotals(): margin = quote price − sum of costs.
+// Install checklist items (install_checklists, migration 044) — edited on
+// crm.html's lead page. short = how they read in "still to book: …".
+const INSTALL_TASKS = [
+  { key: 'scaffold',    label: 'Scaffold',    short: 'scaffold' },
+  { key: 'electrician', label: 'Electrician', short: 'electrician' },
+  { key: 'roofer',      label: 'Roofer',      short: 'roofer' },
+  { key: 'kit',         label: 'Kit',         short: 'kit order' },
+];
 const QUOTE_COST_FIELDS = ['kit_price', 'scaffold_price', 'electrical_cost', 'roofer_cost', 'mcs_cost',
   'fuel_cost', 'commission_cost', 'heat_loss_epc_cost', 'plumbing_cost'];
 
 async function loadPipelineData() {
-  const [manual, contacts, options] = await Promise.all([
+  const [manual, contacts, options, checklists] = await Promise.all([
     fetchAll(() => db.from('prospects').select(LEAD_COLUMNS).eq('source', 'manual').order('id')),
     fetchAll(() => db.from('prospect_contacts').select('prospect_id, outcome, contacted_at, follow_up_date').is('deleted_at', null).order('contacted_at', { ascending: false })),
     fetchAll(() => db.from('quote_options').select(`prospect_id, label, quote_price, is_selected, ${QUOTE_COST_FIELDS.join(', ')}`).is('deleted_at', null).order('id')),
+    fetchAll(() => db.from('install_checklists').select('*').order('prospect_id')),
   ]);
+  const checklistByLead = Object.fromEntries(checklists.map(c => [c.prospect_id, c]));
 
   // Map prospects (EPC/VOA/oil-lpg) only enter the pipeline once someone logs a contact.
   const leads = new Map(manual.map(p => [p.id, p]));
@@ -510,7 +522,9 @@ async function loadPipelineData() {
     const scheduledContact = cs.find(c => c.outcome === 'Scheduled for Install' && c.follow_up_date);
     const installDate = scheduledContact?.follow_up_date || p.install_scheduled_date || null;
     const completedAt = cs.find(c => c.outcome === 'Completed')?.contacted_at || null;
-    return { ...p, contacts: cs, latest, stage, value, valueOption, installDate, completedAt, wonAt: wonContact?.contacted_at || null };
+    const checklist = checklistByLead[p.id] || null;
+    const outstanding = INSTALL_TASKS.filter(t => !checklist?.[`${t.key}_done`]);
+    return { ...p, contacts: cs, latest, stage, value, valueOption, installDate, completedAt, checklist, outstanding, wonAt: wonContact?.contacted_at || null };
   });
 }
 
@@ -523,6 +537,12 @@ function attentionReason(l) {
   if (l.stage === 'quoted') {
     const d = daysSince(l.latest.contacted_at);
     return d >= 7 ? { days: d, text: `Quote sent ${d} days ago, nothing logged since` } : null;
+  }
+  if (l.stage === 'scheduled' && l.installDate && l.outstanding.length) {
+    const daysTo = Math.round((new Date(l.installDate) - today) / 86400000);
+    if (daysTo >= 0 && daysTo <= 7) {
+      return { days: 100 - daysTo, text: `Install ${daysTo === 0 ? 'today' : daysTo === 1 ? 'tomorrow' : `in ${daysTo} days`} — still to book: ${l.outstanding.map(t => t.short).join(', ')}` };
+    }
   }
   if (l.stage === 'scheduled' && l.latest?.follow_up_date && new Date(l.latest.follow_up_date) < today) {
     return { days: daysSince(l.latest.follow_up_date), text: `Install date ${fmtDate(l.latest.follow_up_date)} has passed — not marked completed` };
@@ -619,7 +639,7 @@ LOADERS.pipeline = async function () {
       ${attention.length > ATTENTION_PREVIEW ? `<div style="padding:10px 12px;border-top:1px solid var(--border)"><button class="refresh-btn" id="attention-toggle">Show all ${attention.length}</button></div>` : ''}
     </div>`;
 
-  body.innerHTML = tiles + `<div class="grid-2">${funnel}${ownerCard}</div>` + attentionCard + '<div id="won-card"></div>';
+  body.innerHTML = tiles + `<div class="grid-2">${funnel}${ownerCard}</div>` + attentionCard + installPrepCard(leads) + '<div id="won-card"></div>';
   pipelineLeads = leads;
   renderWon();
   wireTooltips(body);
@@ -629,6 +649,43 @@ LOADERS.pipeline = async function () {
     e.target.textContent = expand ? 'Show fewer' : `Show all ${attention.length}`;
   });
 };
+
+/* ── Install prep tracker ──────────────────────────────────
+   Every job at the Scheduled stage, soonest install first, with the four
+   checklist items. A ticked item shows who it's booked with; an unticked
+   one shows the name if entered ("not confirmed") or "To book". */
+function prepCell(l, task, soon) {
+  const c = l.checklist;
+  const name = c?.[`${task.key}_name`];
+  if (c?.[`${task.key}_done`]) {
+    return `<span class="prep done"><span class="status-icon good" aria-hidden="true">✓</span>${name ? escapeHtml(name) : 'Done'}</span>`;
+  }
+  const icon = soon ? '<span class="status-icon warning" aria-hidden="true">!</span>' : '<span class="status-icon neutral" aria-hidden="true">–</span>';
+  return `<span class="prep">${icon}${name ? `${escapeHtml(name)} <span class="muted">· not confirmed</span>` : `<span class="muted">${task.key === 'kit' ? 'To order' : 'To book'}</span>`}</span>`;
+}
+
+function installPrepCard(leads) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const jobs = leads.filter(l => l.stage === 'scheduled')
+    .sort((a, b) => (a.installDate ? new Date(a.installDate) : Infinity) - (b.installDate ? new Date(b.installDate) : Infinity));
+  const outstanding = jobs.reduce((t, l) => t + l.outstanding.length, 0);
+  const rows = jobs.map(l => {
+    const daysTo = l.installDate ? Math.round((new Date(l.installDate) - today) / 86400000) : null;
+    const soon = daysTo != null && daysTo <= 7;
+    const when = daysTo == null ? '<span class="muted">No install date</span>'
+      : `${fmtDate(l.installDate)}<div class="muted">${daysTo < 0 ? `${-daysTo} day${daysTo === -1 ? '' : 's'} ago` : daysTo === 0 ? 'Today' : `In ${daysTo} day${daysTo === 1 ? '' : 's'}`}</div>`;
+    const done = INSTALL_TASKS.length - l.outstanding.length;
+    return `<tr><td><a href="${leadLink(l)}">${escapeHtml(leadName(l))}</a></td>
+      <td style="white-space:nowrap">${when}</td>
+      ${INSTALL_TASKS.map(t => `<td>${prepCell(l, t, soon)}</td>`).join('')}
+      <td class="num"><strong>${done}</strong> / ${INSTALL_TASKS.length}</td></tr>`;
+  }).join('');
+  return `<div class="card">
+    <div class="card-head"><h2>Install prep</h2><span class="hint">${jobs.length} scheduled job${jobs.length === 1 ? '' : 's'} · ${outstanding} item${outstanding === 1 ? '' : 's'} still to book · tick items off on the CRM lead page</span></div>
+    <table><thead><tr><th>Job</th><th>Install date</th>${INSTALL_TASKS.map(t => `<th>${t.label}</th>`).join('')}<th class="num">Done</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="7" class="empty">No jobs scheduled for install.</td></tr>'}</tbody></table>
+  </div>`;
+}
 
 /* ── Jobs won breakdown ─────────────────────────────────────
    Won = latest stage Won / Scheduled / Completed. Won date = the first

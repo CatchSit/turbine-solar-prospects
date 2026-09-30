@@ -82,6 +82,16 @@ tbody tr:hover { background: var(--surface2); }
 .btn-primary { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: 13px; font-weight: 500; }
 .btn-primary:disabled { opacity: .6; cursor: default; }
 .btn-secondary { background: var(--surface2); color: var(--text2); border: none; border-radius: 8px; padding: 8px 16px; font-size: 13px; font-weight: 500; }
+.ic-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.ic-progress { font-size: 12px; font-weight: 500; padding: 4px 10px; border-radius: 100px; background: var(--surface2); color: var(--text2); white-space: nowrap; }
+.ic-progress.all-done { background: var(--accentDim); color: var(--accentDk); }
+.ic-row { display: grid; grid-template-columns: 220px 1fr 190px; gap: 14px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.ic-row:last-child { border-bottom: 0; }
+.ic-row label.ic-check { display: flex; align-items: center; gap: 10px; font-size: 13.5px; font-weight: 500; cursor: pointer; }
+.ic-row input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
+.ic-row input[type=text] { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 13px; background: var(--surface2); color: var(--text); }
+.ic-row input[type=text]:focus { outline: none; border-color: var(--accent); }
+.ic-meta { font-size: 11.5px; color: var(--text3); }
 .log-contact-btn { background: var(--accentDim); color: var(--accentDk); border: none; border-radius: 8px; padding: 9px 16px; font-size: 13px; font-weight: 500; }
 
 .doc-item { padding: 9px 0; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
@@ -249,6 +259,16 @@ tbody tr:hover { background: var(--surface2); }
       <h3>Contact</h3>
       <button class="log-contact-btn" id="log-contact-btn">Log contact</button>
       <div class="contact-log-list" id="contact-log-list" style="margin-top:14px"></div>
+    </div>
+
+    <div class="card" id="install-checklist-card" style="display:none">
+      <div class="ic-head">
+        <h3 style="margin-bottom:0">Install checklist</h3>
+        <span class="ic-progress" id="ic-progress"></span>
+      </div>
+      <div class="quote-status" style="margin-bottom:6px">What still needs booking before install day. Ticks and names save automatically.</div>
+      <div id="ic-rows"></div>
+      <div class="quote-status" id="ic-status" style="margin-top:6px"></div>
     </div>
 
     <div class="card">
@@ -644,6 +664,9 @@ function openLeadDetail(lead) {
   loadLeadDocuments(lead.id);
   renderInstallHubStatus();
   loadContactLog(lead.id);
+  currentChecklist = null;
+  renderInstallChecklist();
+  loadInstallChecklist(lead.id);
 }
 
 /* ── Lead details edit + audit history (prospect_name_audit, migration
@@ -837,6 +860,84 @@ async function loadContactLog(prospectId) {
 }
 
 /* ── install-hub handoff ─────────────────────────────────── */
+/* ── Install checklist (install_checklists, migration 044) ─────────────
+   Shown once a job's latest outcome is Scheduled for Install or Completed
+   (or whenever a checklist already exists). Each tick/name saves on its
+   own via upsert; the database stamps who changed it and when. */
+const INSTALL_TASKS = [
+  { key: 'scaffold',    label: 'Scaffold scheduled',    placeholder: 'Scaffolding company' },
+  { key: 'electrician', label: 'Electrician scheduled', placeholder: 'Electrician' },
+  { key: 'roofer',      label: 'Roofer scheduled',      placeholder: 'Roofer' },
+  { key: 'kit',         label: 'Kit ordered',           placeholder: 'Supplier' },
+];
+const INSTALL_CHECKLIST_OUTCOMES = new Set(['Scheduled for Install', 'Completed']);
+let currentChecklist = null;
+
+async function loadInstallChecklist(prospectId) {
+  const { data, error } = await db.from('install_checklists').select('*').eq('prospect_id', prospectId).maybeSingle();
+  // Stale-response guard: the user may have opened another lead meanwhile.
+  if (!currentLead || currentLead.id !== prospectId) return;
+  if (error) { console.error('Failed to load install checklist:', error); return; }
+  if (data && data.prospect_id !== prospectId) { console.error('Install checklist prospect mismatch — ignoring', data); return; }
+  currentChecklist = data;
+  renderInstallChecklist();
+}
+
+function installTaskMeta(task) {
+  const at = currentChecklist?.[`${task.key}_updated_at`];
+  const by = currentChecklist?.[`${task.key}_updated_by`];
+  if (!at) return '';
+  return `Updated by ${escapeHtml(repName(by))} · ${escapeHtml(formatShortDate(at))}`;
+}
+
+function renderInstallChecklistProgress() {
+  const done = INSTALL_TASKS.filter(t => currentChecklist?.[`${t.key}_done`]).length;
+  const el = document.getElementById('ic-progress');
+  el.textContent = done === INSTALL_TASKS.length ? 'All booked' : `${done} of ${INSTALL_TASKS.length} done`;
+  el.classList.toggle('all-done', done === INSTALL_TASKS.length);
+  INSTALL_TASKS.forEach(t => { const m = document.getElementById(`ic-meta-${t.key}`); if (m) m.innerHTML = installTaskMeta(t); });
+}
+
+function renderInstallChecklist() {
+  const card = document.getElementById('install-checklist-card');
+  const show = !!currentLead && (INSTALL_CHECKLIST_OUTCOMES.has(currentLead.latest_outcome) || !!currentChecklist);
+  card.style.display = show ? '' : 'none';
+  if (!show) return;
+  document.getElementById('ic-status').textContent = '';
+  document.getElementById('ic-rows').innerHTML = INSTALL_TASKS.map(t => `
+    <div class="ic-row">
+      <label class="ic-check"><input type="checkbox" id="ic-done-${t.key}" ${currentChecklist?.[`${t.key}_done`] ? 'checked' : ''}> ${escapeHtml(t.label)}</label>
+      <input type="text" id="ic-name-${t.key}" placeholder="${escapeHtml(t.placeholder)}" value="${escapeHtml(currentChecklist?.[`${t.key}_name`] || '')}">
+      <span class="ic-meta" id="ic-meta-${t.key}"></span>
+    </div>`).join('');
+  INSTALL_TASKS.forEach(t => {
+    document.getElementById(`ic-done-${t.key}`).addEventListener('change', () => saveInstallTask(t.key));
+    document.getElementById(`ic-name-${t.key}`).addEventListener('change', () => saveInstallTask(t.key));
+  });
+  renderInstallChecklistProgress();
+}
+
+async function saveInstallTask(key) {
+  if (!currentLead) return;
+  const prospectId = currentLead.id;
+  const statusEl = document.getElementById('ic-status');
+  const name = document.getElementById(`ic-name-${key}`).value.trim();
+  const payload = {
+    prospect_id: prospectId,
+    [`${key}_done`]: document.getElementById(`ic-done-${key}`).checked,
+    [`${key}_name`]: name || null,
+  };
+  statusEl.textContent = 'Saving…';
+  const { data, error } = await db.from('install_checklists')
+    .upsert(payload, { onConflict: 'prospect_id' })
+    .select('*').single();
+  if (!currentLead || currentLead.id !== prospectId) return;
+  if (error) { statusEl.textContent = 'Failed to save: ' + error.message; return; }
+  currentChecklist = data;
+  renderInstallChecklistProgress();
+  statusEl.textContent = 'Saved';
+}
+
 function renderInstallHubStatus() {
   const sent = !!currentLead?.install_hub_job_id;
   document.getElementById('ih-not-sent').style.display = sent ? 'none' : 'block';
@@ -1672,6 +1773,7 @@ document.getElementById('cm-submit').addEventListener('click', async () => {
     currentLead.latest_outcome = outcome;
     document.getElementById('lead-status-sub').innerHTML = statusBadgeHtml(outcome);
     loadContactLog(prospectId);
+    renderInstallChecklist();
   }
 });
 
