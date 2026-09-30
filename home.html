@@ -130,6 +130,17 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .filters { display: flex; gap: 8px; align-items: center; }
 .filters select { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; background: var(--surface2); font-family: inherit; }
 
+.chips { display: flex; gap: 6px; }
+.chip { padding: 5px 12px; border-radius: 100px; border: 1px solid var(--border); background: var(--surface); font-size: 12px; color: var(--text2); }
+.chip:hover { color: var(--text); }
+.chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.mini-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+.mini-value { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; margin-top: 4px; }
+.grid-2.inner { gap: 28px; }
+.sub-card h3 { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.sub-card table th:first-child, .sub-card table td:first-child { padding-left: 0; }
+tfoot td { border-top: 1px solid var(--borderH); border-bottom: 0; }
+.neg { color: var(--alert); }
 .error-box { background: var(--alertSoft); color: var(--alert); border-radius: 8px; padding: 10px 12px; font-size: 12.5px; }
 .loading { color: var(--text3); font-size: 13px; padding: 18px 0; }
 
@@ -455,12 +466,16 @@ function leadName(p) { return p.customer_name || p.address || p.postcode || 'Unn
 function leadLink(p) { return p.source === 'manual' ? `crm.html?lead=${encodeURIComponent(p.id)}` : `index.html?lead=${encodeURIComponent(p.id)}`; }
 
 const LEAD_COLUMNS = 'id, source, customer_name, address, postcode, lead_type, assigned_to_email, created_at, install_hub_job_id';
+// Same cost fields and margin formula as crm.html's QUOTE_COST_FIELDS /
+// quoteOptionTotals(): margin = quote price − sum of costs.
+const QUOTE_COST_FIELDS = ['kit_price', 'scaffold_price', 'electrical_cost', 'roofer_cost', 'mcs_cost',
+  'fuel_cost', 'commission_cost', 'heat_loss_epc_cost', 'plumbing_cost'];
 
 async function loadPipelineData() {
   const [manual, contacts, options] = await Promise.all([
     fetchAll(() => db.from('prospects').select(LEAD_COLUMNS).eq('source', 'manual').order('id')),
     fetchAll(() => db.from('prospect_contacts').select('prospect_id, outcome, contacted_at, follow_up_date').is('deleted_at', null).order('contacted_at', { ascending: false })),
-    fetchAll(() => db.from('quote_options').select('prospect_id, quote_price, is_selected').is('deleted_at', null).order('id')),
+    fetchAll(() => db.from('quote_options').select(`prospect_id, label, quote_price, is_selected, ${QUOTE_COST_FIELDS.join(', ')}`).is('deleted_at', null).order('id')),
   ]);
 
   // Map prospects (EPC/VOA/oil-lpg) only enter the pipeline once someone logs a contact.
@@ -485,11 +500,12 @@ async function loadPipelineData() {
     // Sent to install-hub means at least scheduled, even if no outcome says so.
     if (p.install_hub_job_id && STAGE_INDEX[stage] < STAGE_INDEX.scheduled && stage !== 'lost') stage = 'scheduled';
     const opts = optionsByLead[p.id] || [];
-    const selected = opts.find(o => o.is_selected && o.quote_price != null);
-    const prices = opts.map(o => o.quote_price).filter(v => v != null);
-    const value = selected ? Number(selected.quote_price) : prices.length ? Math.max(...prices.map(Number)) : null;
+    const priced = opts.filter(o => o.quote_price != null);
+    const valueOption = priced.find(o => o.is_selected)
+      || priced.reduce((best, o) => (!best || Number(o.quote_price) > Number(best.quote_price) ? o : best), null);
+    const value = valueOption ? Number(valueOption.quote_price) : null;
     const wonContact = [...cs].reverse().find(c => WON_OUTCOMES.has(c.outcome)); // earliest win
-    return { ...p, contacts: cs, latest, stage, value, wonAt: wonContact?.contacted_at || null };
+    return { ...p, contacts: cs, latest, stage, value, valueOption, wonAt: wonContact?.contacted_at || null };
   });
 }
 
@@ -564,26 +580,6 @@ LOADERS.pipeline = async function () {
       </div>
     </div>`;
 
-  // Conversion by source
-  const sources = {};
-  leads.forEach(l => {
-    const k = sourceLabel(l);
-    const s = (sources[k] ||= { leads: 0, quoted: 0, won: 0, lost: 0, wonValue: 0 });
-    s.leads++;
-    if (STAGE_INDEX[l.stage] >= STAGE_INDEX.quoted && l.stage !== 'lost') s.quoted++;
-    if (WON_STAGES.has(l.stage)) { s.won++; s.wonValue += l.value || 0; }
-    if (l.stage === 'lost') s.lost++;
-  });
-  const sourceRows = Object.entries(sources).sort((a, b) => b[1].leads - a[1].leads).map(([k, s]) => `
-    <tr><td>${escapeHtml(k)}</td><td class="num">${s.leads}</td><td class="num">${s.quoted}</td><td class="num">${s.won}</td>
-    <td class="num">${pct(s.won, s.leads)}</td><td class="num">${money(s.wonValue)}</td></tr>`).join('');
-  const sourceCard = `
-    <div class="card">
-      <div class="card-head"><h2>Conversion by source</h2><span class="hint">Website enquiries appear here once they flow into the CRM</span></div>
-      <table><thead><tr><th>Source</th><th class="num">Leads</th><th class="num">Quoted</th><th class="num">Won</th><th class="num">Win rate</th><th class="num">Won value</th></tr></thead>
-      <tbody>${sourceRows || '<tr><td colspan="6" class="empty">No leads yet.</td></tr>'}</tbody></table>
-    </div>`;
-
   // By owner
   const owners = {};
   leads.forEach(l => {
@@ -618,7 +614,9 @@ LOADERS.pipeline = async function () {
       ${attention.length > ATTENTION_PREVIEW ? `<div style="padding:10px 12px;border-top:1px solid var(--border)"><button class="refresh-btn" id="attention-toggle">Show all ${attention.length}</button></div>` : ''}
     </div>`;
 
-  body.innerHTML = tiles + `<div class="grid-2">${funnel}${ownerCard}</div>` + attentionCard + sourceCard;
+  body.innerHTML = tiles + `<div class="grid-2">${funnel}${ownerCard}</div>` + attentionCard + '<div id="won-card"></div>';
+  pipelineLeads = leads;
+  renderWon();
   wireTooltips(body);
   document.getElementById('attention-toggle')?.addEventListener('click', e => {
     const expand = e.target.textContent.startsWith('Show all');
@@ -626,6 +624,129 @@ LOADERS.pipeline = async function () {
     e.target.textContent = expand ? 'Show fewer' : `Show all ${attention.length}`;
   });
 };
+
+/* ── Jobs won breakdown ─────────────────────────────────────
+   Won = latest stage Won / Scheduled / Completed. Won date = the first
+   contact logged with a won outcome. Value and costs come from the same
+   quote option used everywhere else on this page (selected, else highest). */
+let pipelineLeads = [];
+let wonPeriod = 'year';
+const WON_PERIODS = { month: 'This month', quarter: 'Last 3 months', year: 'This year', all: 'All time' };
+const MONTH_FMT = new Intl.DateTimeFormat('en-GB', { month: 'short', year: 'numeric' });
+
+function wonPeriodStart(period) {
+  const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(1);
+  if (period === 'month') return d;
+  if (period === 'quarter') { d.setMonth(d.getMonth() - 2); return d; }
+  if (period === 'year') { d.setMonth(0); return d; }
+  return null;
+}
+
+// Total costs for a job's quote option, or null when no costs were entered —
+// reporting price − 0 as a 100% margin would be misleading.
+function jobCosts(opt) {
+  if (!opt) return null;
+  if (!QUOTE_COST_FIELDS.some(f => opt[f] != null && Number(opt[f]) !== 0)) return null;
+  return QUOTE_COST_FIELDS.reduce((t, f) => t + (Number(opt[f]) || 0), 0);
+}
+
+function jobTypeLabel(l) {
+  if (l.lead_type === 'commercial' || l.source === 'epc' || l.source === 'voa') return 'Commercial';
+  if (l.lead_type === 'domestic' || l.source === 'oil-lpg-bus') return 'Domestic';
+  return 'Not set';
+}
+
+function marginCell(value, costs) {
+  if (costs == null || value == null) return '<span class="muted">Costs not entered</span>';
+  const m = value - costs;
+  return `<span class="${m < 0 ? 'neg' : ''}">${money(m)}</span> <span class="muted">${value ? Math.round((m / value) * 100) + '%' : ''}</span>`;
+}
+
+function renderWon() {
+  const el = document.getElementById('won-card');
+  if (!el) return;
+  const start = wonPeriodStart(wonPeriod);
+  const jobs = pipelineLeads
+    .filter(l => WON_STAGES.has(l.stage) && (!start || (l.wonAt && new Date(l.wonAt) >= start)))
+    .map(l => ({ l, costs: jobCosts(l.valueOption) }))
+    .sort((a, b) => new Date(b.l.wonAt || 0) - new Date(a.l.wonAt || 0));
+
+  const total = jobs.reduce((t, j) => t + (j.l.value || 0), 0);
+  const costed = jobs.filter(j => j.costs != null && j.l.value != null);
+  const costedValue = costed.reduce((t, j) => t + j.l.value, 0);
+  const costedMargin = costed.reduce((t, j) => t + (j.l.value - j.costs), 0);
+
+  const chips = Object.entries(WON_PERIODS).map(([k, label]) =>
+    `<button class="chip ${k === wonPeriod ? 'active' : ''}" data-won-period="${k}">${label}</button>`).join('');
+
+  const stats = `<div class="mini-stats">
+    <div><div class="tile-label">Jobs won</div><div class="mini-value">${num(jobs.length)}</div></div>
+    <div><div class="tile-label">Total value</div><div class="mini-value">${money(total)}</div></div>
+    <div><div class="tile-label">Average job</div><div class="mini-value">${jobs.length ? money(total / jobs.length) : '—'}</div></div>
+    <div><div class="tile-label">Margin</div><div class="mini-value">${costed.length ? money(costedMargin) : '—'}</div>
+      <div class="tile-sub">${costed.length ? `${pct(costedMargin, costedValue)} · from ${costed.length} of ${jobs.length} job${jobs.length === 1 ? '' : 's'} with costs entered` : 'No costs entered yet'}</div></div>
+  </div>`;
+
+  // By job type
+  const types = {};
+  jobs.forEach(j => {
+    const t = (types[jobTypeLabel(j.l)] ||= { n: 0, value: 0, cv: 0, cm: 0, costed: 0 });
+    t.n++; t.value += j.l.value || 0;
+    if (j.costs != null && j.l.value != null) { t.costed++; t.cv += j.l.value; t.cm += j.l.value - j.costs; }
+  });
+  const typeRows = ['Commercial', 'Domestic', 'Not set'].filter(k => types[k]).map(k => { const t = types[k]; return `
+    <tr><td>${k}</td><td class="num">${t.n}</td><td class="num">${money(t.value)}</td><td class="num">${money(t.value / t.n)}</td>
+    <td class="num">${t.costed ? `${money(t.cm)} <span class="muted">${pct(t.cm, t.cv)}</span>` : '<span class="muted">—</span>'}</td></tr>`; }).join('');
+  const typeCard = `<div class="sub-card"><h3>By job type</h3>
+    <table><thead><tr><th>Type</th><th class="num">Jobs</th><th class="num">Value</th><th class="num">Average</th><th class="num">Margin</th></tr></thead>
+    <tbody>${typeRows || '<tr><td colspan="5" class="empty">No jobs won in this period.</td></tr>'}</tbody></table></div>`;
+
+  // By month won — bar = value won, label = jobs · value
+  const months = {};
+  jobs.forEach(j => {
+    if (!j.l.wonAt) return;
+    const d = new Date(j.l.wonAt); const k = d.getFullYear() * 12 + d.getMonth();
+    const m = (months[k] ||= { n: 0, value: 0 }); m.n++; m.value += j.l.value || 0;
+  });
+  const now = new Date(); const nowKey = now.getFullYear() * 12 + now.getMonth();
+  const keys = Object.keys(months).map(Number);
+  // Start at the earliest month with a win (within the period), not the period start — avoids a column of empty months.
+  const firstKey = keys.length ? Math.min(...keys) : nowKey + 1;
+  const monthKeys = [];
+  for (let k = nowKey; k >= firstKey && monthKeys.length < 24; k--) monthKeys.push(k);
+  const maxVal = Math.max(1, ...monthKeys.map(k => months[k]?.value || 0));
+  const monthRows = monthKeys.map(k => {
+    const m = months[k] || { n: 0, value: 0 };
+    const label = MONTH_FMT.format(new Date(Math.floor(k / 12), k % 12, 1));
+    return `<div class="funnel-row" data-tip="${escapeHtml(`<strong>${label}</strong><br>${m.n} job${m.n === 1 ? '' : 's'} won · ${money(m.value)}`)}">
+      <div class="funnel-label">${label}</div>
+      <div class="funnel-track"><div class="funnel-bar" style="width:${(m.value / maxVal) * 100}%"></div></div>
+      <div class="funnel-val"><strong>${m.n}</strong>${m.value ? ' · ' + moneyCompact(m.value) : ''}</div></div>`;
+  }).join('');
+  const undated = jobs.filter(j => !j.l.wonAt).length;
+  const monthCard = `<div class="sub-card"><h3>By month won</h3>${monthRows || '<div class="empty">No won dates in this period.</div>'}
+    ${undated ? `<div class="meter-note">${undated} job${undated === 1 ? ' has' : 's have'} no "Converted" contact logged, so no won date.</div>` : ''}</div>`;
+
+  const jobRows = jobs.map(({ l, costs }) => `
+    <tr><td><a href="${leadLink(l)}">${escapeHtml(leadName(l))}</a>${l.valueOption?.label ? `<div class="muted">${escapeHtml(l.valueOption.label)}</div>` : ''}</td>
+    <td>${jobTypeLabel(l)}</td><td>${stageTag(l.stage)}</td>
+    <td style="white-space:nowrap">${l.wonAt ? fmtDate(l.wonAt) : '<span class="muted">—</span>'}</td>
+    <td>${l.assigned_to_email ? escapeHtml(repName(l.assigned_to_email)) : '<span class="muted">Unassigned</span>'}</td>
+    <td class="num">${l.value != null ? money(l.value) : '<span class="muted">No quote</span>'}</td>
+    <td class="num">${costs != null ? money(costs) : '<span class="muted">—</span>'}</td>
+    <td class="num">${marginCell(l.value, costs)}</td></tr>`).join('');
+
+  el.innerHTML = `<div class="card">
+    <div class="card-head"><h2>Jobs won</h2><div class="chips">${chips}</div></div>
+    <div class="card-body">${stats}<div class="grid-2 inner">${typeCard}${monthCard}</div></div>
+    <table><thead><tr><th>Customer</th><th>Type</th><th>Status</th><th>Won on</th><th>Owner</th><th class="num">Value</th><th class="num">Costs</th><th class="num">Margin</th></tr></thead>
+    <tbody>${jobRows || '<tr><td colspan="8" class="empty">No jobs won in this period.</td></tr>'}</tbody>
+    ${jobs.length ? `<tfoot><tr><td colspan="5"><strong>Total</strong></td><td class="num"><strong>${money(total)}</strong></td><td></td>
+      <td class="num">${costed.length ? `<strong>${money(costedMargin)}</strong>` : ''}</td></tr></tfoot>` : ''}</table>
+  </div>`;
+  el.querySelectorAll('[data-won-period]').forEach(b => b.addEventListener('click', () => { wonPeriod = b.dataset.wonPeriod; renderWon(); }));
+  wireTooltips(el);
+}
 
 /* Hover tooltip for funnel rows (hit target = the whole row, not just the bar). */
 function wireTooltips(root) {
