@@ -143,6 +143,15 @@ tfoot td { border-top: 1px solid var(--borderH); border-bottom: 0; }
 .neg { color: var(--alert); }
 .prep { display: inline-flex; align-items: center; gap: 6px; }
 .prep .status-icon { width: 16px; height: 16px; font-size: 9px; margin-top: 0; flex-shrink: 0; }
+.group-title { font-size: 15px; font-weight: 600; margin: 6px 0 12px; }
+.group-title ~ .group-title { margin-top: 26px; }
+.delta-up { color: var(--accentDk); font-weight: 600; }
+.delta-down { color: var(--alert); font-weight: 600; }
+.cols { display: flex; align-items: flex-end; gap: 2px; height: 140px; border-bottom: 1px solid var(--border); }
+.cols .col { flex: 1; height: 100%; display: flex; align-items: flex-end; border-radius: 3px; }
+.cols .col:hover { background: var(--surface2); }
+.cols .col-bar { width: 100%; background: var(--accent); border-radius: 3px 3px 0 0; min-height: 0; }
+.cols-axis { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text3); margin-top: 6px; }
 .error-box { background: var(--alertSoft); color: var(--alert); border-radius: 8px; padding: 10px 12px; font-size: 12.5px; }
 .loading { color: var(--text3); font-size: 13px; padding: 18px 0; }
 
@@ -223,7 +232,7 @@ tfoot td { border-top: 1px solid var(--borderH); border-bottom: 0; }
       <div class="section-head">
         <div>
           <h1>Marketing &amp; analytics</h1>
-          <p>Website traffic, paid social and email performance. Channels show as not connected until their account is linked.</p>
+          <p>Website visitors and enquiries from Google Analytics, plus email sending. Ad platforms connect once campaigns are running.</p>
         </div>
         <div><button class="refresh-btn" data-refresh="marketing">Refresh</button></div>
       </div>
@@ -852,49 +861,151 @@ function statusRow(level, title, detail, word) {
 /* ════════════════════════════════════════════════════════════
    MARKETING
    ════════════════════════════════════════════════════════════ */
+// Not running ads yet (2026-10-01) — connect when campaigns start. Google
+// Ads and LinkedIn API access both need an active ad account to apply.
 const AD_CHANNELS = [
-  { name: 'Website — Google Analytics', note: 'Google Analytics is being added to turbineenergyuk.co.uk. Traffic, top pages and quote-wizard conversions will show here once it has been live for a few days.' },
-  { name: 'Meta Ads (Facebook & Instagram)', note: 'Needs a Meta app with read-only ads access to the ad account. Setup usually takes a few days.' },
-  { name: 'Google Ads', note: 'Needs a Google Ads API developer token (Google reviews the application) plus read-only access. Allow up to two weeks.' },
-  { name: 'LinkedIn Ads', note: 'Needs LinkedIn Advertising API access, which LinkedIn reviews manually. Can take a few weeks — worth applying early.' },
+  { name: 'Meta Ads (Facebook & Instagram)', note: 'Not running ads yet. When campaigns start, this connects through a read-only Meta app on the ad account (a few days to set up).' },
+  { name: 'Google Ads', note: 'Not running ads yet. Once an account exists, link it to Google Analytics so ad clicks and enquiries show above, then apply for API access (Google reviews it, up to two weeks).' },
+  { name: 'LinkedIn Ads', note: 'Not running ads yet. LinkedIn reviews API access manually and needs an active ad account — apply when campaigns start.' },
 ];
 
-LOADERS.marketing = async function () {
-  const body = document.getElementById('marketing-body');
-  body.innerHTML = '<div class="loading">Loading…</div>';
-  const cards = AD_CHANNELS.map(c => `
-    <div class="conn">
-      <div class="status-row" style="padding:0;border:0"><div class="status-icon neutral" aria-hidden="true">–</div><h3>${escapeHtml(c.name)}</h3><div class="status-word">Not connected</div></div>
-      <p>${escapeHtml(c.note)}</p>
-    </div>`);
+let marketingDays = 28;
+let gaPromise = null;
+function getGa(force) {
+  if (force || !gaPromise) {
+    gaPromise = db.functions.invoke('marketing-analytics', { body: { days: marketingDays } }).then(async ({ data, error }) => {
+      if (error) {
+        let detail = error.message;
+        try { const body = await error.context.clone().json(); if (body?.error) detail = body.error; } catch { /* not JSON */ }
+        throw new Error(detail);
+      }
+      return data.ga;
+    });
+  }
+  return gaPromise;
+}
 
-  let emailCard;
+// Change vs the previous period, coloured by direction (up is good for
+// every metric shown here) and always paired with an arrow + sign.
+function deltaHtml(cur, prev) {
+  if (!prev) return cur ? '<span class="muted">New this period</span>' : '<span class="muted">No data last period</span>';
+  const pctChange = Math.round(((cur - prev) / prev) * 100);
+  if (pctChange === 0) return `<span class="muted">No change vs previous ${marketingDays} days</span>`;
+  const up = pctChange > 0;
+  return `<span class="${up ? 'delta-up' : 'delta-down'}">${up ? '▲' : '▼'} ${Math.abs(pctChange)}%</span> <span class="muted">vs previous ${marketingDays} days</span>`;
+}
+
+function shortTitle(t) {
+  return (t || '(not set)').replace(/\s*[|–-]\s*Turbine Energy.*$/i, '').trim() || 'Homepage';
+}
+
+// Single-series daily columns with a per-column hover tooltip.
+function dailyColumns(rows, key, label) {
+  const max = Math.max(1, ...rows.map(r => r[key]));
+  const fmtDay = d => new Date(+d.slice(0, 4), +d.slice(4, 6) - 1, +d.slice(6, 8)).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  const cols = rows.map(r => `<div class="col" data-tip="${escapeHtml(`<strong>${fmtDay(r.date)}</strong><br>${num(r[key])} ${label}`)}">
+    <div class="col-bar" style="height:${(r[key] / max) * 100}%"></div></div>`).join('');
+  const first = rows[0], last = rows[rows.length - 1];
+  return `<div class="cols">${cols}</div>
+    <div class="cols-axis"><span>${first ? fmtDay(first.date) : ''}</span><span>Peak ${num(max === 1 && !rows.some(r => r[key]) ? 0 : max)} ${label}</span><span>${last ? fmtDay(last.date) : ''}</span></div>`;
+}
+
+function gaSetupHtml(ga) {
+  const steps = [
+    [false, 'Add Google Analytics to the website', 'Measurement tag, consent banner and enquiry tracking go into the website plugin once the GA4 property exists.'],
+    [ga.has_property_id, 'Tell the dashboard which GA4 property to read', 'Supabase secret <code>GA4_PROPERTY_ID</code> (the numeric property ID).'],
+    [ga.has_service_account, 'Give the dashboard read-only access', 'A Google service account with Viewer access to the property, saved as the Supabase secret <code>GA4_SERVICE_ACCOUNT_JSON</code>.'],
+  ];
+  return `<div class="card"><div class="card-head"><h2>Website — Google Analytics</h2><span class="hint">Not connected yet</span></div>
+    <div class="card-body status-list">${steps.map(([ok, t, d]) => statusRow(ok ? 'good' : 'neutral', t, d, ok ? 'Done' : 'To do')).join('')}</div></div>`;
+}
+
+function gaPanelHtml(ga) {
+  const c = ga.totals.current, p = ga.totals.previous;
+  const rate = (l, s) => s ? (l / s) * 100 : 0;
+  const tiles = `<div class="tiles">
+    <div class="tile"><div class="tile-label">Visitors</div><div class="tile-value">${num(c.users)}</div><div class="tile-sub">${deltaHtml(c.users, p.users)}</div></div>
+    <div class="tile"><div class="tile-label">Visits (sessions)</div><div class="tile-value">${num(c.sessions)}</div><div class="tile-sub">${deltaHtml(c.sessions, p.sessions)}</div></div>
+    <div class="tile"><div class="tile-label">Website enquiries</div><div class="tile-value">${num(c.leads)}</div><div class="tile-sub">${deltaHtml(c.leads, p.leads)}</div></div>
+    <div class="tile"><div class="tile-label">Enquiry rate</div><div class="tile-value">${c.sessions ? rate(c.leads, c.sessions).toFixed(1) + '%' : '—'}</div><div class="tile-sub">Enquiries per 100 visits</div></div>
+  </div>`;
+
+  const charts = `<div class="grid-2">
+    <div class="card"><div class="card-head"><h2>Visits per day</h2><span class="hint">Sessions</span></div><div class="card-body">${dailyColumns(ga.daily, 'sessions', 'visits')}</div></div>
+    <div class="card"><div class="card-head"><h2>Enquiries per day</h2><span class="hint">Successful form submissions</span></div><div class="card-body">${dailyColumns(ga.daily, 'leads', 'enquiries')}</div></div>
+  </div>`;
+
+  const channelRows = ga.channels.map(ch => `<tr><td>${escapeHtml(ch.name)}</td><td class="num">${num(ch.sessions)}</td>
+    <td class="num">${num(ch.leads)}</td><td class="num">${ch.sessions ? rate(ch.leads, ch.sessions).toFixed(1) + '%' : '—'}</td></tr>`).join('');
+  const leadRows = ga.leads_by_page.map(r => `<tr><td>${escapeHtml(shortTitle(r.title))}</td><td class="num">${num(r.leads)}</td></tr>`).join('');
+  const pageRows = ga.pages.map(r => `<tr><td>${escapeHtml(shortTitle(r.title))}</td><td class="num">${num(r.views)}</td><td class="num">${num(r.users)}</td></tr>`).join('');
+
+  const tables = `<div class="grid-2">
+    <div class="card"><div class="card-head"><h2>Where visitors come from</h2></div>
+      <table><thead><tr><th>Source</th><th class="num">Visits</th><th class="num">Enquiries</th><th class="num">Rate</th></tr></thead>
+      <tbody>${channelRows || '<tr><td colspan="4" class="empty">No visits recorded yet.</td></tr>'}</tbody></table></div>
+    <div class="card"><div class="card-head"><h2>Enquiries by form</h2><span class="hint">Page the form was sent from</span></div>
+      <table><thead><tr><th>Page</th><th class="num">Enquiries</th></tr></thead>
+      <tbody>${leadRows || '<tr><td colspan="2" class="empty">No enquiries recorded in this period.</td></tr>'}</tbody></table></div>
+  </div>
+  <div class="card"><div class="card-head"><h2>Most viewed pages</h2></div>
+    <table><thead><tr><th>Page</th><th class="num">Views</th><th class="num">Visitors</th></tr></thead>
+    <tbody>${pageRows || '<tr><td colspan="3" class="empty">No page views recorded yet.</td></tr>'}</tbody></table></div>`;
+
+  return `<h2 class="group-title">Website — Google Analytics</h2>` + tiles + charts + tables;
+}
+
+async function brevoCardHtml() {
   try {
     const h = await getHealth(true);
     const b = h.brevo;
     if (!b.configured) {
-      emailCard = `<div class="conn"><div class="status-row" style="padding:0;border:0"><div class="status-icon neutral">–</div><h3>Email — Brevo</h3><div class="status-word">Not connected</div></div>
+      return `<div class="conn"><div class="status-row" style="padding:0;border:0"><div class="status-icon neutral">–</div><h3>Email — Brevo</h3><div class="status-word">Not connected</div></div>
         <p>Add the Brevo API key to this CRM's Supabase project (secret <code>BREVO_API_KEY</code>) to see sending stats. The same key also switches on lead-assignment emails.</p></div>`;
-    } else if (!b.key_valid) {
-      emailCard = `<div class="conn"><div class="status-row" style="padding:0;border:0"><div class="status-icon critical">✕</div><h3>Email — Brevo</h3><div class="status-word">Key rejected</div></div>
-        <p>Brevo rejected the API key (HTTP ${escapeHtml(String(b.status))}). Generate a new key in Brevo account 11558688.</p></div>`;
-    } else {
-      const s = b.last_30_days;
-      emailCard = `<div class="conn"><div class="status-row" style="padding:0;border:0"><div class="status-icon good">✓</div><h3>Email — Brevo</h3><div class="status-word">Last 30 days</div></div>
-        ${s ? `<div class="stats">
-          <div><strong>${num(s.requests)}</strong>Sent</div><div><strong>${pct(s.delivered, s.requests)}</strong>Delivered</div>
-          <div><strong>${num(s.opens)}</strong>Unique opens</div><div><strong>${num(s.hard_bounces + s.soft_bounces + s.blocked)}</strong>Bounced / blocked</div>
-          <div><strong>${num(s.spam_reports)}</strong>Spam reports</div></div>` : '<p>Stats unavailable right now.</p>'}
-        <p class="muted">Website enquiry emails and CRM notifications combined.</p></div>`;
     }
+    if (!b.key_valid) {
+      return `<div class="conn"><div class="status-row" style="padding:0;border:0"><div class="status-icon critical">✕</div><h3>Email — Brevo</h3><div class="status-word">Key rejected</div></div>
+        <p>Brevo rejected the API key (HTTP ${escapeHtml(String(b.status))}). Generate a new key in Brevo account 11558688.</p></div>`;
+    }
+    const s = b.last_30_days;
+    return `<div class="conn"><div class="status-row" style="padding:0;border:0"><div class="status-icon good">✓</div><h3>Email — Brevo</h3><div class="status-word">Last 30 days</div></div>
+      ${s ? `<div class="stats">
+        <div><strong>${num(s.requests)}</strong>Sent</div><div><strong>${pct(s.delivered, s.requests)}</strong>Delivered</div>
+        <div><strong>${num(s.opens)}</strong>Unique opens</div><div><strong>${num(s.hard_bounces + s.soft_bounces + s.blocked)}</strong>Bounced / blocked</div>
+        <div><strong>${num(s.spam_reports)}</strong>Spam reports</div></div>` : '<p>Stats unavailable right now.</p>'}
+      <p class="muted">Website enquiry emails, customer confirmations and CRM notifications combined.</p></div>`;
   } catch (e) {
-    emailCard = `<div class="conn"><h3>Email — Brevo</h3>${errorHtml('Health check unavailable: ' + (e.message || e))}</div>`;
+    return `<div class="conn"><h3>Email — Brevo</h3>${errorHtml('Health check unavailable: ' + (e.message || e))}</div>`;
   }
+}
 
-  const enquiryCard = `<div class="conn"><div class="status-row" style="padding:0;border:0"><div class="status-icon neutral">–</div><h3>Website enquiries</h3><div class="status-word">Coming next</div></div>
-    <p>Once website forms create CRM leads automatically, enquiries per quote wizard and how fast each was followed up will show here — and in the Pipeline.</p></div>`;
+LOADERS.marketing = async function () {
+  const body = document.getElementById('marketing-body');
+  body.innerHTML = '<div class="loading">Loading…</div>';
 
-  body.innerHTML = `<div class="conn-grid">${cards.join('')}${emailCard}${enquiryCard}</div>`;
+  const [gaRes, brevoCard] = await Promise.all([
+    getGa(true).then(v => ({ ok: true, v }), e => ({ ok: false, e })),
+    brevoCardHtml(),
+  ]);
+
+  let gaHtml;
+  if (!gaRes.ok) gaHtml = `<div class="card"><div class="card-head"><h2>Website — Google Analytics</h2></div><div class="card-body">${errorHtml('Couldn\'t load Google Analytics: ' + (gaRes.e.message || gaRes.e))}</div></div>`;
+  else if (!gaRes.v.configured) gaHtml = gaSetupHtml(gaRes.v);
+  else if (gaRes.v.error) gaHtml = `<div class="card"><div class="card-head"><h2>Website — Google Analytics</h2></div><div class="card-body">${errorHtml(gaRes.v.error)}</div></div>`;
+  else gaHtml = gaPanelHtml(gaRes.v);
+
+  const periodChips = Object.entries({ 7: 'Last 7 days', 28: 'Last 28 days', 90: 'Last 90 days' }).map(([d, label]) =>
+    `<button class="chip ${+d === marketingDays ? 'active' : ''}" data-mkt-days="${d}">${label}</button>`).join('');
+  const adCards = AD_CHANNELS.map(c => `
+    <div class="conn">
+      <div class="status-row" style="padding:0;border:0"><div class="status-icon neutral" aria-hidden="true">–</div><h3>${escapeHtml(c.name)}</h3><div class="status-word">Not running</div></div>
+      <p>${escapeHtml(c.note)}</p>
+    </div>`).join('');
+
+  body.innerHTML = `<div class="chips" style="margin-bottom:16px">${periodChips}</div>` + gaHtml +
+    `<h2 class="group-title">Email &amp; advertising</h2><div class="conn-grid">${brevoCard}${adCards}</div>`;
+  body.querySelectorAll('[data-mkt-days]').forEach(b => b.addEventListener('click', () => { marketingDays = +b.dataset.mktDays; LOADERS.marketing(); }));
+  wireTooltips(body);
 };
 
 /* ════════════════════════════════════════════════════════════

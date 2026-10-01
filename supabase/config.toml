@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.manager-health]
 verify_jwt = true
+
+[functions.marketing-analytics]
+verify_jwt = true
