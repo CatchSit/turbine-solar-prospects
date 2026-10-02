@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 // Server-side system checks for home.html's "System health" and "API usage"
-// sections — things the browser can't do itself because of CORS (reading the
+// sections - things the browser can't do itself because of CORS (reading the
 // WordPress site's HTML, calling Brevo) or shouldn't (knowing which secrets
 // exist). Manager-only. Read-only: never writes anywhere, never returns a
 // secret's value, only whether it's set.
@@ -11,10 +11,10 @@ const SUPABASE_URL      = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  throw new Error('Missing required secrets — check SUPABASE_URL, SUPABASE_ANON_KEY')
+  throw new Error('Missing required secrets \u2014 check SUPABASE_URL, SUPABASE_ANON_KEY')
 }
 
-// Optional, human-registered — checked per request, never asserted at load
+// Optional, human-registered - checked per request, never asserted at load
 // (same reasoning as notify-assignment's BREVO_API_KEY).
 const BREVO_API_KEY = Deno.env.get('BREVO_API_KEY')
 
@@ -38,7 +38,7 @@ const FUNCTIONS = [
 const SITE = 'https://www.turbineenergyuk.co.uk'
 const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36'
 // The Brevo account that owns the authenticated turbineenergyuk.co.uk domain
-// (turbine-homepage HANDOVER.md, 2026-09-21) — a key from any other account
+// (turbine-homepage HANDOVER.md, 2026-09-21) - a key from any other account
 // is the exact misconfiguration that sent enquiry emails to spam before.
 const EXPECTED_BREVO_ACCOUNT = 11558688
 

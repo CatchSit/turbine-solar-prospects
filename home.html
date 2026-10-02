@@ -468,6 +468,7 @@ const CLOSED_STAGES = new Set(['won', 'scheduled', 'completed', 'lost']);
 const WON_OUTCOMES = new Set(['Converted', 'Scheduled for Install', 'Completed']);
 
 function sourceLabel(p) {
+  if (p.lead_channel === 'website') return 'Website enquiry';
   if (p.source === 'manual') return p.lead_type === 'commercial' ? 'CRM lead — commercial' : p.lead_type === 'domestic' ? 'CRM lead — domestic' : 'CRM lead';
   if (p.source === 'website') return 'Website enquiry';
   if (p.source === 'oil-lpg-bus') return 'Oil/LPG BUS lead';
@@ -476,7 +477,7 @@ function sourceLabel(p) {
 function leadName(p) { return p.customer_name || p.address || p.postcode || 'Unnamed lead'; }
 function leadLink(p) { return p.source === 'manual' ? `crm.html?lead=${encodeURIComponent(p.id)}` : `index.html?lead=${encodeURIComponent(p.id)}`; }
 
-const LEAD_COLUMNS = 'id, source, customer_name, address, postcode, lead_type, assigned_to_email, created_at, install_hub_job_id, install_scheduled_date';
+const LEAD_COLUMNS = 'id, source, customer_name, address, postcode, lead_type, assigned_to_email, created_at, install_hub_job_id, install_scheduled_date, lead_channel';
 // Same cost fields and margin formula as crm.html's QUOTE_COST_FIELDS /
 // quoteOptionTotals(): margin = quote price − sum of costs.
 // Install checklist items (install_checklists, migration 044) — edited on
@@ -491,12 +492,15 @@ const QUOTE_COST_FIELDS = ['kit_price', 'scaffold_price', 'electrical_cost', 'ro
   'fuel_cost', 'commission_cost', 'heat_loss_epc_cost', 'plumbing_cost'];
 
 async function loadPipelineData() {
-  const [manual, contacts, options, checklists] = await Promise.all([
+  const [manual, contacts, options, checklists, enquiries] = await Promise.all([
     fetchAll(() => db.from('prospects').select(LEAD_COLUMNS).eq('source', 'manual').order('id')),
     fetchAll(() => db.from('prospect_contacts').select('prospect_id, outcome, contacted_at, follow_up_date').is('deleted_at', null).order('contacted_at', { ascending: false })),
     fetchAll(() => db.from('quote_options').select(`prospect_id, label, quote_price, is_selected, ${QUOTE_COST_FIELDS.join(', ')}`).is('deleted_at', null).order('id')),
     fetchAll(() => db.from('install_checklists').select('*').order('prospect_id')),
+    fetchAll(() => db.from('website_enquiries').select('prospect_id, received_at, form, channel, is_new_lead, utm_campaign').order('received_at', { ascending: false })),
   ]);
+  const enquiriesByLead = {};
+  enquiries.forEach(e => { if (e.prospect_id) (enquiriesByLead[e.prospect_id] ||= []).push(e); });  // newest first
   const checklistByLead = Object.fromEntries(checklists.map(c => [c.prospect_id, c]));
 
   // Map prospects (EPC/VOA/oil-lpg) only enter the pipeline once someone logs a contact.
@@ -533,12 +537,24 @@ async function loadPipelineData() {
     const completedAt = cs.find(c => c.outcome === 'Completed')?.contacted_at || null;
     const checklist = checklistByLead[p.id] || null;
     const outstanding = INSTALL_TASKS.filter(t => !checklist?.[`${t.key}_done`]);
-    return { ...p, contacts: cs, latest, stage, value, valueOption, installDate, completedAt, checklist, outstanding, wonAt: wonContact?.contacted_at || null };
+    const webEnquiries = enquiriesByLead[p.id] || [];
+    return { ...p, contacts: cs, latest, stage, value, valueOption, installDate, completedAt, checklist, outstanding, webEnquiries, wonAt: wonContact?.contacted_at || null };
   });
 }
 
 function attentionReason(l) {
   const today = new Date(); today.setHours(0, 0, 0, 0);
+  // Website enquiry with no contact logged after 24 hours — speed matters most here.
+  if (l.stage === 'new' && l.lead_channel === 'website') {
+    const hours = Math.floor((Date.now() - new Date(l.created_at)) / 3600000);
+    return hours >= 24 ? { days: 50 + hours / 24, text: `Website enquiry ${hours < 48 ? hours + ' hours' : Math.floor(hours / 24) + ' days'} ago \u2014 no contact yet` } : null;
+  }
+  // An existing lead (or customer) enquired again through the website since the last logged
+  // contact — for a won customer that's a new sales opportunity, so it's flagged in every stage.
+  const lastRepeat = l.webEnquiries?.find(e => !e.is_new_lead);
+  if (lastRepeat && (!l.latest || new Date(lastRepeat.received_at) > new Date(l.latest.contacted_at))) {
+    return { days: 40 + daysSince(lastRepeat.received_at), text: `Enquired again ${fmtDate(lastRepeat.received_at)} (${lastRepeat.form}) \u2014 not followed up yet` };
+  }
   if (l.stage === 'new') {
     const d = daysSince(l.created_at);
     return d >= 2 ? { days: d, text: `No contact logged — added ${d} days ago` } : null;
@@ -979,14 +995,89 @@ async function brevoCardHtml() {
   }
 }
 
+let pipelinePromise = null;
+function getPipeline(force) {
+  if (force || !pipelinePromise) pipelinePromise = loadPipelineData();
+  return pipelinePromise;
+}
+
+function fmtDuration(ms) {
+  const h = ms / 3600000;
+  if (h < 1) return `${Math.max(1, Math.round(ms / 60000))} min`;
+  if (h < 48) return `${Math.round(h)} h`;
+  return `${Math.round(h / 24)} days`;
+}
+
+// Website enquiries as recorded in the CRM (website_enquiries, migration 045)
+// — every submission, whether or not the visitor accepted cookies.
+function webEnquiriesHtml(leads) {
+  const since = new Date(Date.now() - marketingDays * 86400000);
+  const rows = [];
+  leads.forEach(l => (l.webEnquiries || []).forEach(e => { if (new Date(e.received_at) >= since) rows.push({ e, l }); }));
+  rows.sort((a, b) => new Date(b.e.received_at) - new Date(a.e.received_at));
+  const newLeads = rows.filter(r => r.e.is_new_lead);
+
+  // Time from enquiry to the first contact logged after it (new leads only).
+  const responseTimes = newLeads.map(({ e, l }) => {
+    const first = [...l.contacts].reverse().find(c => new Date(c.contacted_at) >= new Date(e.received_at));
+    return first ? new Date(first.contacted_at) - new Date(e.received_at) : null;
+  });
+  const answered = responseTimes.filter(t => t != null).sort((a, b) => a - b);
+  const median = answered.length ? answered[Math.floor(answered.length / 2)] : null;
+  const won = newLeads.filter(r => WON_STAGES.has(r.l.stage));
+  const wonValue = won.reduce((t, r) => t + (r.l.value || 0), 0);
+
+  const group = key => {
+    const g = {};
+    rows.forEach(({ e, l }) => {
+      const k = e[key] || 'Unknown';
+      const x = (g[k] ||= { n: 0, newLeads: 0, won: 0 });
+      x.n++; if (e.is_new_lead) { x.newLeads++; if (WON_STAGES.has(l.stage)) x.won++; }
+    });
+    return Object.entries(g).sort((a, b) => b[1].n - a[1].n);
+  };
+  const groupRows = arr => arr.map(([k, x]) => `<tr><td>${escapeHtml(k)}</td><td class="num">${x.n}</td><td class="num">${x.newLeads}</td><td class="num">${x.won}</td></tr>`).join('');
+
+  const recent = rows.slice(0, 10).map(({ e, l }, i) => {
+    const t = e.is_new_lead ? responseTimes[newLeads.findIndex(r => r.e === e)] : undefined;
+    const response = !e.is_new_lead ? '<span class="muted">Repeat enquiry</span>'
+      : t != null ? `Contacted after ${fmtDuration(t)}` : `<span class="neg">Not contacted yet</span>`;
+    return `<tr><td style="white-space:nowrap">${escapeHtml(fmtDateTime(e.received_at))}</td>
+      <td><a href="${leadLink(l)}">${escapeHtml(leadName(l))}</a></td><td>${escapeHtml(e.form)}</td>
+      <td>${escapeHtml(e.channel || 'Unknown')}</td><td>${response}</td><td>${stageTag(l.stage)}</td></tr>`;
+  }).join('');
+
+  return `<h2 class="group-title">Website enquiries \u2192 CRM</h2>
+  <div class="tiles">
+    <div class="tile"><div class="tile-label">Enquiries</div><div class="tile-value">${num(rows.length)}</div><div class="tile-sub">${num(newLeads.length)} new lead${newLeads.length === 1 ? '' : 's'} \u00b7 ${num(rows.length - newLeads.length)} repeat</div></div>
+    <div class="tile"><div class="tile-label">Typical time to first contact</div><div class="tile-value">${median != null ? fmtDuration(median) : '\u2014'}</div><div class="tile-sub">Median, new leads${newLeads.length - answered.length ? ` \u00b7 ${newLeads.length - answered.length} not contacted yet` : ''}</div></div>
+    <div class="tile"><div class="tile-label">Became jobs</div><div class="tile-value">${num(won.length)}</div><div class="tile-sub">${pct(won.length, newLeads.length)} of new leads</div></div>
+    <div class="tile"><div class="tile-label">Value won</div><div class="tile-value">${moneyCompact(wonValue)}</div><div class="tile-sub">From website leads in this period</div></div>
+  </div>
+  <div class="grid-2">
+    <div class="card"><div class="card-head"><h2>By form</h2></div>
+      <table><thead><tr><th>Form</th><th class="num">Enquiries</th><th class="num">New leads</th><th class="num">Won</th></tr></thead>
+      <tbody>${groupRows(group('form')) || '<tr><td colspan="4" class="empty">No website enquiries in this period.</td></tr>'}</tbody></table></div>
+    <div class="card"><div class="card-head"><h2>By source</h2><span class="hint">Where the visitor came from</span></div>
+      <table><thead><tr><th>Source</th><th class="num">Enquiries</th><th class="num">New leads</th><th class="num">Won</th></tr></thead>
+      <tbody>${groupRows(group('channel')) || '<tr><td colspan="4" class="empty">No website enquiries in this period.</td></tr>'}</tbody></table></div>
+  </div>
+  <div class="card"><div class="card-head"><h2>Latest website enquiries</h2><span class="hint">"Not tracked" = the visitor didn't accept cookies</span></div>
+    <table><thead><tr><th>Received</th><th>Customer</th><th>Form</th><th>Source</th><th>Response</th><th>Stage</th></tr></thead>
+    <tbody>${recent || '<tr><td colspan="6" class="empty">No website enquiries in this period yet.</td></tr>'}</tbody></table></div>`;
+}
+
 LOADERS.marketing = async function () {
   const body = document.getElementById('marketing-body');
   body.innerHTML = '<div class="loading">Loading…</div>';
 
-  const [gaRes, brevoCard] = await Promise.all([
+  const [gaRes, brevoCard, pipeRes] = await Promise.all([
     getGa(true).then(v => ({ ok: true, v }), e => ({ ok: false, e })),
     brevoCardHtml(),
+    getPipeline(true).then(v => ({ ok: true, v }), e => ({ ok: false, e })),
   ]);
+  const webHtml = pipeRes.ok ? webEnquiriesHtml(pipeRes.v)
+    : `<h2 class="group-title">Website enquiries → CRM</h2>${errorHtml('Couldn\'t load website enquiries: ' + (pipeRes.e.message || pipeRes.e))}`;
 
   let gaHtml;
   if (!gaRes.ok) gaHtml = `<div class="card"><div class="card-head"><h2>Website — Google Analytics</h2></div><div class="card-body">${errorHtml('Couldn\'t load Google Analytics: ' + (gaRes.e.message || gaRes.e))}</div></div>`;
@@ -1002,7 +1093,7 @@ LOADERS.marketing = async function () {
       <p>${escapeHtml(c.note)}</p>
     </div>`).join('');
 
-  body.innerHTML = `<div class="chips" style="margin-bottom:16px">${periodChips}</div>` + gaHtml +
+  body.innerHTML = `<div class="chips" style="margin-bottom:16px">${periodChips}</div>` + webHtml + gaHtml +
     `<h2 class="group-title">Email &amp; advertising</h2><div class="conn-grid">${brevoCard}${adCards}</div>`;
   body.querySelectorAll('[data-mkt-days]').forEach(b => b.addEventListener('click', () => { marketingDays = +b.dataset.mktDays; LOADERS.marketing(); }));
   wireTooltips(body);

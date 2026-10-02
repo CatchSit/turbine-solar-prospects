@@ -17,3 +17,9 @@ verify_jwt = true
 
 [functions.marketing-analytics]
 verify_jwt = true
+
+[functions.ingest-enquiry]
+# Called server-to-server by the WordPress plugin, which has no Supabase
+# session. Authenticity comes from the x-ingest-secret header instead
+# (WEBSITE_INGEST_SECRET), checked inside the function.
+verify_jwt = false

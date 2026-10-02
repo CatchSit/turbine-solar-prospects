@@ -2,18 +2,18 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 // Google Analytics 4 reporting for home.html's "Marketing & analytics"
 // section. Manager-only, read-only. Authenticates to the GA4 Data API with a
-// service account (JWT bearer grant) — the service account's email must be
+// service account (JWT bearer grant) - the service account's email must be
 // added as a Viewer on the GA4 property.
 // See docs/superpowers/specs/2026-09-30-manager-home-design.md.
 //
-// Secrets (both optional — the page shows setup steps until they exist):
-//   GA4_PROPERTY_ID            numeric property ID (Admin → Property details)
+// Secrets (both optional - the page shows setup steps until they exist):
+//   GA4_PROPERTY_ID            numeric property ID (Admin - Property details)
 //   GA4_SERVICE_ACCOUNT_JSON   the service account's full JSON key file
 
 const SUPABASE_URL      = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  throw new Error('Missing required secrets — check SUPABASE_URL, SUPABASE_ANON_KEY')
+  throw new Error('Missing required secrets \u2014 check SUPABASE_URL, SUPABASE_ANON_KEY')
 }
 const GA4_PROPERTY_ID = Deno.env.get('GA4_PROPERTY_ID')
 const GA4_SERVICE_ACCOUNT_JSON = Deno.env.get('GA4_SERVICE_ACCOUNT_JSON')
@@ -38,7 +38,7 @@ function corsHeadersFor(origin: string | null): Record<string, string> {
   return headers
 }
 
-/* ── Google service-account auth ─────────────────────────── */
+/* -- Google service-account auth --------------------------- */
 function b64url(data: Uint8Array | string): string {
   const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data
   let bin = ''
@@ -73,7 +73,7 @@ async function googleAccessToken(sa: { client_email: string; private_key: string
   return json.access_token
 }
 
-/* ── GA4 Data API ────────────────────────────────────────── */
+/* -- GA4 Data API ------------------------------------------ */
 type Row = { d: string[]; m: number[] }
 
 async function batch(token: string, requests: unknown[]): Promise<Row[][]> {
@@ -86,7 +86,7 @@ async function batch(token: string, requests: unknown[]): Promise<Row[][]> {
   if (!res.ok) {
     const msg = json.error?.message || `HTTP ${res.status}`
     // The most common setup mistake, worded so the page can say what to fix.
-    if (res.status === 403) throw new Error(`No access to GA4 property ${GA4_PROPERTY_ID} — add the service account as a Viewer in GA4 (Admin → Property access management). (${msg})`)
+    if (res.status === 403) throw new Error(`No access to GA4 property ${GA4_PROPERTY_ID} \u2014 add the service account as a Viewer in GA4 (Admin \u2192 Property access management). (${msg})`)
     throw new Error(msg)
   }
   return (json.reports || []).map((r: any) => (r.rows || []).map((row: any) => ({

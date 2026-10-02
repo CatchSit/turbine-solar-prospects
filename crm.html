@@ -92,6 +92,12 @@ tbody tr:hover { background: var(--surface2); }
 .ic-row input[type=text] { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 13px; background: var(--surface2); color: var(--text); }
 .ic-row input[type=text]:focus { outline: none; border-color: var(--accent); }
 .ic-meta { font-size: 11.5px; color: var(--text3); }
+.web-tag { display: inline-block; margin-top: 3px; font-size: 10.5px; font-weight: 600; color: #2563eb; background: #dbeafe; padding: 1px 7px; border-radius: 100px; }
+.web-enq { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.web-enq:last-child { border-bottom: 0; }
+.web-enq-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.web-enq-meta { font-size: 12px; color: var(--text2); margin-top: 2px; }
+.web-enq-msg { white-space: pre-wrap; font-family: inherit; font-size: 12.5px; color: var(--text2); background: var(--surface2); border-radius: 8px; padding: 10px 12px; margin-top: 8px; max-height: 220px; overflow: auto; }
 .log-contact-btn { background: var(--accentDim); color: var(--accentDk); border: none; border-radius: 8px; padding: 9px 16px; font-size: 13px; font-weight: 500; }
 
 .doc-item { padding: 9px 0; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
@@ -199,6 +205,8 @@ tbody tr:hover { background: var(--surface2); }
         <div id="sidebar-installhub-list"></div>
         <h4>Assigned to</h4>
         <div id="sidebar-assigned-list"></div>
+        <h4>Source</h4>
+        <div id="sidebar-source-list"></div>
         <button class="sidebar-reset-btn" id="sidebar-reset-btn">Reset filters</button>
       </aside>
 
@@ -259,6 +267,11 @@ tbody tr:hover { background: var(--surface2); }
       <h3>Contact</h3>
       <button class="log-contact-btn" id="log-contact-btn">Log contact</button>
       <div class="contact-log-list" id="contact-log-list" style="margin-top:14px"></div>
+    </div>
+
+    <div class="card" id="web-enquiries-card" style="display:none">
+      <h3>Website enquiries</h3>
+      <div id="web-enquiries-list"></div>
     </div>
 
     <div class="card" id="install-checklist-card" style="display:none">
@@ -485,7 +498,7 @@ let currentLead = null;
 /* ── Leads table ─────────────────────────────────────────── */
 async function fetchLeads() {
   const { data, error } = await db.from('prospects')
-    .select('id, customer_name, lead_type, contact_phone, contact_email, address, postcode, created_at, install_hub_job_id, sent_to_install_hub_at, sent_to_install_hub_by_email, assigned_to_email')
+    .select('id, customer_name, lead_type, contact_phone, contact_email, address, postcode, created_at, install_hub_job_id, sent_to_install_hub_at, sent_to_install_hub_by_email, assigned_to_email, lead_channel')
     .eq('source', 'manual')
     .order('created_at', { ascending: false });
   if (error) { console.error('Failed to load leads:', error); return []; }
@@ -500,6 +513,11 @@ let activeTypeFilters = new Set(LEAD_TYPE_ORDER);
 let activeStatusFilters = new Set([...CONTACT_OUTCOME_ORDER, NOT_CONTACTED_KEY]);
 let activeInstallHubFilters = new Set(['sent', 'not_sent']);
 let activeAssignedFilters = new Set([...REP_ORDER, UNASSIGNED_KEY]);
+// lead_channel (migration 045): 'website' = created automatically from a
+// turbineenergyuk.co.uk enquiry form; null = added by hand in the CRM/map.
+const SOURCE_FILTERS = { website: { label: 'Website enquiry', color: '#2563eb' }, manual: { label: 'Added manually', color: '#94a3b8' } };
+const leadSourceKey = d => (d.lead_channel === 'website' ? 'website' : 'manual');
+let activeSourceFilters = new Set(Object.keys(SOURCE_FILTERS));
 
 function sidebarChipHtml(key, dotColor, label, count, activeSet) {
   return `<div class="sidebar-chip ${activeSet.has(key) ? 'active' : ''}" data-key="${escapeHtml(key)}">
@@ -535,6 +553,11 @@ function renderSidebarFilters() {
     ...REP_ORDER.map(email => sidebarChipHtml(email, REP[email].color, REP[email].name, assignedCounts[email], activeAssignedFilters)),
     sidebarChipHtml(UNASSIGNED_KEY, '#94a3b8', 'Unassigned', assignedCounts[UNASSIGNED_KEY], activeAssignedFilters),
   ].join('');
+
+  const sourceCounts = { website: 0, manual: 0 };
+  allLeads.forEach(d => { sourceCounts[leadSourceKey(d)]++; });
+  document.getElementById('sidebar-source-list').innerHTML = Object.entries(SOURCE_FILTERS)
+    .map(([k, cfg]) => sidebarChipHtml(k, cfg.color, cfg.label, sourceCounts[k], activeSourceFilters)).join('');
 }
 
 function bindSidebarFilterGroup(containerId, activeSet) {
@@ -551,12 +574,14 @@ bindSidebarFilterGroup('sidebar-type-list', activeTypeFilters);
 bindSidebarFilterGroup('sidebar-status-list', activeStatusFilters);
 bindSidebarFilterGroup('sidebar-installhub-list', activeInstallHubFilters);
 bindSidebarFilterGroup('sidebar-assigned-list', activeAssignedFilters);
+bindSidebarFilterGroup('sidebar-source-list', activeSourceFilters);
 
 document.getElementById('sidebar-reset-btn').addEventListener('click', () => {
   activeTypeFilters.clear(); LEAD_TYPE_ORDER.forEach(t => activeTypeFilters.add(t));
   activeStatusFilters.clear(); [...CONTACT_OUTCOME_ORDER, NOT_CONTACTED_KEY].forEach(k => activeStatusFilters.add(k));
   activeAssignedFilters.clear(); [...REP_ORDER, UNASSIGNED_KEY].forEach(k => activeAssignedFilters.add(k));
   activeInstallHubFilters.clear(); ['sent', 'not_sent'].forEach(k => activeInstallHubFilters.add(k));
+  activeSourceFilters.clear(); Object.keys(SOURCE_FILTERS).forEach(k => activeSourceFilters.add(k));
   document.getElementById('leads-search').value = '';
   renderSidebarFilters();
   renderLeadsTable();
@@ -570,6 +595,7 @@ function renderLeadsTable() {
     if (!activeStatusFilters.has(d.latest_outcome || NOT_CONTACTED_KEY)) return false;
     if (!activeInstallHubFilters.has(d.install_hub_job_id ? 'sent' : 'not_sent')) return false;
     if (!activeAssignedFilters.has(d.assigned_to_email || UNASSIGNED_KEY)) return false;
+    if (!activeSourceFilters.has(leadSourceKey(d))) return false;
     return true;
   });
 
@@ -593,7 +619,7 @@ function renderLeadsTable() {
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${escapeHtml(d.customer_name || 'Unnamed lead')}</td>
+      <td>${escapeHtml(d.customer_name || 'Unnamed lead')}${d.lead_channel === 'website' ? '<div><span class="web-tag">Website enquiry</span></div>' : ''}</td>
       <td>${typeTag}</td>
       <td>${statusBadgeHtml(d.latest_outcome)}</td>
       <td>${quoteCell}</td>
@@ -667,6 +693,7 @@ function openLeadDetail(lead) {
   currentChecklist = null;
   renderInstallChecklist();
   loadInstallChecklist(lead.id);
+  loadWebEnquiries(lead.id);
 }
 
 /* ── Lead details edit + audit history (prospect_name_audit, migration
@@ -860,6 +887,33 @@ async function loadContactLog(prospectId) {
 }
 
 /* ── install-hub handoff ─────────────────────────────────── */
+/* ── Website enquiries (website_enquiries, migration 045) ──────────────
+   Every enquiry this customer sent through turbineenergyuk.co.uk —
+   including repeats, which are added to the existing lead rather than
+   creating a duplicate — with where they came from. Written by the
+   ingest-enquiry Edge Function; read-only here. */
+async function loadWebEnquiries(prospectId) {
+  const card = document.getElementById('web-enquiries-card');
+  card.style.display = 'none';
+  const { data, error } = await db.from('website_enquiries')
+    .select('prospect_id, received_at, form, message, channel, page_url, landing_page, utm_campaign, is_new_lead')
+    .eq('prospect_id', prospectId).order('received_at', { ascending: false });
+  if (!currentLead || currentLead.id !== prospectId) return;   // stale response guard
+  if (error) { console.error('Failed to load website enquiries:', error); return; }
+  const rows = (data || []).filter(r => r.prospect_id === prospectId);
+  if (!rows.length) return;
+  card.style.display = '';
+  document.getElementById('web-enquiries-list').innerHTML = rows.map(r => `
+    <div class="web-enq">
+      <div class="web-enq-head">
+        <strong>${escapeHtml(r.form)}</strong>
+        <span class="web-enq-meta">${escapeHtml(formatShortDate(r.received_at))} ${escapeHtml(new Date(r.received_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }))}${r.is_new_lead ? '' : ' · repeat enquiry'}</span>
+      </div>
+      <div class="web-enq-meta">Came from: <strong>${escapeHtml(r.channel || 'Unknown')}</strong>${r.utm_campaign ? ` · campaign “${escapeHtml(r.utm_campaign)}”` : ''}</div>
+      ${r.message ? `<pre class="web-enq-msg">${escapeHtml(r.message)}</pre>` : ''}
+    </div>`).join('');
+}
+
 /* ── Install checklist (install_checklists, migration 044) ─────────────
    Shown once a job's latest outcome is Scheduled for Install or Completed
    (or whenever a checklist already exists). Each tick/name saves on its
