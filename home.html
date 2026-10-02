@@ -1077,6 +1077,9 @@ function webEnquiriesHtml(leads) {
 // conversion action created in Google Ads — rows are rejected otherwise.
 const OFFLINE_CONVERSION_NAME = 'Won job';
 const GOOGLE_CLICK_MAX_DAYS = 90;   // Google rejects clicks older than this
+// Won jobs with no quote price in the CRM are still reported (Greg, 2026-10-02),
+// at this default value, so Google always learns the click became a paying job.
+const DEFAULT_WON_JOB_VALUE = 7995;
 const UK_DATETIME_PARTS = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit',
   hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
@@ -1120,7 +1123,7 @@ function buildOfflineConversionCsv(leads, now = new Date()) {
     'Parameters:TimeZone=Europe/London',
     'Google Click ID,Conversion Name,Conversion Time,Conversion Value,Conversion Currency',
     ...rows.map(r => [r.gclid, OFFLINE_CONVERSION_NAME, ukDateTime(r.wonAt),
-      r.value != null ? Number(r.value).toFixed(2) : '', 'GBP'].map(csvCell).join(',')),
+      Number(r.value != null ? r.value : DEFAULT_WON_JOB_VALUE).toFixed(2), 'GBP'].map(csvCell).join(',')),
   ];
   return { csv: lines.join('\r\n') + '\r\n', rows, counts };
 }
@@ -1142,6 +1145,7 @@ function googleAdsExportHtml(leads) {
           <span class="muted">· ${plural(counts.noClickId, 'won job has', 'won jobs have')} no Google click ID (came from elsewhere, or the visitor didn't accept cookies)</span></span>
       </div>
       <div class="meter-note">Google only accepts clicks from the last ${GOOGLE_CLICK_MAX_DAYS} days, so older won jobs are left out${skipped.length ? ` — skipped: ${escapeHtml(skipped.join(' · '))}` : ''}.
+        Jobs with no quote price in the CRM are reported at ${money(DEFAULT_WON_JOB_VALUE)}.
         Upload in Google Ads under Goals → Conversions → Uploads. Uploading the same file twice is safe: Google ignores rows it already has.</div>
     </div>
   </div>`;
