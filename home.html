@@ -49,6 +49,7 @@ main { padding: 28px 32px 48px; max-width: 1180px; width: 100%; }
 .section-head p { font-size: 13px; color: var(--text2); margin-top: 4px; max-width: 720px; }
 .refresh-btn { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; color: var(--text2); white-space: nowrap; }
 .refresh-btn:hover { background: var(--surface2); color: var(--text); }
+.refresh-btn:disabled { opacity: .5; cursor: default; background: var(--surface); color: var(--text2); }
 .stamp { font-size: 11.5px; color: var(--text3); margin-right: 8px; }
 
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 18px; }
@@ -268,7 +269,7 @@ tfoot td { border-top: 1px solid var(--borderH); border-bottom: 0; }
       <div class="section-head">
         <div>
           <h1>Audit log</h1>
-          <p>Manager sign-ins and which sections of this page were viewed. Entries can't be edited or deleted.</p>
+          <p>Manager sign-ins, which sections of this page were viewed, and data downloads. Entries can't be edited or deleted.</p>
         </div>
         <div class="filters">
           <select id="audit-person"><option value="">Everyone</option></select>
@@ -497,7 +498,7 @@ async function loadPipelineData() {
     fetchAll(() => db.from('prospect_contacts').select('prospect_id, outcome, contacted_at, follow_up_date').is('deleted_at', null).order('contacted_at', { ascending: false })),
     fetchAll(() => db.from('quote_options').select(`prospect_id, label, quote_price, is_selected, ${QUOTE_COST_FIELDS.join(', ')}`).is('deleted_at', null).order('id')),
     fetchAll(() => db.from('install_checklists').select('*').order('prospect_id')),
-    fetchAll(() => db.from('website_enquiries').select('prospect_id, received_at, form, channel, is_new_lead, utm_campaign').order('received_at', { ascending: false })),
+    fetchAll(() => db.from('website_enquiries').select('prospect_id, received_at, form, channel, is_new_lead, utm_campaign, gclid').order('received_at', { ascending: false })),
   ]);
   const enquiriesByLead = {};
   enquiries.forEach(e => { if (e.prospect_id) (enquiriesByLead[e.prospect_id] ||= []).push(e); });  // newest first
@@ -1067,6 +1068,94 @@ function webEnquiriesHtml(leads) {
     <tbody>${recent || '<tr><td colspan="6" class="empty">No website enquiries in this period yet.</td></tr>'}</tbody></table></div>`;
 }
 
+/* ── Won jobs → Google Ads offline conversions ──────────────
+   A CSV in Google Ads' offline conversion import format (Goals → Conversions
+   → Uploads), so Google's bidding learns which clicks became paying jobs, not
+   just form fills. One row per won job whose website enquiry carried a Google
+   click ID (gclid — only captured when the visitor accepted cookies). */
+// Must match, character for character, the name of the "Import → clicks"
+// conversion action created in Google Ads — rows are rejected otherwise.
+const OFFLINE_CONVERSION_NAME = 'Won job';
+const GOOGLE_CLICK_MAX_DAYS = 90;   // Google rejects clicks older than this
+const UK_DATETIME_PARTS = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+});
+
+// yyyy-MM-dd HH:mm:ss in UK time (BST/GMT handled by the time zone).
+function ukDateTime(d) {
+  const p = Object.fromEntries(UK_DATETIME_PARTS.formatToParts(new Date(d)).map(x => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}`;
+}
+
+// Same formula-injection guard as dashboard.html's csvCell(), but only quoted
+// when needed so the file reads like Google's own template.
+function csvCell(value) {
+  let s = value === null || value === undefined ? '' : String(value);
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+// Pure: leads (from loadPipelineData) + the current time → { csv, rows, counts }.
+// The click time isn't stored, so the enquiry's received_at stands in for it
+// (the click happened at most a visit earlier).
+function buildOfflineConversionCsv(leads, now = new Date()) {
+  const cutoff = new Date(now).getTime() - GOOGLE_CLICK_MAX_DAYS * 86400000;
+  const won = leads.filter(l => WON_STAGES.has(l.stage));
+  const counts = { won: won.length, eligible: 0, noClickId: 0, tooOld: 0, noWonDate: 0, wonBeforeClick: 0 };
+  const rows = [];
+  won.forEach(l => {
+    const click = (l.webEnquiries || []).filter(e => e.gclid)
+      .sort((a, b) => new Date(a.received_at) - new Date(b.received_at))[0];  // earliest enquiry with a gclid
+    if (!click) { counts.noClickId++; return; }
+    if (new Date(click.received_at).getTime() < cutoff) { counts.tooOld++; return; }
+    if (!l.wonAt) { counts.noWonDate++; return; }
+    // Google rejects a conversion dated before its click (e.g. an existing customer re-enquiring).
+    if (new Date(l.wonAt) < new Date(click.received_at)) { counts.wonBeforeClick++; return; }
+    counts.eligible++;
+    rows.push({ lead: l, gclid: click.gclid, wonAt: l.wonAt, value: l.value });
+  });
+  rows.sort((a, b) => new Date(a.wonAt) - new Date(b.wonAt));
+  const lines = [
+    'Parameters:TimeZone=Europe/London',
+    'Google Click ID,Conversion Name,Conversion Time,Conversion Value,Conversion Currency',
+    ...rows.map(r => [r.gclid, OFFLINE_CONVERSION_NAME, ukDateTime(r.wonAt),
+      r.value != null ? Number(r.value).toFixed(2) : '', 'GBP'].map(csvCell).join(',')),
+  ];
+  return { csv: lines.join('\r\n') + '\r\n', rows, counts };
+}
+
+function googleAdsExportHtml(leads) {
+  const { counts } = buildOfflineConversionCsv(leads);
+  const plural = (n, one, many) => `${num(n)} ${n === 1 ? one : many}`;
+  const skipped = [
+    counts.tooOld ? `${plural(counts.tooOld, 'job was', 'jobs were')} clicked more than ${GOOGLE_CLICK_MAX_DAYS} days ago` : '',
+    counts.noWonDate ? `${plural(counts.noWonDate, 'job has', 'jobs have')} no "Converted" contact logged, so no won date` : '',
+    counts.wonBeforeClick ? `${plural(counts.wonBeforeClick, 'job was', 'jobs were')} won before the ad click (repeat enquiry from an existing customer)` : '',
+  ].filter(Boolean);
+  return `<div class="card" id="gads-export-card" style="margin-top:18px">
+    <div class="card-head"><h2>Report won jobs to Google Ads</h2><span class="hint">Offline conversion import · not affected by the period above</span></div>
+    <div class="card-body">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <button class="refresh-btn" id="gads-export-btn"${counts.eligible ? '' : ' disabled'}>Download won jobs for Google Ads</button>
+        <span style="font-size:13px"><strong>${plural(counts.eligible, 'won job', 'won jobs')}</strong> ready to upload
+          <span class="muted">· ${plural(counts.noClickId, 'won job has', 'won jobs have')} no Google click ID (came from elsewhere, or the visitor didn't accept cookies)</span></span>
+      </div>
+      <div class="meter-note">Google only accepts clicks from the last ${GOOGLE_CLICK_MAX_DAYS} days, so older won jobs are left out${skipped.length ? ` — skipped: ${escapeHtml(skipped.join(' · '))}` : ''}.
+        Upload in Google Ads under Goals → Conversions → Uploads. Uploading the same file twice is safe: Google ignores rows it already has.</div>
+    </div>
+  </div>`;
+}
+
+function downloadGoogleAdsCsv(leads) {
+  const { csv, counts } = buildOfflineConversionCsv(leads);
+  if (!counts.eligible) return;
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  Object.assign(document.createElement('a'), { href: url, download: `google-ads-won-jobs-${ukDateTime(new Date()).slice(0, 10)}.csv` }).click();
+  URL.revokeObjectURL(url);
+  audit('export', 'marketing');   // needs migration 046 — until then the insert fails quietly (console only)
+}
+
 LOADERS.marketing = async function () {
   const body = document.getElementById('marketing-body');
   body.innerHTML = '<div class="loading">Loading…</div>';
@@ -1094,7 +1183,9 @@ LOADERS.marketing = async function () {
     </div>`).join('');
 
   body.innerHTML = `<div class="chips" style="margin-bottom:16px">${periodChips}</div>` + webHtml + gaHtml +
-    `<h2 class="group-title">Email &amp; advertising</h2><div class="conn-grid">${brevoCard}${adCards}</div>`;
+    `<h2 class="group-title">Email &amp; advertising</h2><div class="conn-grid">${brevoCard}${adCards}</div>` +
+    (pipeRes.ok ? googleAdsExportHtml(pipeRes.v) : '');
+  document.getElementById('gads-export-btn')?.addEventListener('click', () => downloadGoogleAdsCsv(pipeRes.v));
   body.querySelectorAll('[data-mkt-days]').forEach(b => b.addEventListener('click', () => { marketingDays = +b.dataset.mktDays; LOADERS.marketing(); }));
   wireTooltips(body);
 };
@@ -1302,7 +1393,7 @@ function renderAudit() {
   const tableRows = rows.map(r => `<tr>
     <td style="white-space:nowrap">${escapeHtml(fmtDateTime(r.created_at))}</td>
     <td>${escapeHtml(r.user_name || r.user_email)}</td>
-    <td>${r.action === 'sign_in' ? 'Signed in' : 'Viewed section'}</td>
+    <td>${r.action === 'sign_in' ? 'Signed in' : r.action === 'export' ? 'Downloaded won jobs for Google Ads' : 'Viewed section'}</td>
     <td>${r.section ? escapeHtml(SECTION_LABELS[r.section] || r.section) : '<span class="muted">—</span>'}</td></tr>`).join('');
 
   body.innerHTML = (summary ? `<div class="tiles">${summary}</div>` : '') + `
