@@ -537,7 +537,9 @@ async function loadPipelineData() {
     const installDate = scheduledContact?.follow_up_date || p.install_scheduled_date || null;
     const completedAt = cs.find(c => c.outcome === 'Completed')?.contacted_at || null;
     const checklist = checklistByLead[p.id] || null;
-    const outstanding = INSTALL_TASKS.filter(t => !checklist?.[`${t.key}_done`]);
+    // N/A tasks (migration 047) count as resolved, same as done — a job
+    // with no scaffold needed shouldn't sit in "Needs attention" forever.
+    const outstanding = INSTALL_TASKS.filter(t => !checklist?.[`${t.key}_done`] && !checklist?.[`${t.key}_na`]);
     const webEnquiries = enquiriesByLead[p.id] || [];
     return { ...p, contacts: cs, latest, stage, value, valueOption, installDate, completedAt, checklist, outstanding, webEnquiries, wonAt: wonContact?.contacted_at || null };
   });
@@ -683,6 +685,9 @@ LOADERS.pipeline = async function () {
 function prepCell(l, task, soon) {
   const c = l.checklist;
   const name = c?.[`${task.key}_name`];
+  if (c?.[`${task.key}_na`]) {
+    return `<span class="prep na"><span class="status-icon neutral" aria-hidden="true">–</span><span class="muted">N/A</span></span>`;
+  }
   if (c?.[`${task.key}_done`]) {
     return `<span class="prep done"><span class="status-icon good" aria-hidden="true">✓</span>${name ? escapeHtml(name) : 'Done'}</span>`;
   }
@@ -700,15 +705,15 @@ function installPrepCard(leads) {
     const soon = daysTo != null && daysTo <= 7;
     const when = daysTo == null ? '<span class="muted">No install date</span>'
       : `${fmtDate(l.installDate)}<div class="muted">${daysTo < 0 ? `${-daysTo} day${daysTo === -1 ? '' : 's'} ago` : daysTo === 0 ? 'Today' : `In ${daysTo} day${daysTo === 1 ? '' : 's'}`}</div>`;
-    const done = INSTALL_TASKS.length - l.outstanding.length;
+    const resolved = INSTALL_TASKS.length - l.outstanding.length; // done + N/A
     return `<tr><td><a href="${leadLink(l)}">${escapeHtml(leadName(l))}</a></td>
       <td style="white-space:nowrap">${when}</td>
       ${INSTALL_TASKS.map(t => `<td>${prepCell(l, t, soon)}</td>`).join('')}
-      <td class="num"><strong>${done}</strong> / ${INSTALL_TASKS.length}</td></tr>`;
+      <td class="num"><strong>${resolved}</strong> / ${INSTALL_TASKS.length}</td></tr>`;
   }).join('');
   return `<div class="card">
     <div class="card-head"><h2>Install prep</h2><span class="hint">${jobs.length} scheduled job${jobs.length === 1 ? '' : 's'} · ${outstanding} item${outstanding === 1 ? '' : 's'} still to book · tick items off on the CRM lead page</span></div>
-    <table><thead><tr><th>Job</th><th>Install date</th>${INSTALL_TASKS.map(t => `<th>${t.label}</th>`).join('')}<th class="num">Done</th></tr></thead>
+    <table><thead><tr><th>Job</th><th>Install date</th>${INSTALL_TASKS.map(t => `<th>${t.label}</th>`).join('')}<th class="num">Resolved</th></tr></thead>
     <tbody>${rows || '<tr><td colspan="7" class="empty">No jobs scheduled for install.</td></tr>'}</tbody></table>
   </div>`;
 }

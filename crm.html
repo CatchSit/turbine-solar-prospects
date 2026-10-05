@@ -85,12 +85,15 @@ tbody tr:hover { background: var(--surface2); }
 .ic-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .ic-progress { font-size: 12px; font-weight: 500; padding: 4px 10px; border-radius: 100px; background: var(--surface2); color: var(--text2); white-space: nowrap; }
 .ic-progress.all-done { background: var(--accentDim); color: var(--accentDk); }
-.ic-row { display: grid; grid-template-columns: 220px 1fr 190px; gap: 14px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.ic-row { display: grid; grid-template-columns: 220px 1fr 70px 190px; gap: 14px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .ic-row:last-child { border-bottom: 0; }
 .ic-row label.ic-check { display: flex; align-items: center; gap: 10px; font-size: 13.5px; font-weight: 500; cursor: pointer; }
+.ic-row label.ic-na { font-size: 12px; font-weight: 500; color: var(--text2); }
 .ic-row input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
 .ic-row input[type=text] { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 13px; background: var(--surface2); color: var(--text); }
 .ic-row input[type=text]:focus { outline: none; border-color: var(--accent); }
+.ic-row input[type=text]:disabled { opacity: .5; cursor: not-allowed; }
+.ic-row.ic-na-active { opacity: .55; }
 .ic-meta { font-size: 11.5px; color: var(--text3); }
 .web-tag { display: inline-block; margin-top: 3px; font-size: 10.5px; font-weight: 600; color: #2563eb; background: #dbeafe; padding: 1px 7px; border-radius: 100px; }
 .web-enq { padding: 10px 0; border-bottom: 1px solid var(--border); }
@@ -945,10 +948,10 @@ function installTaskMeta(task) {
 }
 
 function renderInstallChecklistProgress() {
-  const done = INSTALL_TASKS.filter(t => currentChecklist?.[`${t.key}_done`]).length;
+  const resolved = INSTALL_TASKS.filter(t => currentChecklist?.[`${t.key}_done`] || currentChecklist?.[`${t.key}_na`]).length;
   const el = document.getElementById('ic-progress');
-  el.textContent = done === INSTALL_TASKS.length ? 'All booked' : `${done} of ${INSTALL_TASKS.length} done`;
-  el.classList.toggle('all-done', done === INSTALL_TASKS.length);
+  el.textContent = resolved === INSTALL_TASKS.length ? 'All booked' : `${resolved} of ${INSTALL_TASKS.length} resolved`;
+  el.classList.toggle('all-done', resolved === INSTALL_TASKS.length);
   INSTALL_TASKS.forEach(t => { const m = document.getElementById(`ic-meta-${t.key}`); if (m) m.innerHTML = installTaskMeta(t); });
 }
 
@@ -958,15 +961,20 @@ function renderInstallChecklist() {
   card.style.display = show ? '' : 'none';
   if (!show) return;
   document.getElementById('ic-status').textContent = '';
-  document.getElementById('ic-rows').innerHTML = INSTALL_TASKS.map(t => `
-    <div class="ic-row">
-      <label class="ic-check"><input type="checkbox" id="ic-done-${t.key}" ${currentChecklist?.[`${t.key}_done`] ? 'checked' : ''}> ${escapeHtml(t.label)}</label>
-      <input type="text" id="ic-name-${t.key}" placeholder="${escapeHtml(t.placeholder)}" value="${escapeHtml(currentChecklist?.[`${t.key}_name`] || '')}">
+  document.getElementById('ic-rows').innerHTML = INSTALL_TASKS.map(t => {
+    const na = !!currentChecklist?.[`${t.key}_na`];
+    return `
+    <div class="ic-row ${na ? 'ic-na-active' : ''}" id="ic-row-${t.key}">
+      <label class="ic-check"><input type="checkbox" id="ic-done-${t.key}" ${currentChecklist?.[`${t.key}_done`] ? 'checked' : ''} ${na ? 'disabled' : ''}> ${escapeHtml(t.label)}</label>
+      <input type="text" id="ic-name-${t.key}" placeholder="${escapeHtml(t.placeholder)}" value="${escapeHtml(currentChecklist?.[`${t.key}_name`] || '')}" ${na ? 'disabled' : ''}>
+      <label class="ic-na"><input type="checkbox" id="ic-na-${t.key}" ${na ? 'checked' : ''}> N/A</label>
       <span class="ic-meta" id="ic-meta-${t.key}"></span>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   INSTALL_TASKS.forEach(t => {
     document.getElementById(`ic-done-${t.key}`).addEventListener('change', () => saveInstallTask(t.key));
     document.getElementById(`ic-name-${t.key}`).addEventListener('change', () => saveInstallTask(t.key));
+    document.getElementById(`ic-na-${t.key}`).addEventListener('change', () => saveInstallTask(t.key));
   });
   renderInstallChecklistProgress();
 }
@@ -975,10 +983,16 @@ async function saveInstallTask(key) {
   if (!currentLead) return;
   const prospectId = currentLead.id;
   const statusEl = document.getElementById('ic-status');
+  // N/A and Done are mutually exclusive — the Done checkbox is disabled
+  // in the DOM whenever N/A is ticked, so this just mirrors that into the
+  // saved payload rather than trusting a stale checked value.
+  const na = document.getElementById(`ic-na-${key}`).checked;
+  const done = na ? false : document.getElementById(`ic-done-${key}`).checked;
   const name = document.getElementById(`ic-name-${key}`).value.trim();
   const payload = {
     prospect_id: prospectId,
-    [`${key}_done`]: document.getElementById(`ic-done-${key}`).checked,
+    [`${key}_done`]: done,
+    [`${key}_na`]: na,
     [`${key}_name`]: name || null,
   };
   statusEl.textContent = 'Saving…';
@@ -988,7 +1002,7 @@ async function saveInstallTask(key) {
   if (!currentLead || currentLead.id !== prospectId) return;
   if (error) { statusEl.textContent = 'Failed to save: ' + error.message; return; }
   currentChecklist = data;
-  renderInstallChecklistProgress();
+  renderInstallChecklist();
   statusEl.textContent = 'Saved';
 }
 
