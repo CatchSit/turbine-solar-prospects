@@ -119,6 +119,14 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .meter-track.critical { background: #f5d4d4; } .meter-track.critical .meter-fill { background: var(--critical); }
 .meter-note { font-size: 12px; color: var(--text3); margin-top: 6px; }
 
+/* Monthly task reminder + how-to steps */
+.reminder { display: flex; align-items: center; gap: 12px; background: #fdefcc; border: 1px solid var(--warning); border-radius: 10px; padding: 12px 14px; margin-bottom: 20px; font-size: 13px; }
+.reminder[hidden] { display: none; }
+.reminder .status-icon { flex: none; }
+.reminder-text { flex: 1; }
+.howto { margin: 12px 0 0 20px; font-size: 13px; color: var(--text2); }
+.howto li { margin-bottom: 4px; }
+
 /* Marketing connection cards */
 .conn-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .conn { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; }
@@ -216,6 +224,9 @@ tfoot td { border-top: 1px solid var(--borderH); border-bottom: 0; }
   </nav>
 
   <main>
+    <!-- Monthly "report won jobs to Google Ads" reminder, shown on every section when due -->
+    <div id="gads-reminder" class="reminder" hidden></div>
+
     <!-- ── Pipeline ── -->
     <section class="section" id="sec-pipeline">
       <div class="section-head">
@@ -344,6 +355,7 @@ async function onSession(user) {
   document.getElementById('app').classList.add('visible');
   logSignInOnce(user);
   showSection(initialSection());
+  refreshGadsReminder();
 }
 
 document.getElementById('ms-btn').addEventListener('click', async () => {
@@ -1133,8 +1145,55 @@ function buildOfflineConversionCsv(leads, now = new Date()) {
   return { csv: lines.join('\r\n') + '\r\n', rows, counts };
 }
 
-function googleAdsExportHtml(leads) {
+/* Monthly reminder (Greg, 2026-10-06): the upload is manual, so nag once a
+   month. "Done" = the last 'export' row in the audit log (a download — the
+   upload itself happens in Google Ads, which this page can't see). Only shown
+   when there's something to report, so it stays quiet until ads bring in won jobs. */
+const GADS_REPORT_EVERY_DAYS = 30;
+
+async function getLastGadsExport() {
+  const { data, error } = await db.from('manager_audit_log')
+    .select('created_at, user_name, user_email').eq('action', 'export')
+    .order('created_at', { ascending: false }).limit(1);
+  if (error) { console.error('Last Google Ads export lookup failed:', error); return null; }
+  return data?.[0] || null;
+}
+
+function gadsReportDue(eligible, last) {
+  return eligible > 0 && (!last || daysSince(last.created_at) >= GADS_REPORT_EVERY_DAYS);
+}
+
+function lastExportText(last) {
+  if (!last) return 'Never reported yet';
+  const d = daysSince(last.created_at);
+  return `Last reported ${fmtDate(last.created_at)} (${d === 0 ? 'today' : d === 1 ? 'yesterday' : d + ' days ago'}) by ${last.user_name || last.user_email}`;
+}
+
+async function refreshGadsReminder() {
+  const el = document.getElementById('gads-reminder');
+  try {
+    const [leads, last] = await Promise.all([getPipeline(), getLastGadsExport()]);
+    const { counts } = buildOfflineConversionCsv(leads);
+    if (!gadsReportDue(counts.eligible, last)) { el.hidden = true; return; }
+    el.innerHTML = `<div class="status-icon warning" aria-hidden="true">!</div>
+      <div class="reminder-text"><strong>Monthly task: report won jobs to Google Ads.</strong>
+        ${num(counts.eligible)} won ${counts.eligible === 1 ? 'job is' : 'jobs are'} ready to upload · ${escapeHtml(lastExportText(last))}.</div>
+      <button class="refresh-btn" id="gads-reminder-go">Show me how</button>`;
+    el.hidden = false;
+    document.getElementById('gads-reminder-go').addEventListener('click', () => {
+      showSection('marketing');
+      const scroll = () => document.getElementById('gads-export-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (document.getElementById('gads-export-card')) scroll(); else setTimeout(scroll, 1500);
+    });
+  } catch (e) {
+    console.error('Google Ads reminder check failed:', e);
+    el.hidden = true;
+  }
+}
+
+function googleAdsExportHtml(leads, last) {
   const { counts } = buildOfflineConversionCsv(leads);
+  const due = gadsReportDue(counts.eligible, last);
   const plural = (n, one, many) => `${num(n)} ${n === 1 ? one : many}`;
   const skipped = [
     counts.tooOld ? `${plural(counts.tooOld, 'job was', 'jobs were')} clicked more than ${GOOGLE_CLICK_MAX_DAYS} days ago` : '',
@@ -1142,37 +1201,51 @@ function googleAdsExportHtml(leads) {
     counts.wonBeforeClick ? `${plural(counts.wonBeforeClick, 'job was', 'jobs were')} won before the ad click (repeat enquiry from an existing customer)` : '',
   ].filter(Boolean);
   return `<div class="card" id="gads-export-card" style="margin-top:18px">
-    <div class="card-head"><h2>Report won jobs to Google Ads</h2><span class="hint">Offline conversion import · not affected by the period above</span></div>
+    <div class="card-head"><h2>Report won jobs to Google Ads</h2><span class="hint">Once a month · not affected by the period above</span></div>
     <div class="card-body">
+      <p style="font-size:13px;margin-bottom:12px"><strong style="color:${due ? 'var(--alert)' : 'var(--accentDk)'}">${due ? 'Due now' : 'Up to date'}</strong>
+        <span class="muted">· ${escapeHtml(lastExportText(last))} · repeat every ${GADS_REPORT_EVERY_DAYS} days</span></p>
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
         <button class="refresh-btn" id="gads-export-btn"${counts.eligible ? '' : ' disabled'}>Download won jobs for Google Ads</button>
         <span style="font-size:13px"><strong>${plural(counts.eligible, 'won job', 'won jobs')}</strong> ready to upload
           <span class="muted">· ${plural(counts.noClickId, 'won job has', 'won jobs have')} no Google click ID (came from elsewhere, or the visitor didn't accept cookies)</span></span>
       </div>
       <div class="meter-note">Google only accepts clicks from the last ${GOOGLE_CLICK_MAX_DAYS} days, so older won jobs are left out${skipped.length ? ` — skipped: ${escapeHtml(skipped.join(' · '))}` : ''}.
-        Jobs with no quote price in the CRM are reported at ${money(DEFAULT_WON_JOB_VALUE)}.
-        Upload in Google Ads under Goals → Conversions → Uploads. Uploading the same file twice is safe: Google ignores rows it already has.</div>
+        Jobs with no quote price in the CRM are reported at ${money(DEFAULT_WON_JOB_VALUE)}.</div>
+      <h3 style="font-size:13px;margin-top:16px">How to report (about 2 minutes, once a month)</h3>
+      <ol class="howto">
+        <li>Make sure every job you've won has a <strong>Converted</strong> contact logged in the CRM (or Scheduled for Install / Completed), with its quote price filled in. The date of that contact is reported as the date the job was won.</li>
+        <li>Click <strong>Download won jobs for Google Ads</strong> above. A <code>.csv</code> file saves to your Downloads folder. Don't open or edit it.</li>
+        <li>In <a href="https://ads.google.com/" target="_blank" rel="noopener noreferrer">Google Ads</a> (account 539-823-5741), go to <strong>Goals → Conversions → Uploads</strong>.</li>
+        <li>Click the blue <strong>+</strong>, choose <strong>Upload a file</strong>, select the file you just downloaded, then click <strong>Preview</strong>.</li>
+        <li>If the preview shows no errors, click <strong>Apply</strong>. Results appear under the <strong>Won job</strong> conversion within about 24 hours.</li>
+      </ol>
+      <div class="meter-note">Uploading the same jobs again is safe: Google ignores rows it already has. Only jobs that started with an ad click are included, because Google matches them by click ID.
+        If the upload says "conversion action not found", the conversion in Google Ads must be named exactly <strong>${escapeHtml(OFFLINE_CONVERSION_NAME)}</strong>.</div>
     </div>
   </div>`;
 }
 
-function downloadGoogleAdsCsv(leads) {
+async function downloadGoogleAdsCsv(leads) {
   const { csv, counts } = buildOfflineConversionCsv(leads);
   if (!counts.eligible) return;
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
   Object.assign(document.createElement('a'), { href: url, download: `google-ads-won-jobs-${ukDateTime(new Date()).slice(0, 10)}.csv` }).click();
   URL.revokeObjectURL(url);
-  audit('export', 'marketing');   // needs migration 046 — until then the insert fails quietly (console only)
+  await audit('export', 'marketing');   // also marks this month's reminder as done
+  refreshGadsReminder();
+  LOADERS.marketing();
 }
 
 LOADERS.marketing = async function () {
   const body = document.getElementById('marketing-body');
   body.innerHTML = '<div class="loading">Loading…</div>';
 
-  const [gaRes, brevoCard, pipeRes] = await Promise.all([
+  const [gaRes, brevoCard, pipeRes, lastExport] = await Promise.all([
     getGa(true).then(v => ({ ok: true, v }), e => ({ ok: false, e })),
     brevoCardHtml(),
     getPipeline(true).then(v => ({ ok: true, v }), e => ({ ok: false, e })),
+    getLastGadsExport(),
   ]);
   const webHtml = pipeRes.ok ? webEnquiriesHtml(pipeRes.v)
     : `<h2 class="group-title">Website enquiries → CRM</h2>${errorHtml('Couldn\'t load website enquiries: ' + (pipeRes.e.message || pipeRes.e))}`;
@@ -1193,7 +1266,7 @@ LOADERS.marketing = async function () {
 
   body.innerHTML = `<div class="chips" style="margin-bottom:16px">${periodChips}</div>` + webHtml + gaHtml +
     `<h2 class="group-title">Email &amp; advertising</h2><div class="conn-grid">${brevoCard}${adCards}</div>` +
-    (pipeRes.ok ? googleAdsExportHtml(pipeRes.v) : '');
+    (pipeRes.ok ? googleAdsExportHtml(pipeRes.v, lastExport) : '');
   document.getElementById('gads-export-btn')?.addEventListener('click', () => downloadGoogleAdsCsv(pipeRes.v));
   body.querySelectorAll('[data-mkt-days]').forEach(b => b.addEventListener('click', () => { marketingDays = +b.dataset.mktDays; LOADERS.marketing(); }));
   wireTooltips(body);
