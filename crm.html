@@ -217,6 +217,7 @@ tbody tr:hover { background: var(--surface2); }
         <div class="table-header">
           <h2>Manual leads</h2>
           <input type="text" id="leads-search" placeholder="Search by name, address, phone, email…"/>
+          <button class="btn-secondary" type="button" id="show-deleted-leads-btn" style="display:none">Recently deleted</button>
           <button class="btn-primary" id="add-lead-btn">+ Add lead</button>
         </div>
         <div class="table-scroll">
@@ -228,6 +229,9 @@ tbody tr:hover { background: var(--surface2); }
           </table>
         </div>
         <div id="empty-state" style="display:none">No manual leads yet — add one from the map.</div>
+        <div id="deleted-leads-section" style="display:none; margin-top:16px">
+          <div id="deleted-leads-list"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -258,6 +262,7 @@ tbody tr:hover { background: var(--surface2); }
         <button class="btn-secondary" id="details-edit-btn">Edit</button>
         <button class="btn-secondary" id="details-cancel-btn" style="display:none">Cancel</button>
         <button class="btn-primary" id="details-save-btn" style="display:none">Save</button>
+        <button class="btn-secondary" id="details-delete-btn" style="display:none; margin-left:auto; color:var(--alert); border-color:var(--alert)">Delete lead</button>
       </div>
       <div class="sub"><a id="lead-map-link" href="#">View on map →</a></div>
       <div class="name-history">
@@ -503,6 +508,7 @@ async function fetchLeads() {
   const { data, error } = await db.from('prospects')
     .select('id, customer_name, lead_type, contact_phone, contact_email, address, postcode, created_at, install_hub_job_id, sent_to_install_hub_at, sent_to_install_hub_by_email, assigned_to_email, lead_channel')
     .eq('source', 'manual')
+    .is('deleted_at', null)
     .order('created_at', { ascending: false });
   if (error) { console.error('Failed to load leads:', error); return []; }
   return data || [];
@@ -639,6 +645,52 @@ function renderLeadsTable() {
 
 document.getElementById('leads-search').addEventListener('input', renderLeadsTable);
 
+/* ── Recently deleted leads (soft delete, migration 048) — manager-only,
+   same "hide behind a toggle, restorable" pattern as quote options'/
+   documents' "Show recently deleted" (037). A deleted lead drops out of
+   fetchLeads() entirely, so (unlike those two) this list lives at the
+   leads-table level, not inside a single lead's detail view. ── */
+let deletedLeadsLoaded = false;
+function toggleDeletedLeads() {
+  const section = document.getElementById('deleted-leads-section');
+  const btn = document.getElementById('show-deleted-leads-btn');
+  const showing = section.style.display !== 'none';
+  if (showing) { section.style.display = 'none'; btn.textContent = 'Recently deleted'; return; }
+  section.style.display = 'block';
+  btn.textContent = 'Hide recently deleted';
+  if (!deletedLeadsLoaded) { deletedLeadsLoaded = true; loadDeletedLeads(); }
+}
+document.getElementById('show-deleted-leads-btn').addEventListener('click', toggleDeletedLeads);
+
+async function loadDeletedLeads() {
+  const list = document.getElementById('deleted-leads-list');
+  list.innerHTML = '';
+  const { data, error } = await db.from('prospects')
+    .select('id, customer_name, address, postcode, deleted_at, deleted_by_email')
+    .eq('source', 'manual')
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false });
+  if (error) { list.innerHTML = `<div class="doc-empty">Couldn't load recently deleted leads.</div>`; return; }
+  if (!data.length) { list.innerHTML = `<div class="doc-empty">Nothing deleted recently.</div>`; return; }
+  list.innerHTML = data.map(d => `
+    <div class="doc-item">
+      <div>
+        <div class="doc-name">${escapeHtml(d.customer_name || 'Unnamed lead')}</div>
+        <div class="doc-meta">${escapeHtml([d.address, d.postcode].filter(Boolean).join(', '))}${d.address || d.postcode ? ' · ' : ''}deleted by ${escapeHtml(d.deleted_by_email || 'Unknown')} · ${formatShortDate(d.deleted_at)}</div>
+      </div>
+      <span class="doc-open-link" onclick="restoreLead('${escapeHtml(d.id)}')">Restore</span>
+    </div>`).join('');
+}
+
+async function restoreLead(id) {
+  const { error } = await db.from('prospects')
+    .update({ deleted_at: null, restored_at: new Date().toISOString(), restored_by_email: currentUser?.email || null })
+    .eq('id', id);
+  if (error) { alert('Failed to restore: ' + error.message); return; }
+  await refreshLeadsList();
+  loadDeletedLeads();
+}
+
 /* ── Lead detail view ────────────────────────────────────── */
 function populateLeadFields(lead) {
   document.getElementById('lead-name').textContent = lead.customer_name || 'Unnamed lead';
@@ -673,6 +725,7 @@ function openLeadDetail(lead) {
 
   populateLeadFields(lead);
   document.getElementById('lead-map-link').href = `index.html?lead=${encodeURIComponent(lead.id)}`;
+  document.getElementById('details-delete-btn').style.display = isAdmin(currentUser) ? '' : 'none';
 
   setDetailsEditing(false);
   detailsHistoryLoaded = false;
@@ -1053,6 +1106,29 @@ document.getElementById('back-btn').addEventListener('click', () => {
   currentLead = null;
   document.getElementById('detail-view').style.display = 'none';
   document.getElementById('leads-view').style.display = 'block';
+});
+
+// Soft delete (deleted_at set, migration 048) — manager-only, enforced by
+// trg_guard_prospect_soft_delete, not just this isAdmin() check hiding the
+// button. The lead drops out of fetchLeads() but every quote option,
+// contact log, document and install checklist on it is untouched and
+// comes straight back if it's ever restored from "Recently deleted".
+document.getElementById('details-delete-btn').addEventListener('click', async () => {
+  if (!currentLead) return;
+  if (!confirm(`Delete "${currentLead.customer_name || 'this lead'}"? It will disappear from the leads list, but can be restored later from "Recently deleted".`)) return;
+
+  const btn = document.getElementById('details-delete-btn');
+  btn.disabled = true; btn.textContent = 'Deleting…';
+  const { error } = await db.from('prospects')
+    .update({ deleted_at: new Date().toISOString(), deleted_by_email: currentUser?.email || null })
+    .eq('id', currentLead.id);
+  btn.disabled = false; btn.textContent = 'Delete lead';
+  if (error) { alert('Failed to delete: ' + error.message); return; }
+
+  currentLead = null;
+  document.getElementById('detail-view').style.display = 'none';
+  document.getElementById('leads-view').style.display = 'block';
+  await refreshLeadsList();
 });
 
 /* ── Quote options (quote_options, migration 034) — a lead can have
@@ -1953,11 +2029,11 @@ document.getElementById('lm-submit').addEventListener('click', async () => {
 });
 
 /* ── Boot ────────────────────────────────────────────────── */
-async function boot(user) {
-  currentUser = user;
-  document.getElementById('nav-dashboard-link').style.display = isAdmin(user) ? '' : 'none';
-  document.getElementById('nav-home-link').style.display = isAdmin(user) ? '' : 'none';
-  document.getElementById('wrap').style.display = 'block';
+// Shared by boot() and the delete/restore-lead flows, below — a full
+// refetch is the simplest way to keep latest_outcome/selected_quote_price
+// correct for a lead that just reappeared via restore (rather than trying
+// to patch those two derived fields back onto it by hand).
+async function refreshLeadsList() {
   allLeads = await fetchLeads();
   const ids = allLeads.map(l => l.id);
   const [outcomes, quotePrices] = await Promise.all([fetchLatestOutcomes(ids), fetchSelectedQuotePrices(ids)]);
@@ -1967,6 +2043,15 @@ async function boot(user) {
   });
   renderSidebarFilters();
   renderLeadsTable();
+}
+
+async function boot(user) {
+  currentUser = user;
+  document.getElementById('nav-dashboard-link').style.display = isAdmin(user) ? '' : 'none';
+  document.getElementById('nav-home-link').style.display = isAdmin(user) ? '' : 'none';
+  document.getElementById('show-deleted-leads-btn').style.display = isAdmin(user) ? '' : 'none';
+  document.getElementById('wrap').style.display = 'block';
+  await refreshLeadsList();
   // home.html's pipeline links here as crm.html?lead=<id> (same convention
   // as index.html?lead=<id>).
   const leadId = new URLSearchParams(location.search).get('lead');

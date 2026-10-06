@@ -497,6 +497,13 @@
     <div class="count-label">buildings in view</div>
   </div>
 
+  <!-- Two-phase load (2026-10-06): your own leads appear instantly;
+       the full EPC/VOA/oil-LPG prospect pipeline (tens of thousands of
+       rows) only loads once you ask for it. -->
+  <div class="section" id="load-pipeline-section" style="display:none">
+    <button class="btn-primary" id="load-pipeline-btn" style="width:100%">Load prospect data</button>
+  </div>
+
   <div class="section">
     <h3>Search</h3>
     <input id="search" type="text" placeholder="Address or postcode…"/>
@@ -1030,6 +1037,7 @@ function createMarker(d) {
   // including the programmatic marker.fire('click') used by deep links.
   marker.bindPopup(buildPopup(d), { maxWidth: 360, autoPan: true });
   marker.on('popupopen', () => {
+    loadBusinessRates(d);
     loadCompanyMatch(d);
     loadDocuments(d);
     loadContactLog(d);
@@ -1065,6 +1073,27 @@ function businessRatesHtml(d) {
   const more = remaining > 0 ? `<div>+ ${remaining.toLocaleString()} more</div>` : '';
   return `${rows}${more}`;
 }
+
+// Lazy per-popup fetch (2026-10-06) — business_rates_matches used to be
+// joined into the bulk prospects fetch and rendered synchronously here,
+// but its hereditaments array runs to 1,000+ entries on some postcodes
+// (e.g. self-storage sites) for data that's only ever looked at once a
+// popup actually opens. Direct `.from()` select, not a join, so it only
+// ever costs anything on the rows a rep actually clicks.
+async function loadBusinessRates(d) {
+  const container = document.getElementById(`business-rates-${d.id}`);
+  if (!container) return;
+  const { data, error } = await window.db.from('business_rates_matches')
+    .select('hereditaments, no_match')
+    .eq('prospect_id', d.id)
+    .maybeSingle();
+  // The popup may have closed (or a different one opened) while this was in flight.
+  const el = document.getElementById(`business-rates-${d.id}`);
+  if (!el) return;
+  if (error) { el.innerHTML = `<div class="company-match-fallback">Couldn't load business rates data.</div>`; return; }
+  el.innerHTML = businessRatesHtml({ business_rates_matches: data });
+}
+
 function contactInfoHtml(d) {
   return [
     d.contact_phone ? `📞 <a href="tel:${escapeHtml(d.contact_phone)}">${escapeHtml(d.contact_phone)}</a>` : '',
@@ -1206,7 +1235,7 @@ function buildPopup(d) {
         <button class="popup-tab" type="button" onclick="switchPopupTab(this, 'proposals')">Documents</button>
         <button class="popup-tab" type="button" onclick="switchPopupTab(this, 'contact-log')">Contact log</button>
       </div>
-      <div class="business-rates popup-tab-panel active" data-panel="rates">${businessRatesHtml(d)}</div>
+      <div class="business-rates popup-tab-panel active" data-panel="rates" id="business-rates-${escapeHtml(d.id)}">Loading…</div>
       <div class="company-match popup-tab-panel" data-panel="companies" id="company-match-${escapeHtml(d.id)}">
         <div class="company-match-body">Looking up company registered at this address…</div>
       </div>
@@ -1872,23 +1901,50 @@ document.getElementById('lm-submit').addEventListener('click', async () => {
   cluster.zoomToShowLayer(marker, () => marker.fire('click'));
 });
 
-/* ── Init ────────────────────────────────────────────────── */
-function initMap(data, grantAreaStatus) {
-  document.getElementById("total").textContent = data.length.toLocaleString();
+/* ── Init — two-phase load (2026-10-06) ─────────────────────
+   Phase 1 (bootstrapData): your own manual leads only — a few hundred
+   rows, near-instant. Phase 2 (loadPipelineData, behind the "Load
+   prospect data" button): the full EPC/VOA/oil-LPG pipeline, tens of
+   thousands of rows, paged in. allProspects accumulates both phases;
+   recomputeRecDateRange/addMarkersFor/rebuildSidebarChips are each run
+   again after phase 2 lands, over the union, so sidebar counts/legends
+   end up identical to the old one-shot load — nothing is phase-aware
+   past this point. ── */
+let allProspects = [];
+let loadedGrantAreaStatus = {};
+
+function recomputeRecDateRange() {
   recDateMin = null;
   recDateMax = null;
-  data.forEach(d => {
+  allProspects.forEach(d => {
     if (d.epc_recommends_solar && d.lodgement_date) {
       const t = new Date(d.lodgement_date).getTime();
       if (recDateMin === null || t < recDateMin) recDateMin = t;
       if (recDateMax === null || t > recDateMax) recDateMax = t;
     }
   });
-  data.forEach(d => {
+}
+
+// Only ever called with the NEW rows for this phase, never the full
+// allProspects — calling it twice with overlapping rows would double up
+// markers in the cluster.
+function addMarkersFor(rows) {
+  rows.forEach(d => {
     if (!d.lat || !d.lng) return;
     allMarkers.push(createMarker(d));
   });
-  buildGrantAreaChips(data, grantAreaStatus);
+}
+
+// Rebuilds every sidebar legend/filter-chip group from the full
+// allProspects — safe to call more than once (each build*Chips() below
+// clears its own list first) since phase 2 needs a fresh rebuild over the
+// union, not just the newly-loaded rows (a chip's count has to reflect
+// both phases, and a totally new chip may appear for the first time once
+// the pipeline, e.g., sector/maturity data, is in).
+function rebuildSidebarChips() {
+  const data = allProspects;
+  document.getElementById("total").textContent = data.length.toLocaleString();
+  buildGrantAreaChips(data, loadedGrantAreaStatus);
   buildBuildingTypeChips(data);
   buildEpcRatingChips(data);
   buildSicSectorChips(data);
@@ -1902,6 +1958,38 @@ function initMap(data, grantAreaStatus) {
   applyHeatingGrantConfig();
   buildHeatingGrantCount(data);
 }
+
+function initMap(manualLeads, grantAreaStatus) {
+  loadedGrantAreaStatus = grantAreaStatus;
+  allProspects = manualLeads;
+  recomputeRecDateRange();
+  addMarkersFor(allProspects);
+  rebuildSidebarChips();
+}
+
+let pipelineLoaded = false;
+async function loadPipelineData() {
+  if (pipelineLoaded) return;
+  const btn = document.getElementById('load-pipeline-btn');
+  btn.disabled = true;
+  try {
+    const pipelineRows = await fetchPipelineProspects((fetched, total) => {
+      btn.textContent = `Loading… (${fetched.toLocaleString()} / ${total.toLocaleString()})`;
+    });
+    allProspects = allProspects.concat(pipelineRows);
+    recomputeRecDateRange();
+    addMarkersFor(pipelineRows);
+    rebuildSidebarChips();
+    applyFilters();
+    pipelineLoaded = true;
+    document.getElementById('load-pipeline-section').style.display = 'none';
+  } catch (e) {
+    console.error('Failed to load prospect data:', e);
+    btn.disabled = false;
+    btn.textContent = 'Load prospect data (failed — retry?)';
+  }
+}
+document.getElementById('load-pipeline-btn').addEventListener('click', loadPipelineData);
 
 // Sidebar's "EPC recommendations" chips are static markup (unlike the other
 // three chip groups, which are built entirely from data) — source their
@@ -1949,6 +2037,7 @@ function buildGrantAreaChips(data, statusByArea) {
     counts[area] = (counts[area] || 0) + 1;
   });
   const el = document.getElementById("grant-area-list");
+  el.innerHTML = ''; // safe to rebuild twice (phase 2 of the map load, 2026-10-06)
   GRANT_AREA_ORDER.forEach(area => {
     const status = statusByArea[area];
     const cfg = status && GRANT_STATUS[status];
@@ -1977,6 +2066,7 @@ function buildBuildingTypeChips(data) {
   const counts = {};
   data.forEach(d => { counts[d._bucket] = (counts[d._bucket] || 0) + 1; });
   const el = document.getElementById("building-type-list");
+  el.innerHTML = ''; // safe to rebuild twice (phase 2 of the map load, 2026-10-06)
   BUILDING_TYPE_ORDER.filter(b => counts[b]).forEach(bucket => {
     const row = document.createElement("label");
     row.className = "chip on";
@@ -1996,6 +2086,7 @@ function buildEpcRatingChips(data) {
   const counts = {};
   data.forEach(d => { if (d.epc_rating) counts[d.epc_rating] = (counts[d.epc_rating] || 0) + 1; });
   const el = document.getElementById("epc-rating-list");
+  el.innerHTML = ''; // safe to rebuild twice (phase 2 of the map load, 2026-10-06)
   EPC_RATING_ORDER.filter(r => counts[r]).forEach(rating => {
     const cfg = EPC_RATING[rating];
     const row = document.createElement("label");
@@ -2016,6 +2107,7 @@ function buildSicSectorChips(data) {
   const counts = {};
   data.forEach(d => { if (d._sicSector) counts[d._sicSector] = (counts[d._sicSector] || 0) + 1; });
   const el = document.getElementById("sic-sector-list");
+  el.innerHTML = ''; // safe to rebuild twice (phase 2 of the map load, 2026-10-06)
   SIC_SECTOR_ORDER.filter(s => counts[s]).forEach(sector => {
     const row = document.createElement("label");
     row.className = "chip on";
@@ -2035,6 +2127,7 @@ function buildMaturityChips(data) {
   const counts = {};
   data.forEach(d => { if (d._maturity) counts[d._maturity] = (counts[d._maturity] || 0) + 1; });
   const el = document.getElementById("maturity-list");
+  el.innerHTML = ''; // safe to rebuild twice (phase 2 of the map load, 2026-10-06)
   MATURITY_ORDER.filter(m => counts[m]).forEach(maturity => {
     const row = document.createElement("label");
     row.className = "chip on";
@@ -2054,6 +2147,7 @@ function buildOwnershipStatusChips(data) {
   const counts = {};
   data.forEach(d => { counts[d.ownership_status] = (counts[d.ownership_status] || 0) + 1; });
   const el = document.getElementById("ownership-status-list");
+  el.innerHTML = ''; // safe to rebuild twice (phase 2 of the map load, 2026-10-06)
   OWNERSHIP_STATUS_ORDER.filter(s => counts[s]).forEach(status => {
     const cfg = OWNERSHIP_STATUS[status];
     const row = document.createElement("label");
@@ -2133,6 +2227,7 @@ function buildSolarStatusChips(data) {
   const counts = {};
   data.forEach(d => { counts[d.solar_status] = (counts[d.solar_status] || 0) + 1; });
   const el = document.getElementById("solar-status-list");
+  el.innerHTML = ''; // safe to rebuild twice (phase 2 of the map load, 2026-10-06)
   SOLAR_STATUS_ORDER.filter(s => counts[s]).forEach(status => {
     const cfg = SOLAR_STATUS[status];
     const row = document.createElement("label");
@@ -2325,22 +2420,77 @@ document.getElementById("reset").addEventListener("click", () => {
 // that. Slower but reliable beats fast but occasionally broken; revisit
 // concurrency only with a safer mechanism (e.g. a server-side view) if the
 // ~90s sequential load time becomes a real problem again.
-async function fetchAllProspects(onProgress) {
+// source/customer_name/lead_type/contact_phone/contact_email (migration
+// 017) must be selected here, not just at insert time — without them, a
+// manual lead fetched on a fresh page load comes back with source
+// undefined, createMarker() treats it as a pipeline row instead of a
+// manual one, and the default solar-status filter (which manual leads
+// are otherwise exempted from) silently hides it. Bit us live 2026-09-07:
+// a lead added fine in one session vanished after a reload.
+// main_fuel/tenure (migration 041) were missing from this list entirely
+// until now — every oil/lpg-bus popup was silently falling back to the
+// generic "Oil/LPG"/no-tenure text in buildPopup() instead of the real
+// per-property value, since the row simply never carried those columns
+// client-side. Found and fixed 2026-09-29 while adding assigned_to_email
+// alongside it.
+//
+// business_rates_matches used to be joined in here too — moved to a lazy
+// per-popup fetch (loadBusinessRates) instead (2026-10-06), since some
+// postcodes' hereditaments array runs to 1,000+ entries and it was dead
+// weight on every other row for data only ever shown once a popup opens.
+// company_classifications can't be deferred the same way — its sic_codes/
+// accounts_type drive the Sector/Maturity sidebar filters, which need
+// every pipeline row's value up front to build accurate chip counts.
+const PROSPECT_COLUMNS_BASE = 'id, address, postcode, lat, lng, property_type, floor_area:total_floor_area, epc_rating:current_energy_rating, local_authority, solar_status, solar_max_panels, solar_yearly_energy_kwh, current_energy_efficiency, epc_recommends_solar, epc_recommends_efficiency, lodgement_date, source, customer_name, lead_type, contact_phone, contact_email, created_at, ownership_status, main_fuel, tenure, assigned_to_email';
+const PROSPECT_COLUMNS_PIPELINE = PROSPECT_COLUMNS_BASE + ', company_classifications(company_name, sic_codes, incorporated_on, accounts_type, no_match)';
+
+// Phase 1 of the map load (2026-10-06) — just your own manual leads, a
+// few hundred rows at most, so a single query (no paging) is plenty fast.
+// Never joins company_classifications/business_rates_matches: neither
+// table ever has a row for a manual lead (both are EPC/VOA/Companies
+// House enrichment, keyed off postcode-level pipeline data a hand-typed
+// lead never goes through).
+async function fetchManualLeads() {
+  const { data, error } = await db
+    .from('prospects')
+    .select(PROSPECT_COLUMNS_BASE)
+    .eq('source', 'manual')
+    .is('deleted_at', null)
+    .not('lat', 'is', null)
+    .order('id', { ascending: true });
+  if (error) throw new Error(JSON.stringify(error));
+  return data || [];
+}
+
+// Phase 2 (behind the "Load prospect data" button) — everything else:
+// the EPC/VOA/oil-LPG pipeline, tens of thousands of rows. `.or(...)`
+// rather than `.neq('source', 'manual')` deliberately — plain `<>` would
+// silently drop every row where `source is null` (the original pre-
+// migration-013 EPC batch, still null on some rows per manager_system_
+// stats()'s own `coalesce(source, 'epc')`), since SQL NULL comparisons
+// are NULL, not true, and get excluded either way.
+//
+// Keyset (cursor) pagination, not offset — `.range(from, to)` translates to
+// SQL OFFSET, which Postgres can only satisfy by computing the full merge
+// join across the whole table (now ~35k rows x 2 joined tables) and then
+// discarding the skipped rows, since OFFSET is applied after the join.
+// Verified live: a deep page (offset ~34000) took 5.9s under that plan.
+// `id > lastId ORDER BY id LIMIT 1000` lets Postgres seek via the primary-key
+// index instead — the equivalent deep page dropped to 13ms (EXPLAIN ANALYZE,
+// same live data).
+//
+// Deliberately sequential, not concurrent: two earlier attempts today at
+// parallelizing this (a bounded worker pool, both offset-based and
+// keyset-based) each caused live 57014 "statement timeout" failures under
+// real load, even though every individual query is fast in isolation —
+// `authenticated`'s statement_timeout is only 8s, and something about
+// multiple concurrent joined queries against this table set pushes past
+// that. Slower but reliable beats fast but occasionally broken; revisit
+// concurrency only with a safer mechanism (e.g. a server-side view) if the
+// load time becomes a real problem again even behind its own button.
+async function fetchPipelineProspects(onProgress) {
   const PAGE = 1000; // PostgREST's default max-rows cap — must page past it explicitly
-  // source/customer_name/lead_type/contact_phone/contact_email (migration
-  // 017) must be selected here, not just at insert time — without them, a
-  // manual lead fetched on a fresh page load comes back with source
-  // undefined, createMarker() treats it as a pipeline row instead of a
-  // manual one, and the default solar-status filter (which manual leads
-  // are otherwise exempted from) silently hides it. Bit us live 2026-09-07:
-  // a lead added fine in one session vanished after a reload.
-  // main_fuel/tenure (migration 041) were missing from this list entirely
-  // until now — every oil/lpg-bus popup was silently falling back to the
-  // generic "Oil/LPG"/no-tenure text in buildPopup() instead of the real
-  // per-property value, since the row simply never carried those columns
-  // client-side. Found and fixed 2026-09-29 while adding assigned_to_email
-  // alongside it.
-  const PROSPECT_COLUMNS = 'id, address, postcode, lat, lng, property_type, floor_area:total_floor_area, epc_rating:current_energy_rating, local_authority, solar_status, solar_max_panels, solar_yearly_energy_kwh, current_energy_efficiency, epc_recommends_solar, epc_recommends_efficiency, lodgement_date, source, customer_name, lead_type, contact_phone, contact_email, created_at, ownership_status, main_fuel, tenure, assigned_to_email, business_rates_matches(hereditaments, no_match), company_classifications(company_name, sic_codes, incorporated_on, accounts_type, no_match)';
+  const notManual = 'source.is.null,source.neq.manual';
 
   // head:true returns only a count, no rows — safe from the max-rows cap
   // that bit the id-list fetch (2026-08-21 live incident), and cheap since
@@ -2348,7 +2498,9 @@ async function fetchAllProspects(onProgress) {
   const { count: total, error: countError } = await db
     .from('prospects')
     .select('id', { count: 'exact', head: true })
-    .not('lat', 'is', null);
+    .not('lat', 'is', null)
+    .is('deleted_at', null)
+    .or(notManual);
   if (countError) throw new Error(JSON.stringify(countError));
 
   const rows = [];
@@ -2356,8 +2508,10 @@ async function fetchAllProspects(onProgress) {
   while (true) {
     let query = db
       .from('prospects')
-      .select(PROSPECT_COLUMNS)
+      .select(PROSPECT_COLUMNS_PIPELINE)
       .not('lat', 'is', null)
+      .is('deleted_at', null)
+      .or(notManual)
       .order('id', { ascending: true })
       .limit(PAGE);
     if (lastId) query = query.gt('id', lastId);
@@ -2392,24 +2546,32 @@ function bootstrapData() {
   if (dataLoaded) return;
   dataLoaded = true;
   const loadingText = document.getElementById('loading-text');
+  loadingText.textContent = 'Loading your leads…';
   Promise.all([
-    fetchAllProspects((fetched, total) => {
-      loadingText.textContent = `Loading prospect data… (${fetched.toLocaleString()} / ${total.toLocaleString()})`;
-    }),
+    fetchManualLeads(),
     fetchGrantAreaStatus(),
     fetch('shared/south-yorkshire-boundaries.geojson').then(r => r.json()),
   ])
-    .then(([data, grantAreaStatus, boundaries]) => {
+    .then(([manualLeads, grantAreaStatus, boundaries]) => {
       document.getElementById("loading").style.display = "none";
       initGrantAreaLayer(boundaries, grantAreaStatus);
-      initMap(data, grantAreaStatus);
+      initMap(manualLeads, grantAreaStatus);
       applyFilters();
-      // crm.html's "View on map" links here as index.html?lead=<id>.
+      document.getElementById('load-pipeline-section').style.display = '';
+
+      // crm.html's "View on map" links here as index.html?lead=<id> — always
+      // a manual lead, found immediately above. home.html's pipeline links
+      // here too (leadLink()) for any prospect with logged contact history,
+      // which may not be a manual lead — load the full pipeline automatically
+      // in that case rather than leaving the deep link looking broken.
       const leadId = new URLSearchParams(location.search).get('lead');
-      if (leadId) {
-        const marker = allMarkers.find(m => m._d.id === leadId);
-        if (marker) cluster.zoomToShowLayer(marker, () => marker.fire('click'));
-      }
+      if (!leadId) return;
+      const marker = allMarkers.find(m => m._d.id === leadId);
+      if (marker) { cluster.zoomToShowLayer(marker, () => marker.fire('click')); return; }
+      loadPipelineData().then(() => {
+        const pipelineMarker = allMarkers.find(m => m._d.id === leadId);
+        if (pipelineMarker) cluster.zoomToShowLayer(pipelineMarker, () => pipelineMarker.fire('click'));
+      });
     })
     .catch(e => {
       console.error(e);

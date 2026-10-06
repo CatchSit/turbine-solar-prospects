@@ -506,7 +506,7 @@ const QUOTE_COST_FIELDS = ['kit_price', 'scaffold_price', 'electrical_cost', 'ro
 
 async function loadPipelineData() {
   const [manual, contacts, options, checklists, enquiries] = await Promise.all([
-    fetchAll(() => db.from('prospects').select(LEAD_COLUMNS).eq('source', 'manual').order('id')),
+    fetchAll(() => db.from('prospects').select(LEAD_COLUMNS).eq('source', 'manual').is('deleted_at', null).order('id')),
     fetchAll(() => db.from('prospect_contacts').select('prospect_id, outcome, contacted_at, follow_up_date').is('deleted_at', null).order('contacted_at', { ascending: false })),
     fetchAll(() => db.from('quote_options').select(`prospect_id, label, quote_price, is_selected, ${QUOTE_COST_FIELDS.join(', ')}`).is('deleted_at', null).order('id')),
     fetchAll(() => db.from('install_checklists').select('*').order('prospect_id')),
@@ -521,7 +521,11 @@ async function loadPipelineData() {
   const extraIds = [...new Set(contacts.map(c => c.prospect_id))].filter(id => !leads.has(id));
   for (let i = 0; i < extraIds.length; i += 150) {
     const chunk = extraIds.slice(i, i + 150);
-    const { data, error } = await db.from('prospects').select(LEAD_COLUMNS).in('id', chunk);
+    // deleted_at filter (migration 048) matters here too — without it, a
+    // soft-deleted manual lead (excluded from `manual` above, so it looks
+    // like an "extra" id) would get fetched right back in via its own
+    // contact history and reappear in the pipeline anyway.
+    const { data, error } = await db.from('prospects').select(LEAD_COLUMNS).in('id', chunk).is('deleted_at', null);
     if (error) throw error;
     data.forEach(p => leads.set(p.id, p));
   }
