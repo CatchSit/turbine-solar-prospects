@@ -465,20 +465,24 @@ async function fetchAll(buildQuery) {
    ════════════════════════════════════════════════════════════ */
 const STAGES = [
   { key: 'new',       label: 'New',              outcomes: [] },
-  { key: 'contacted', label: 'Contacted',        outcomes: ['No Answer', 'Follow Up', 'Enquiring Only'] },
-  { key: 'engaged',   label: 'Meeting / survey', outcomes: ['Meeting Booked', 'Survey Booked'] },
-  { key: 'quoted',    label: 'Quote sent',       outcomes: ['Quote Sent'] },
-  { key: 'won',       label: 'Won',              outcomes: ['Converted'] },
+  // Staged outcome flow (shared/contact-outcome-config.js, 2026-10-12) mapped
+  // onto these pipeline columns. 'lost' takes every closing outcome (not
+  // proceeding + bad lead); "Recontact Later" parks a lead, so it stays open
+  // under Contacted. "Enquiring Only" moved from Contacted to Lost then.
+  { key: 'contacted', label: 'Contacted',        outcomes: ['No Answer', 'Left Message', 'Follow Up', 'Recontact Later'] },
+  { key: 'engaged',   label: 'Meeting / survey', outcomes: ['Info Sent', 'Meeting Booked', 'Survey Booked', 'Survey Completed'] },
+  { key: 'quoted',    label: 'Quote sent',       outcomes: ['Quote Sent', 'Negotiating'] },
+  { key: 'won',       label: 'Won',              outcomes: ['Converted', 'Contract Signed', 'DNO Submitted', 'DNO Approved'] },
   { key: 'scheduled', label: 'Scheduled',        outcomes: ['Scheduled for Install'] },
-  { key: 'completed', label: 'Completed',        outcomes: ['Completed'] },
-  { key: 'lost',      label: 'Lost',             outcomes: ['Not Interested', 'Already Has Solar'] },
+  { key: 'completed', label: 'Completed',        outcomes: ['Completed', 'Job Closed'] },
+  { key: 'lost',      label: 'Lost',             outcomes: CONTACT_OUTCOME_ORDER.filter(o => ['lost', 'bad'].includes(CONTACT_OUTCOME[o].stage)) },
 ];
 const STAGE_BY_OUTCOME = {};
 STAGES.forEach(s => s.outcomes.forEach(o => { STAGE_BY_OUTCOME[o] = s.key; }));
 const STAGE_INDEX = Object.fromEntries(STAGES.map((s, i) => [s.key, i]));
 const WON_STAGES = new Set(['won', 'scheduled', 'completed']);
 const CLOSED_STAGES = new Set(['won', 'scheduled', 'completed', 'lost']);
-const WON_OUTCOMES = new Set(['Converted', 'Scheduled for Install', 'Completed']);
+const WON_OUTCOMES = new Set(['Converted', 'Contract Signed', 'DNO Submitted', 'DNO Approved', 'Scheduled for Install', 'Completed', 'Job Closed']);
 
 function sourceLabel(p) {
   if (p.lead_channel === 'website') return 'Website enquiry';
@@ -551,7 +555,7 @@ async function loadPipelineData() {
     // else the date mirrored from install-hub when the job was sent there.
     const scheduledContact = cs.find(c => c.outcome === 'Scheduled for Install' && c.follow_up_date);
     const installDate = scheduledContact?.follow_up_date || p.install_scheduled_date || null;
-    const completedAt = cs.find(c => c.outcome === 'Completed')?.contacted_at || null;
+    const completedAt = (cs.find(c => c.outcome === 'Completed') || cs.find(c => c.outcome === 'Job Closed'))?.contacted_at || null;
     const checklist = checklistByLead[p.id] || null;
     // N/A tasks (migration 047) count as resolved, same as done — a job
     // with no scaffold needed shouldn't sit in "Needs attention" forever.
@@ -849,7 +853,7 @@ function renderWon() {
   }).join('');
   const undated = jobs.filter(j => !j.l.wonAt).length;
   const monthCard = `<div class="sub-card"><h3>By month won</h3>${monthRows || '<div class="empty">No won dates in this period.</div>'}
-    ${undated ? `<div class="meter-note">${undated} job${undated === 1 ? ' has' : 's have'} no "Converted" contact logged, so no won date.</div>` : ''}</div>`;
+    ${undated ? `<div class="meter-note">${undated} job${undated === 1 ? ' has' : 's have'} no "Quote accepted" contact logged, so no won date.</div>` : ''}</div>`;
 
   const jobRows = jobs.map(({ l, costs }) => `
     <tr><td><a href="${leadLink(l)}">${escapeHtml(leadName(l))}</a>${l.valueOption?.label ? `<div class="muted">${escapeHtml(l.valueOption.label)}</div>` : ''}</td>
@@ -1201,7 +1205,7 @@ function googleAdsExportHtml(leads, last) {
   const plural = (n, one, many) => `${num(n)} ${n === 1 ? one : many}`;
   const skipped = [
     counts.tooOld ? `${plural(counts.tooOld, 'job was', 'jobs were')} clicked more than ${GOOGLE_CLICK_MAX_DAYS} days ago` : '',
-    counts.noWonDate ? `${plural(counts.noWonDate, 'job has', 'jobs have')} no "Converted" contact logged, so no won date` : '',
+    counts.noWonDate ? `${plural(counts.noWonDate, 'job has', 'jobs have')} no "Quote accepted" contact logged, so no won date` : '',
     counts.wonBeforeClick ? `${plural(counts.wonBeforeClick, 'job was', 'jobs were')} won before the ad click (repeat enquiry from an existing customer)` : '',
   ].filter(Boolean);
   return `<div class="card" id="gads-export-card" style="margin-top:18px">

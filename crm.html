@@ -19,7 +19,7 @@
 body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.45; }
 a { color: var(--accent); text-decoration: none; }
 button { font-family: inherit; cursor: pointer; }
-#top-nav { background: var(--surface); border-bottom: 1px solid var(--border); height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; position: sticky; top: 0; }
+#top-nav { z-index: 60; background: var(--surface); border-bottom: 1px solid var(--border); height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; position: sticky; top: 0; }
 .nav-brand { font-weight: 600; font-size: 15px; }
 .nav-brand-sub { font-size: 11.5px; color: var(--text3); margin-left: 6px; }
 .nav-right { display: flex; align-items: center; gap: 10px; }
@@ -27,7 +27,6 @@ button { font-family: inherit; cursor: pointer; }
 .nav-link:hover { background: var(--surface2); color: var(--text); text-decoration: none; }
 #sign-out-btn { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; color: var(--text2); }
 #wrap { margin: 0 auto; padding: 24px; max-width: 1600px; }
-#detail-view { max-width: 1000px; margin: 0 auto; }
 .leads-layout { display: flex; align-items: flex-start; gap: 20px; }
 .leads-sidebar { width: 230px; flex-shrink: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; position: sticky; top: 80px; }
 .leads-sidebar h4 { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text3); margin: 18px 0 8px; }
@@ -54,20 +53,77 @@ tbody tr:hover { background: var(--surface2); }
 .tag { display: inline-flex; align-items: center; gap: 6px; background: var(--surface2); color: var(--text2); font-size: 11.5px; padding: 4px 10px 4px 7px; border-radius: 100px; }
 .tag .tag-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 
-/* ── Lead detail view ────────────────────────────────────── */
-#back-btn { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; color: var(--text2); margin-bottom: 16px; }
+/* ── Lead detail view (redesign 2026-10-12): sticky header + stage bar +
+   next step, then three fixed zones, each section with its own colour. ── */
+#back-btn { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; color: var(--text2); }
 #back-btn:hover { background: var(--surface2); color: var(--text); }
-.lead-header { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin-bottom: 16px; }
-.lead-header h2 { font-size: 18px; margin-bottom: 6px; }
-.lead-header .sub { color: var(--text2); font-size: 12.5px; margin-top: 4px; }
-.lead-header .sub a { color: var(--accent); }
-.name-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.name-row h2 { margin-bottom: 0; }
-.name-input { font-size: 16px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; background: var(--surface2); color: var(--text); flex: 1; min-width: 160px; }
-.name-input:focus { outline: none; border-color: var(--accent); }
-.name-history { margin-top: 12px; }
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
-.card h3 { font-size: 18px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; margin-bottom: 14px; }
+.lead-head { position: sticky; top: 56px; z-index: 50; background: var(--surface); border: 1px solid var(--border); border-radius: 12px 12px 0 0; padding: 14px 20px 0; }
+.lh-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.lh-name { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+.lh-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.lh-contact { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--text2); }
+.lh-contact a { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.lh-actions { margin-left: auto; display: flex; gap: 8px; }
+.btn-ghost { background: none; border: 1px solid var(--border); color: var(--text2); border-radius: 8px; padding: 7px 12px; font-size: 12.5px; font-weight: 500; }
+.btn-ghost:hover:not(:disabled) { background: var(--surface2); color: var(--text); }
+.btn-ghost:disabled { opacity: .4; cursor: default; }
+.stagebar { display: grid; grid-template-columns: repeat(7, minmax(84px, 1fr)); margin-top: 12px; overflow-x: auto; }
+.stage { padding: 8px 6px 10px; font-size: 12px; font-weight: 500; color: var(--text3); text-align: center; border-bottom: 3px solid var(--border); white-space: nowrap; }
+.stage small { display: block; font-size: 10px; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 1px; }
+.stage.done { color: var(--accentDk); border-bottom-color: var(--accent); }
+.stage.current { color: var(--text); font-weight: 700; border-bottom-color: var(--accent); background: var(--accentDim); border-radius: 8px 8px 0 0; }
+.stage.closed { color: var(--alert); border-bottom-color: var(--alert); background: var(--alertSoft); border-radius: 8px 8px 0 0; }
+.stage.parked { color: var(--warn); border-bottom-color: var(--warn); background: var(--warnSoft); border-radius: 8px 8px 0 0; }
+.nextstep { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 11px 0 12px; }
+.ns-label { font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--accentDk); background: var(--accentDim); padding: 3px 8px; border-radius: 6px; }
+.ns-text { font-size: 14px; font-weight: 600; }
+.ns-due { font-size: 12.5px; color: var(--text2); }
+.ns-due.overdue { color: var(--alert); font-weight: 600; }
+.ns-due.today { color: var(--warn); font-weight: 600; }
+.ns-status { margin-left: auto; }
+.zones { display: grid; grid-template-columns: minmax(260px, 320px) minmax(0, 1fr) minmax(0, 1.2fr); gap: 16px; padding-top: 16px; align-items: start; }
+.zone { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+@media (max-width: 1200px) { .zones { grid-template-columns: 1fr 1fr; } .zone-customer { grid-column: 1 / -1; } }
+@media (max-width: 760px) { .zones { grid-template-columns: 1fr; } .lh-actions { margin-left: 0; } .lead-head { position: static; } }
+.sec { background: var(--surface); border: 1px solid var(--border); border-top: 3px solid var(--sec-color); border-radius: 12px; }
+.sec-h { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.sec-h h3 { font-size: 15px; font-weight: 700; }
+.sec-icon { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; flex-shrink: 0; background: var(--sec-soft); color: var(--sec-color); }
+.sec-icon svg { width: 15px; height: 15px; }
+.sec-count { font-size: 11.5px; color: var(--text3); font-weight: 500; }
+.sec-h .ic-progress { margin-left: auto; }
+.sec-act { margin-left: auto; background: none; border: none; color: var(--accent); font-size: 12.5px; font-weight: 600; padding: 4px 6px; border-radius: 6px; }
+.sec-act:hover { background: var(--surface2); }
+.sec-b { padding: 14px 16px; }
+.sec-customer { --sec-color: #3b7dd8; --sec-soft: #dce7f7; }
+.sec-activity { --sec-color: #2ba45e; --sec-soft: rgba(43,164,94,0.12); }
+.sec-quotes { --sec-color: #8a6d3b; --sec-soft: #ede2cf; }
+.sec-docs { --sec-color: #6f5b94; --sec-soft: #e2dcec; }
+.sec-install { --sec-color: #2a9d9d; --sec-soft: #d9f0ef; }
+.sec-install.locked .sec-b { opacity: .7; }
+.fields { margin: 0; }
+.fields .f { display: grid; grid-template-columns: 96px 1fr; gap: 8px; padding: 7px 0; border-bottom: 1px dashed var(--border); font-size: 13px; align-items: baseline; }
+.fields .f:last-child { border-bottom: 0; }
+.fields dt { color: var(--text3); font-size: 12px; }
+.fields dd { margin: 0; font-weight: 500; overflow-wrap: anywhere; }
+.fields dd .muted { color: var(--text3); font-weight: 400; font-size: 11.5px; }
+#ld-form .quote-field { margin-bottom: 10px; }
+#ld-form select { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 13px; background: var(--surface2); color: var(--text); }
+.field-help { font-size: 11.5px; color: var(--text3); margin-top: 4px; }
+.form-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+.cust-foot { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding-top: 12px; margin-top: 6px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text3); }
+.btn-link-danger { background: none; border: none; padding: 0; margin-top: 12px; color: var(--alert); font-size: 12px; font-weight: 500; }
+.composer { border: 1px dashed var(--border); border-radius: 10px; padding: 12px; background: var(--surface2); display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 12.5px; color: var(--text2); }
+.timeline { list-style: none; margin: 14px 0 0; padding: 0; position: relative; }
+.timeline::before { content: ""; position: absolute; left: 11px; top: 6px; bottom: 6px; width: 2px; background: var(--border); }
+.timeline li { position: relative; padding: 0 0 16px 34px; }
+.timeline li:last-child { padding-bottom: 0; }
+.tl-dot { position: absolute; left: 5px; top: 4px; width: 14px; height: 14px; border-radius: 50%; border: 3px solid var(--surface); background: var(--text3); }
+.tl-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.tl-kind { font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--text3); }
+.lock-msg { display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; color: var(--text2); }
+.lock-msg ul { margin: 0; padding-left: 18px; color: var(--text3); display: grid; gap: 4px; }
+.sub-h { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
 .quote-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 12px; }
 .quote-field label { display: block; font-size: 11.5px; color: var(--text2); margin-bottom: 5px; }
 .quote-field input { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 13px; background: var(--surface2); color: var(--text); }
@@ -85,7 +141,7 @@ tbody tr:hover { background: var(--surface2); }
 .ic-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .ic-progress { font-size: 12px; font-weight: 500; padding: 4px 10px; border-radius: 100px; background: var(--surface2); color: var(--text2); white-space: nowrap; }
 .ic-progress.all-done { background: var(--accentDim); color: var(--accentDk); }
-.ic-row { display: grid; grid-template-columns: 220px 1fr 70px 190px; gap: 14px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.ic-row { display: grid; grid-template-columns: minmax(150px, 190px) 1fr 56px; gap: 14px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .ic-row:last-child { border-bottom: 0; }
 .ic-row label.ic-check { display: flex; align-items: center; gap: 10px; font-size: 13.5px; font-weight: 500; cursor: pointer; }
 .ic-row label.ic-na { font-size: 12px; font-weight: 500; color: var(--text2); }
@@ -94,7 +150,8 @@ tbody tr:hover { background: var(--surface2); }
 .ic-row input[type=text]:focus { outline: none; border-color: var(--accent); }
 .ic-row input[type=text]:disabled { opacity: .5; cursor: not-allowed; }
 .ic-row.ic-na-active { opacity: .55; }
-.ic-meta { font-size: 11.5px; color: var(--text3); }
+.ic-meta { font-size: 11.5px; color: var(--text3); grid-column: 1 / -1; margin-top: -8px; }
+.ic-meta:empty { display: none; }
 .web-tag { display: inline-block; margin-top: 3px; font-size: 10.5px; font-weight: 600; color: #2563eb; background: #dbeafe; padding: 1px 7px; border-radius: 100px; }
 .web-enq { padding: 10px 0; border-bottom: 1px solid var(--border); }
 .web-enq:last-child { border-bottom: 0; }
@@ -150,9 +207,19 @@ tbody tr:hover { background: var(--surface2); }
 .qo-detail-row:last-child td { border-bottom: none; }
 
 /* ── Log Contact modal (ported from index.html) ─────────── */
-#contact-modal-overlay, #lead-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(17,24,39,0.4); z-index: 2000; align-items: center; justify-content: center; }
-#contact-modal-overlay.open, #lead-modal-overlay.open { display: flex; }
-#contact-modal, #lead-modal { width: 420px; max-width: 92vw; max-height: 88vh; overflow-y: auto; background: var(--surface); border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+#contact-modal-overlay, #lead-modal-overlay, #origins-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(17,24,39,0.4); z-index: 2000; align-items: center; justify-content: center; }
+#contact-modal-overlay.open, #lead-modal-overlay.open, #origins-modal-overlay.open { display: flex; }
+#contact-modal, #lead-modal, #origins-modal { width: 420px; max-width: 92vw; max-height: 88vh; overflow-y: auto; background: var(--surface); border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+#contact-modal { width: 560px; }
+#origins-modal { width: 600px; }
+.modal-body select { width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 13px; background: var(--surface2); color: var(--text); }
+.origin-row { display: grid; grid-template-columns: 1fr 110px auto auto; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.origin-row:last-child { border-bottom: 0; }
+.origin-row input[type=text], .origin-row input[type=number], .origin-add input { width: 100%; padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 13px; background: var(--surface2); color: var(--text); }
+.origin-row .origin-meta { grid-column: 1 / -1; font-size: 11.5px; color: var(--text3); margin-top: -2px; }
+.origin-row.inactive input[type=text] { color: var(--text3); }
+.origin-active { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text2); white-space: nowrap; }
+.origin-add { display: grid; grid-template-columns: 1fr 110px auto; gap: 8px; align-items: end; padding-top: 12px; margin-top: 8px; border-top: 1px solid var(--border); }
 .modal-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 20px 22px 14px; border-bottom: 1px solid var(--border); }
 .modal-eyebrow { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .08em; }
 .modal-header-text h2 { font-size: 17px; font-weight: 600; margin-top: 4px; }
@@ -177,6 +244,7 @@ tbody tr:hover { background: var(--surface2); }
 .outcome-chip .chip-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .outcome-sections { display: flex; flex-direction: column; gap: 10px; }
 .outcome-section-label { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--text3); margin-bottom: 5px; }
+.cm-next-hint { margin-top: 10px; padding: 8px 11px; border-radius: 8px; background: var(--accentDim, rgba(43,164,94,0.12)); color: var(--accentDk, #1f8a52); font-size: 12.5px; font-weight: 500; }
 .outcome-chip.on { color: #fff; border-color: transparent; }
 .modal-footer { display: flex; align-items: center; justify-content: space-between; padding: 14px 22px; border-top: 1px solid var(--border); }
 .modal-shortcuts { font-size: 11px; color: var(--text3); font-family: monospace; }
@@ -202,13 +270,13 @@ tbody tr:hover { background: var(--surface2); }
       <aside class="leads-sidebar">
         <h4>Type</h4>
         <div id="sidebar-type-list"></div>
-        <h4>Status</h4>
+        <h4>Stage</h4>
         <div id="sidebar-status-list"></div>
         <h4>Install-hub</h4>
         <div id="sidebar-installhub-list"></div>
         <h4>Assigned to</h4>
         <div id="sidebar-assigned-list"></div>
-        <h4>Source</h4>
+        <h4>Origin</h4>
         <div id="sidebar-source-list"></div>
         <button class="sidebar-reset-btn" id="sidebar-reset-btn">Reset filters</button>
       </aside>
@@ -218,12 +286,13 @@ tbody tr:hover { background: var(--surface2); }
           <h2>Manual leads</h2>
           <input type="text" id="leads-search" placeholder="Search by name, address, phone, email…"/>
           <button class="btn-secondary" type="button" id="show-deleted-leads-btn" style="display:none">Recently deleted</button>
+          <button class="btn-secondary" type="button" id="lead-suppliers-btn" style="display:none">Lead suppliers</button>
           <button class="btn-primary" id="add-lead-btn">+ Add lead</button>
         </div>
         <div class="table-scroll">
           <table>
             <thead><tr>
-              <th>Customer</th><th>Type</th><th>Status</th><th>Quote</th><th>Contact</th><th>Address</th><th>Postcode</th><th>Install-hub</th><th>Assigned to</th><th>Added</th>
+              <th>Customer</th><th>Type</th><th>Origin</th><th>Status</th><th>Quote</th><th>Contact</th><th>Address</th><th>Postcode</th><th>Install-hub</th><th>Assigned to</th><th>Added</th>
             </tr></thead>
             <tbody id="leads-body"></tbody>
           </table>
@@ -237,112 +306,163 @@ tbody tr:hover { background: var(--surface2); }
   </div>
 
   <div id="detail-view" style="display:none">
-    <button id="back-btn">← Back to leads</button>
-    <div class="lead-header">
-      <div class="name-row">
-        <h2 id="lead-name">—</h2>
-      </div>
-      <div class="sub" id="lead-status-sub"></div>
-      <div class="quote-grid" style="margin-top:10px">
-        <div class="quote-field"><label>Customer name</label><input type="text" id="ld-name" disabled/></div>
-        <div class="quote-field"><label>Address</label><input type="text" id="ld-address" disabled/></div>
-        <div class="quote-field"><label>Postcode</label><input type="text" id="ld-postcode" disabled/></div>
-        <div class="quote-field"><label>Contact number</label><input type="tel" id="ld-phone" disabled/></div>
-        <div class="quote-field"><label>Email address</label><input type="email" id="ld-email" disabled/></div>
-      </div>
-      <div class="quote-field">
-        <label>Type</label>
-        <div class="outcome-chips disabled" id="ld-type-chips"></div>
-      </div>
-      <div class="quote-field">
-        <label>Assigned to</label>
-        <div class="outcome-chips disabled" id="ld-assigned-chips"></div>
-      </div>
-      <div style="display:flex; gap:8px; margin:4px 0 12px">
-        <button class="btn-secondary" id="details-edit-btn">Edit</button>
-        <button class="btn-secondary" id="details-cancel-btn" style="display:none">Cancel</button>
-        <button class="btn-primary" id="details-save-btn" style="display:none">Save</button>
-        <button class="btn-secondary" id="details-delete-btn" style="display:none; margin-left:auto; color:var(--alert); border-color:var(--alert)">Delete lead</button>
-      </div>
-      <div class="sub"><a id="lead-map-link" href="#">View on map →</a></div>
-      <div class="name-history">
-        <button class="btn-secondary" type="button" id="details-history-toggle-btn">Show history</button>
-        <div id="name-history-list" style="margin-top:8px; display:none"></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3>Contact</h3>
-      <button class="log-contact-btn" id="log-contact-btn">Log contact</button>
-      <div class="contact-log-list" id="contact-log-list" style="margin-top:14px"></div>
-    </div>
-
-    <div class="card" id="web-enquiries-card" style="display:none">
-      <h3>Website enquiries</h3>
-      <div id="web-enquiries-list"></div>
-    </div>
-
-    <div class="card" id="install-checklist-card" style="display:none">
-      <div class="ic-head">
-        <h3 style="margin-bottom:0">Install checklist</h3>
-        <span class="ic-progress" id="ic-progress"></span>
-      </div>
-      <div class="quote-status" style="margin-bottom:6px">What still needs booking before install day. Ticks and names save automatically.</div>
-      <div id="ic-rows"></div>
-      <div class="quote-status" id="ic-status" style="margin-top:6px"></div>
-    </div>
-
-    <div class="card">
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px">
-        <h3 style="margin-bottom:0">Quote options</h3>
-        <button class="btn-secondary" id="add-quote-option-btn">+ Add option</button>
-      </div>
-      <div class="qo-table-wrap">
-        <table class="qo-table">
-          <thead><tr>
-            <th>Option</th><th class="num-col">Cost</th><th class="num-col">Quote price</th><th class="num-col">Margin</th><th></th>
-          </tr></thead>
-          <tbody id="quote-options-list"></tbody>
-        </table>
-      </div>
-      <div id="quote-options-empty" class="doc-empty" style="display:none">No quote options yet — add one to get started.</div>
-      <div id="deleted-options-section" style="display:none; margin-top:16px">
-        <button class="btn-secondary" type="button" id="deleted-options-toggle-btn" onclick="toggleDeletedOptions()">Show recently deleted</button>
-        <div id="deleted-options-list" style="margin-top:8px; display:none"></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3>General documents</h3>
-      <div class="quote-status" style="margin-bottom:10px">Not tied to a specific quote option — e.g. a site survey photo. Per-option paperwork (like a quote PDF) attaches within that option's card above instead.</div>
-      <div class="doc-list" id="doc-list">Loading…</div>
-      <div class="doc-upload">
-        <input type="file" accept="application/pdf,image/jpeg,image/png,image/heic,.doc,.docx" class="doc-file-input" id="doc-file-input">
-        <button type="button" class="doc-upload-btn" id="doc-upload-btn">Upload</button>
-      </div>
-      <div class="doc-upload-status" id="doc-upload-status"></div>
-      <div style="margin-top:14px">
-        <button class="btn-secondary" type="button" id="deleted-docs-toggle-btn" onclick="toggleDeletedLeadDocs()">Show recently deleted</button>
-        <div id="deleted-docs-list" style="margin-top:8px; display:none"></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3>Send to install-hub</h3>
-      <div id="ih-not-sent">
-        <div class="quote-field" style="max-width:220px; margin-bottom:12px">
-          <label>Scheduled date <span class="required">*</span></label>
-          <input type="date" id="ih-scheduled-date"/>
+    <!-- Lead page layout (agreed with the user 2026-10-12 from a mockup):
+         sticky header + stage bar + next step, then three fixed zones —
+         Customer / Activity / Quotes, Documents, Install — so every lead
+         reads the same way for new staff. -->
+    <div class="lead-head">
+      <div class="lh-row">
+        <button id="back-btn" type="button">← Leads</button>
+        <h2 class="lh-name" id="lead-name">—</h2>
+        <span id="lead-pills" class="lh-pills"></span>
+        <span class="lh-contact" id="lead-contact-links"></span>
+        <div class="lh-actions">
+          <button class="btn-ghost" type="button" id="lead-prev-btn" title="Previous lead in your list">‹ Prev</button>
+          <button class="btn-ghost" type="button" id="lead-next-btn" title="Next lead in your list">Next ›</button>
+          <button class="btn-primary" type="button" id="log-contact-btn">Log contact</button>
         </div>
-        <button class="btn-primary" id="ih-send-btn">Send to install-hub</button>
-        <div class="quote-status" id="ih-status" style="margin-top:8px"></div>
       </div>
-      <div id="ih-sent" style="display:none">
-        <div class="quote-status" id="ih-sent-status"></div>
+      <div class="stagebar" id="lead-stagebar"></div>
+      <div class="nextstep">
+        <span class="ns-label">Next step</span>
+        <span class="ns-text" id="ns-text">—</span>
+        <span class="ns-due" id="ns-due"></span>
+        <span class="ns-status" id="lead-status-sub"></span>
+      </div>
+    </div>
+
+    <div class="zones">
+      <div class="zone zone-customer">
+        <section class="sec sec-customer">
+          <div class="sec-h">
+            <span class="sec-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg></span>
+            <h3>Customer</h3>
+            <button class="sec-act" type="button" id="details-edit-btn">Edit</button>
+          </div>
+          <div class="sec-b">
+            <dl class="fields" id="ld-view"></dl>
+            <div id="ld-form" style="display:none">
+              <div class="quote-field"><label>Customer name</label><input type="text" id="ld-name"/></div>
+              <div class="quote-field"><label>Address</label><input type="text" id="ld-address"/></div>
+              <div class="quote-field"><label>Postcode</label><input type="text" id="ld-postcode"/></div>
+              <div class="quote-field"><label>Contact number</label><input type="tel" id="ld-phone"/></div>
+              <div class="quote-field"><label>Email address</label><input type="email" id="ld-email"/></div>
+              <div class="quote-field"><label>Type</label><div class="outcome-chips" id="ld-type-chips"></div></div>
+              <div class="quote-field"><label>Assigned to</label><div class="outcome-chips" id="ld-assigned-chips"></div></div>
+              <div class="quote-field">
+                <label>Lead origin</label>
+                <select id="ld-origin"></select>
+                <div class="field-help" id="ld-origin-help"></div>
+              </div>
+              <div class="form-btns">
+                <button class="btn-secondary" type="button" id="details-cancel-btn">Cancel</button>
+                <button class="btn-primary" type="button" id="details-save-btn">Save</button>
+              </div>
+            </div>
+            <div class="cust-foot">
+              <a id="lead-map-link" href="#">View on map →</a>
+              <span id="lead-added-meta"></span>
+            </div>
+            <button class="btn-link-danger" type="button" id="details-delete-btn" style="display:none">Delete lead</button>
+          </div>
+        </section>
+      </div>
+
+      <div class="zone zone-activity">
+        <section class="sec sec-activity">
+          <div class="sec-h">
+            <span class="sec-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg></span>
+            <h3>Activity</h3>
+            <span class="sec-count" id="activity-count"></span>
+          </div>
+          <div class="sec-b">
+            <div class="composer">
+              <span>Spoke to them, or tried to? Log it here and the next step updates itself.</span>
+              <button class="log-contact-btn" type="button" id="log-contact-btn-2">Log contact</button>
+            </div>
+            <ul class="timeline" id="activity-list"></ul>
+          </div>
+        </section>
+      </div>
+
+      <div class="zone zone-work">
+        <section class="sec sec-quotes">
+          <div class="sec-h">
+            <span class="sec-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h5"/></svg></span>
+            <h3>Quotes</h3>
+            <span class="sec-count" id="quotes-count"></span>
+            <button class="sec-act" type="button" id="add-quote-option-btn">+ Add option</button>
+          </div>
+          <div class="sec-b">
+            <div class="qo-table-wrap">
+              <table class="qo-table">
+                <thead><tr>
+                  <th>Option</th><th class="num-col">Cost</th><th class="num-col">Quote price</th><th class="num-col">Margin</th><th></th>
+                </tr></thead>
+                <tbody id="quote-options-list"></tbody>
+              </table>
+            </div>
+            <div id="quote-options-empty" class="doc-empty" style="display:none">No quotes yet. Add the first option once the site has been surveyed.</div>
+            <div id="deleted-options-section" style="display:none; margin-top:16px">
+              <button class="btn-secondary" type="button" id="deleted-options-toggle-btn" onclick="toggleDeletedOptions()">Show recently deleted</button>
+              <div id="deleted-options-list" style="margin-top:8px; display:none"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="sec sec-docs">
+          <div class="sec-h">
+            <span class="sec-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h6l2 2h10v10H3z"/></svg></span>
+            <h3>Documents</h3>
+          </div>
+          <div class="sec-b">
+            <div class="quote-status" style="margin-bottom:10px">Site photos, bills and anything not tied to one quote. A quote's own PDF goes inside that quote option above.</div>
+            <div class="doc-list" id="doc-list">Loading…</div>
+            <div class="doc-upload">
+              <input type="file" accept="application/pdf,image/jpeg,image/png,image/heic,.doc,.docx" class="doc-file-input" id="doc-file-input">
+              <button type="button" class="doc-upload-btn" id="doc-upload-btn">Upload</button>
+            </div>
+            <div class="doc-upload-status" id="doc-upload-status"></div>
+            <div style="margin-top:14px">
+              <button class="btn-secondary" type="button" id="deleted-docs-toggle-btn" onclick="toggleDeletedLeadDocs()">Show recently deleted</button>
+              <div id="deleted-docs-list" style="margin-top:8px; display:none"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="sec sec-install" id="install-sec">
+          <div class="sec-h">
+            <span class="sec-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V9l7-5 7 5v12"/><path d="M10 21v-6h4v6"/></svg></span>
+            <h3>Install</h3>
+            <span class="ic-progress" id="ic-progress"></span>
+          </div>
+          <div class="sec-b">
+            <div id="install-locked" class="lock-msg"></div>
+            <div id="install-unlocked">
+              <h4 class="sub-h">Send to installs team</h4>
+              <div id="ih-not-sent">
+                <div class="quote-field" style="max-width:220px; margin-bottom:12px">
+                  <label>Install date <span class="required">*</span></label>
+                  <input type="date" id="ih-scheduled-date"/>
+                </div>
+                <button class="btn-primary" id="ih-send-btn">Send to installs team</button>
+                <div class="quote-status" id="ih-status" style="margin-top:8px"></div>
+              </div>
+              <div id="ih-sent" style="display:none">
+                <div class="quote-status" id="ih-sent-status"></div>
+              </div>
+              <div id="install-checklist-card">
+                <h4 class="sub-h" style="margin-top:18px">Install checklist</h4>
+                <div class="quote-status" style="margin-bottom:6px">What still needs booking before install day. Ticks and names save automatically.</div>
+                <div id="ic-rows"></div>
+                <div class="quote-status" id="ic-status" style="margin-top:6px"></div>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   </div>
-
 </div>
 
 <!-- ── Log Contact modal (ported from index.html) ─────────── -->
@@ -367,8 +487,9 @@ tbody tr:hover { background: var(--surface2); }
       <div class="outcome-sections" id="cm-outcome-chips"></div>
       <select id="cm-outcome" style="display:none"></select>
 
+      <div class="cm-next-hint" id="cm-next-hint" style="display:none"></div>
       <div id="cm-followup-date-group" style="display:none">
-        <label>Date <span class="required">*</span></label>
+        <label><span id="cm-followup-date-label">Date</span> <span class="required">*</span></label>
         <input type="date" id="cm-followup-date"/>
       </div>
 
@@ -408,6 +529,9 @@ tbody tr:hover { background: var(--surface2); }
       <label>Type <span class="required">*</span></label>
       <div class="outcome-chips" id="lm-type-chips"></div>
 
+      <label>Lead origin</label>
+      <select id="lm-origin"></select>
+
       <label>Address <span class="required">*</span></label>
       <input type="text" id="lm-address" placeholder="Street address…"/>
 
@@ -427,6 +551,33 @@ tbody tr:hover { background: var(--surface2); }
         <button class="btn-secondary" id="lm-cancel">Cancel</button>
         <button class="btn-primary" id="lm-submit">Add lead</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Lead suppliers modal (lead_origins, migration 049) — managers only ── -->
+<div id="origins-modal-overlay">
+  <div id="origins-modal">
+    <div class="modal-header">
+      <div class="modal-header-text">
+        <div class="modal-eyebrow">Managers only</div>
+        <h2>Lead suppliers</h2>
+        <div class="modal-sub">Companies you buy leads from. Each lead records its supplier's cost per lead at the time it was added, so changing a price here only affects new leads.</div>
+      </div>
+      <button class="modal-close" id="om-close-btn" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="origins-list"></div>
+      <div class="origin-add">
+        <div><label for="om-new-name">New supplier</label><input type="text" id="om-new-name" placeholder="Company name"/></div>
+        <div><label for="om-new-cost">Cost per lead (£)</label><input type="number" id="om-new-cost" min="0" step="0.01" placeholder="0.00"/></div>
+        <button class="btn-primary" type="button" id="om-add-btn">Add</button>
+      </div>
+      <div class="quote-status" id="om-status" style="margin-top:8px"></div>
+    </div>
+    <div class="modal-footer">
+      <span class="quote-status">Suppliers can't be deleted. Untick Active to hide one from new leads.</span>
+      <div class="modal-btns"><button class="btn-secondary" id="om-done-btn">Done</button></div>
     </div>
   </div>
 </div>
@@ -503,10 +654,51 @@ let currentUser = null;
 let allLeads = [];
 let currentLead = null;
 
+/* ── Lead origins (lead_origins, migration 049) — which supplier a lead
+   came from. No origin = "Manual", or "Website" for a lead created by a
+   turbineenergyuk.co.uk enquiry (lead_channel, 045). Derived, never
+   stored, so older leads need no backfill. Managers maintain the supplier
+   list ("Lead suppliers" button); nobody deletes one, they deactivate it. */
+const ORIGIN_MANUAL = '__manual__';
+const ORIGIN_WEBSITE = '__website__';
+const ORIGIN_PALETTE = ['#7d5ba6', '#c08438', '#2a9d9d', '#b85544', '#3b7dd8', '#8a6d3b', '#d29a3c', '#1f8282'];
+let leadOrigins = [];
+let leadOriginsById = {};
+
+async function fetchLeadOrigins() {
+  const { data, error } = await db.from('lead_origins')
+    .select('id, name, cost_per_lead, active, created_at')
+    .order('name', { ascending: true });
+  if (error) { console.error('Failed to load lead origins:', error); return; }
+  leadOrigins = data || [];
+  leadOriginsById = Object.fromEntries(leadOrigins.map(o => [o.id, o]));
+}
+function leadOriginKey(d) {
+  return d.lead_origin_id || (d.lead_channel === 'website' ? ORIGIN_WEBSITE : ORIGIN_MANUAL);
+}
+function originLabel(key) {
+  if (key === ORIGIN_MANUAL) return 'Manual';
+  if (key === ORIGIN_WEBSITE) return 'Website';
+  return leadOriginsById[key]?.name || 'Unknown supplier';
+}
+function originColor(key) {
+  if (key === ORIGIN_MANUAL) return '#94a3b8';
+  if (key === ORIGIN_WEBSITE) return '#2563eb';
+  const i = leadOrigins.findIndex(o => o.id === key);
+  return ORIGIN_PALETTE[(i < 0 ? 0 : i) % ORIGIN_PALETTE.length];
+}
+// <option>s for an origin <select>: "Manual" plus every active supplier,
+// and the lead's current supplier even if it has since been deactivated.
+function originOptionsHtml(currentId) {
+  const opts = leadOrigins.filter(o => o.active || o.id === currentId);
+  return `<option value="">Manual (no supplier)</option>` +
+    opts.map(o => `<option value="${escapeHtml(o.id)}">${escapeHtml(o.name)}${o.active ? '' : ' (inactive)'}</option>`).join('');
+}
+
 /* ── Leads table ─────────────────────────────────────────── */
 async function fetchLeads() {
   const { data, error } = await db.from('prospects')
-    .select('id, customer_name, lead_type, contact_phone, contact_email, address, postcode, created_at, install_hub_job_id, sent_to_install_hub_at, sent_to_install_hub_by_email, assigned_to_email, lead_channel')
+    .select('id, customer_name, lead_type, contact_phone, contact_email, address, postcode, created_at, install_hub_job_id, sent_to_install_hub_at, sent_to_install_hub_by_email, assigned_to_email, lead_channel, lead_origin_id, lead_cost')
     .eq('source', 'manual')
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
@@ -519,14 +711,25 @@ async function fetchLeads() {
 const NOT_CONTACTED_KEY = '__not_contacted__';
 const UNASSIGNED_KEY = '__unassigned__';
 let activeTypeFilters = new Set(LEAD_TYPE_ORDER);
-let activeStatusFilters = new Set([...CONTACT_OUTCOME_ORDER, NOT_CONTACTED_KEY]);
+// Stage filter (staged outcome flow, 2026-10-12) — one chip per stage plus
+// the three closing groups, instead of one chip per outcome.
+const STAGE_FILTERS = [
+  { key: NOT_CONTACTED_KEY, label: NOT_CONTACTED_STATUS.label, color: NOT_CONTACTED_STATUS.color },
+  ...LEAD_STAGES.map((label, i) => ({ key: String(i), label: `${i + 1} · ${label}`, color: CONTACT_OUTCOME[CONTACT_OUTCOME_ORDER.find(o => CONTACT_OUTCOME[o].stage === i)].color })),
+  ...Object.entries(OUTCOME_EXIT_GROUPS).map(([key, g]) => ({ key, label: g.label, color: g.color })),
+];
+function leadStageKey(d) {
+  if (!d.latest_outcome) return NOT_CONTACTED_KEY;
+  const stage = CONTACT_OUTCOME[d.latest_outcome]?.stage;
+  return stage === undefined ? '0' : String(stage);
+}
+let activeStatusFilters = new Set(STAGE_FILTERS.map(f => f.key));
 let activeInstallHubFilters = new Set(['sent', 'not_sent']);
 let activeAssignedFilters = new Set([...REP_ORDER, UNASSIGNED_KEY]);
-// lead_channel (migration 045): 'website' = created automatically from a
-// turbineenergyuk.co.uk enquiry form; null = added by hand in the CRM/map.
-const SOURCE_FILTERS = { website: { label: 'Website enquiry', color: '#2563eb' }, manual: { label: 'Added manually', color: '#94a3b8' } };
-const leadSourceKey = d => (d.lead_channel === 'website' ? 'website' : 'manual');
-let activeSourceFilters = new Set(Object.keys(SOURCE_FILTERS));
+// Origin filter — replaces the old Website/Manual "Source" filter. Keys
+// are leadOriginKey() values; suppliers are added once loaded (boot).
+function originFilterKeys() { return [ORIGIN_MANUAL, ORIGIN_WEBSITE, ...leadOrigins.map(o => o.id)]; }
+let activeSourceFilters = new Set([ORIGIN_MANUAL, ORIGIN_WEBSITE]);
 
 function sidebarChipHtml(key, dotColor, label, count, activeSet) {
   return `<div class="sidebar-chip ${activeSet.has(key) ? 'active' : ''}" data-key="${escapeHtml(key)}">
@@ -543,12 +746,10 @@ function renderSidebarFilters() {
     .map(t => sidebarChipHtml(t, LEAD_TYPE[t].color, LEAD_TYPE[t].label, typeCounts[t], activeTypeFilters))
     .join('');
 
-  const statusCounts = Object.fromEntries([...CONTACT_OUTCOME_ORDER, NOT_CONTACTED_KEY].map(k => [k, 0]));
-  allLeads.forEach(d => { statusCounts[d.latest_outcome || NOT_CONTACTED_KEY]++; });
-  document.getElementById('sidebar-status-list').innerHTML = [
-    sidebarChipHtml(NOT_CONTACTED_KEY, NOT_CONTACTED_STATUS.color, NOT_CONTACTED_STATUS.label, statusCounts[NOT_CONTACTED_KEY], activeStatusFilters),
-    ...CONTACT_OUTCOME_ORDER.map(o => sidebarChipHtml(o, CONTACT_OUTCOME[o].color, CONTACT_OUTCOME[o].label, statusCounts[o], activeStatusFilters)),
-  ].join('');
+  const stageCounts = Object.fromEntries(STAGE_FILTERS.map(f => [f.key, 0]));
+  allLeads.forEach(d => { stageCounts[leadStageKey(d)]++; });
+  document.getElementById('sidebar-status-list').innerHTML = STAGE_FILTERS
+    .map(f => sidebarChipHtml(f.key, f.color, f.label, stageCounts[f.key], activeStatusFilters)).join('');
 
   const sentCount = allLeads.filter(d => d.install_hub_job_id).length;
   document.getElementById('sidebar-installhub-list').innerHTML = [
@@ -563,10 +764,12 @@ function renderSidebarFilters() {
     sidebarChipHtml(UNASSIGNED_KEY, '#94a3b8', 'Unassigned', assignedCounts[UNASSIGNED_KEY], activeAssignedFilters),
   ].join('');
 
-  const sourceCounts = { website: 0, manual: 0 };
-  allLeads.forEach(d => { sourceCounts[leadSourceKey(d)]++; });
-  document.getElementById('sidebar-source-list').innerHTML = Object.entries(SOURCE_FILTERS)
-    .map(([k, cfg]) => sidebarChipHtml(k, cfg.color, cfg.label, sourceCounts[k], activeSourceFilters)).join('');
+  const originCounts = Object.fromEntries(originFilterKeys().map(k => [k, 0]));
+  allLeads.forEach(d => { const k = leadOriginKey(d); originCounts[k] = (originCounts[k] || 0) + 1; });
+  // Inactive suppliers only appear while they still have leads in the list.
+  document.getElementById('sidebar-source-list').innerHTML = originFilterKeys()
+    .filter(k => k === ORIGIN_MANUAL || k === ORIGIN_WEBSITE || leadOriginsById[k]?.active || originCounts[k])
+    .map(k => sidebarChipHtml(k, originColor(k), originLabel(k), originCounts[k], activeSourceFilters)).join('');
 }
 
 function bindSidebarFilterGroup(containerId, activeSet) {
@@ -587,10 +790,10 @@ bindSidebarFilterGroup('sidebar-source-list', activeSourceFilters);
 
 document.getElementById('sidebar-reset-btn').addEventListener('click', () => {
   activeTypeFilters.clear(); LEAD_TYPE_ORDER.forEach(t => activeTypeFilters.add(t));
-  activeStatusFilters.clear(); [...CONTACT_OUTCOME_ORDER, NOT_CONTACTED_KEY].forEach(k => activeStatusFilters.add(k));
+  activeStatusFilters.clear(); STAGE_FILTERS.forEach(f => activeStatusFilters.add(f.key));
   activeAssignedFilters.clear(); [...REP_ORDER, UNASSIGNED_KEY].forEach(k => activeAssignedFilters.add(k));
   activeInstallHubFilters.clear(); ['sent', 'not_sent'].forEach(k => activeInstallHubFilters.add(k));
-  activeSourceFilters.clear(); Object.keys(SOURCE_FILTERS).forEach(k => activeSourceFilters.add(k));
+  activeSourceFilters.clear(); originFilterKeys().forEach(k => activeSourceFilters.add(k));
   document.getElementById('leads-search').value = '';
   renderSidebarFilters();
   renderLeadsTable();
@@ -599,14 +802,16 @@ document.getElementById('sidebar-reset-btn').addEventListener('click', () => {
 function renderLeadsTable() {
   const term = document.getElementById('leads-search').value.trim().toLowerCase();
   const leads = allLeads.filter(d => {
-    if (term && ![d.customer_name, d.address, d.postcode, d.contact_phone, d.contact_email].some(v => (v || '').toLowerCase().includes(term))) return false;
+    if (term && ![d.customer_name, d.address, d.postcode, d.contact_phone, d.contact_email, originLabel(leadOriginKey(d))].some(v => (v || '').toLowerCase().includes(term))) return false;
     if (!activeTypeFilters.has(d.lead_type)) return false;
-    if (!activeStatusFilters.has(d.latest_outcome || NOT_CONTACTED_KEY)) return false;
+    if (!activeStatusFilters.has(leadStageKey(d))) return false;
     if (!activeInstallHubFilters.has(d.install_hub_job_id ? 'sent' : 'not_sent')) return false;
     if (!activeAssignedFilters.has(d.assigned_to_email || UNASSIGNED_KEY)) return false;
-    if (!activeSourceFilters.has(leadSourceKey(d))) return false;
+    if (!activeSourceFilters.has(leadOriginKey(d))) return false;
     return true;
   });
+  visibleLeadIds = leads.map(d => d.id);
+  if (currentLead) updatePrevNextButtons();
 
   document.getElementById('empty-state').style.display = leads.length ? 'none' : 'block';
   const body = document.getElementById('leads-body');
@@ -628,8 +833,9 @@ function renderLeadsTable() {
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${escapeHtml(d.customer_name || 'Unnamed lead')}${d.lead_channel === 'website' ? '<div><span class="web-tag">Website enquiry</span></div>' : ''}</td>
+      <td>${escapeHtml(d.customer_name || 'Unnamed lead')}</td>
       <td>${typeTag}</td>
+      <td><span class="tag"><span class="tag-dot" style="background:${originColor(leadOriginKey(d))}"></span>${escapeHtml(originLabel(leadOriginKey(d)))}</span></td>
       <td>${statusBadgeHtml(d.latest_outcome)}</td>
       <td>${quoteCell}</td>
       <td>${contact}</td>
@@ -691,10 +897,46 @@ async function restoreLead(id) {
   loadDeletedLeads();
 }
 
-/* ── Lead detail view ────────────────────────────────────── */
+/* ── Lead detail view (layout redesigned 2026-10-12) ──────────────────
+   Sticky header (who, origin, owner, phone/email, Log contact, prev/next
+   through the filtered list) + stage bar + "Next step" line, then three
+   zones: Customer / Activity timeline / Quotes, Documents, Install. */
+let currentProgress = null;
+
+function pillHtml(color, text, title) {
+  return `<span class="tag"${title ? ` title="${escapeHtml(title)}"` : ''}><span class="tag-dot" style="background:${color}"></span>${escapeHtml(text)}</span>`;
+}
+
 function populateLeadFields(lead) {
   document.getElementById('lead-name').textContent = lead.customer_name || 'Unnamed lead';
   document.getElementById('lead-status-sub').innerHTML = statusBadgeHtml(lead.latest_outcome);
+
+  const typeCfg = LEAD_TYPE[lead.lead_type];
+  const originKey = leadOriginKey(lead);
+  document.getElementById('lead-pills').innerHTML = [
+    typeCfg ? pillHtml(typeCfg.color, typeCfg.label) : '',
+    pillHtml(originColor(originKey), `Origin: ${originLabel(originKey)}`, 'Where this lead came from'),
+    pillHtml(ASSIGNED_CHIP_COLOR[lead.assigned_to_email || ''] || '#94a3b8', lead.assigned_to_email ? `Assigned: ${repName(lead.assigned_to_email)}` : 'Unassigned'),
+  ].join('');
+  document.getElementById('lead-contact-links').innerHTML = [
+    lead.contact_phone ? `<span>☎ <a href="tel:${escapeHtml(lead.contact_phone.replace(/\s+/g, ''))}">${escapeHtml(lead.contact_phone)}</a></span>` : '',
+    lead.contact_email ? `<span>✉ <a href="mailto:${escapeHtml(lead.contact_email)}">${escapeHtml(lead.contact_email)}</a></span>` : '',
+  ].join('');
+
+  const cost = lead.lead_cost != null ? ` <span class="muted">· £${Number(lead.lead_cost).toLocaleString('en-GB', { minimumFractionDigits: 2 })} per lead</span>` : '';
+  const row = (label, value) => `<div class="f"><dt>${label}</dt><dd>${value || '<span class="muted">Not set</span>'}</dd></div>`;
+  document.getElementById('ld-view').innerHTML = [
+    row('Name', escapeHtml(lead.customer_name || '')),
+    row('Address', escapeHtml(lead.address || '')),
+    row('Postcode', escapeHtml(lead.postcode || '')),
+    row('Phone', escapeHtml(lead.contact_phone || '')),
+    row('Email', escapeHtml(lead.contact_email || '')),
+    row('Type', escapeHtml(typeCfg?.label || '')),
+    row('Origin', escapeHtml(originLabel(originKey)) + cost),
+    row('Assigned', escapeHtml(lead.assigned_to_email ? repName(lead.assigned_to_email) : '')),
+  ].join('');
+  document.getElementById('lead-added-meta').textContent = `Added ${formatShortDate(lead.created_at)}`;
+
   document.getElementById('ld-name').value = lead.customer_name || '';
   document.getElementById('ld-address').value = lead.address || '';
   document.getElementById('ld-postcode').value = lead.postcode || '';
@@ -716,21 +958,31 @@ function populateLeadFields(lead) {
     c.style.background = on ? color : '';
     c.style.borderColor = on ? color : '';
   });
+
+  // Origin: only a manager can change it once the lead exists (enforced by
+  // trg_stamp_prospect_lead_origin, 049 — this just mirrors it in the UI).
+  const originSel = document.getElementById('ld-origin');
+  originSel.innerHTML = originOptionsHtml(lead.lead_origin_id);
+  originSel.value = lead.lead_origin_id || '';
+  originSel.disabled = !isAdmin(currentUser);
+  document.getElementById('ld-origin-help').textContent = isAdmin(currentUser)
+    ? 'Changing the supplier also resets the lead cost to that supplier\'s current price.'
+    : 'Only a manager can change where a lead came from.';
 }
 
 function openLeadDetail(lead) {
   currentLead = lead;
+  currentProgress = null;
   document.getElementById('leads-view').style.display = 'none';
   document.getElementById('detail-view').style.display = 'block';
+  window.scrollTo(0, 0);
 
   populateLeadFields(lead);
   document.getElementById('lead-map-link').href = `index.html?lead=${encodeURIComponent(lead.id)}`;
   document.getElementById('details-delete-btn').style.display = isAdmin(currentUser) ? '' : 'none';
+  updatePrevNextButtons();
 
   setDetailsEditing(false);
-  detailsHistoryLoaded = false;
-  document.getElementById('name-history-list').style.display = 'none';
-  document.getElementById('details-history-toggle-btn').textContent = 'Show history';
 
   deletedOptionsLoaded = false;
   document.getElementById('deleted-options-section').style.display = isAdmin(currentUser) ? '' : 'none';
@@ -742,20 +994,160 @@ function openLeadDetail(lead) {
   deletedDocsList.dataset.loaded = 'false';
   document.getElementById('deleted-docs-toggle-btn').textContent = 'Show recently deleted';
 
+  renderProgress();
   loadQuoteOptions(lead.id);
   loadLeadDocuments(lead.id);
   renderInstallHubStatus();
-  loadContactLog(lead.id);
+  loadActivity(lead.id);
   currentChecklist = null;
   renderInstallChecklist();
   loadInstallChecklist(lead.id);
-  loadWebEnquiries(lead.id);
 }
 
-/* ── Lead details edit + audit history (prospect_name_audit, migration
-   025 + 031 — written by a database trigger on every customer_name/
-   address/postcode/contact_phone/contact_email/lead_type change, same
-   "not client-driven" pattern as lead_quote_audit) ──────────────── */
+/* ── Prev / Next through the leads table's current filtered order ── */
+let visibleLeadIds = [];
+function updatePrevNextButtons() {
+  const i = currentLead ? visibleLeadIds.indexOf(currentLead.id) : -1;
+  document.getElementById('lead-prev-btn').disabled = i <= 0;
+  document.getElementById('lead-next-btn').disabled = i === -1 || i >= visibleLeadIds.length - 1;
+}
+function stepLead(delta) {
+  const i = currentLead ? visibleLeadIds.indexOf(currentLead.id) : -1;
+  if (i === -1) return;
+  const target = allLeads.find(l => l.id === visibleLeadIds[i + delta]);
+  if (target) openLeadDetail(target);
+}
+document.getElementById('lead-prev-btn').addEventListener('click', () => stepLead(-1));
+document.getElementById('lead-next-btn').addEventListener('click', () => stepLead(1));
+
+/* ── Stage bar + Next step (leadProgress(), shared/contact-outcome-config.js) ── */
+function renderProgress() {
+  const bar = document.getElementById('lead-stagebar');
+  const p = currentProgress;
+  bar.innerHTML = LEAD_STAGES.map((label, i) => {
+    let cls = '';
+    if (p) {
+      if (p.exit && i === Math.max(p.stageIndex, 0)) cls = p.exit === 'later' ? 'parked' : 'closed';
+      else if (i < p.stageIndex) cls = 'done';
+      else if (i === p.stageIndex) cls = p.exit ? 'done' : 'current';
+    }
+    return `<div class="stage ${cls}"><small>Stage ${i + 1}</small>${escapeHtml(label)}</div>`;
+  }).join('');
+
+  const textEl = document.getElementById('ns-text');
+  const dueEl = document.getElementById('ns-due');
+  if (!p) { textEl.textContent = 'Loading…'; dueEl.textContent = ''; return; }
+  textEl.textContent = p.next;
+  dueEl.className = 'ns-due' + (p.overdue ? ' overdue' : p.dueToday ? ' today' : '');
+  dueEl.textContent = !p.dueDate ? '' : p.overdue ? `Overdue since ${formatShortDate(p.dueDate)}` : p.dueToday ? 'Due today' : `Due ${formatShortDate(p.dueDate)}`;
+}
+
+/* ── Activity timeline: contact log (prospect_contacts), website enquiries
+   (website_enquiries, 045) and detail edits (prospect_name_audit) merged
+   newest first, plus the lead being added. Replaces the separate Contact /
+   Website enquiries cards and the "Show history" toggle. ── */
+function detailsHistoryChanges(h) {
+  const changes = [];
+  if (h.old_name !== h.new_name) changes.push(`Name: "${escapeHtml(h.old_name || '(empty)')}" → "${escapeHtml(h.new_name || '(empty)')}"`);
+  if (h.old_address !== h.new_address) changes.push(`Address: "${escapeHtml(h.old_address || '(empty)')}" → "${escapeHtml(h.new_address || '(empty)')}"`);
+  if (h.old_postcode !== h.new_postcode) changes.push(`Postcode: "${escapeHtml(h.old_postcode || '(empty)')}" → "${escapeHtml(h.new_postcode || '(empty)')}"`);
+  if (h.old_contact_phone !== h.new_contact_phone) changes.push(`Phone: "${escapeHtml(h.old_contact_phone || '(empty)')}" → "${escapeHtml(h.new_contact_phone || '(empty)')}"`);
+  if (h.old_contact_email !== h.new_contact_email) changes.push(`Email: "${escapeHtml(h.old_contact_email || '(empty)')}" → "${escapeHtml(h.new_contact_email || '(empty)')}"`);
+  if (h.old_lead_type !== h.new_lead_type) {
+    const oldLabel = LEAD_TYPE[h.old_lead_type]?.label || h.old_lead_type || '(empty)';
+    const newLabel = LEAD_TYPE[h.new_lead_type]?.label || h.new_lead_type || '(empty)';
+    changes.push(`Type: "${escapeHtml(oldLabel)}" → "${escapeHtml(newLabel)}"`);
+  }
+  if (h.old_assigned_to_email !== h.new_assigned_to_email) {
+    changes.push(`Assigned to: "${escapeHtml(repName(h.old_assigned_to_email))}" → "${escapeHtml(repName(h.new_assigned_to_email))}"`);
+  }
+  if ((h.old_lead_origin_id || null) !== (h.new_lead_origin_id || null)) {
+    const name = id => id ? (leadOriginsById[id]?.name || 'Unknown supplier') : 'Manual';
+    changes.push(`Origin: "${escapeHtml(name(h.old_lead_origin_id))}" → "${escapeHtml(name(h.new_lead_origin_id))}"`);
+  }
+  return changes;
+}
+
+function formatDateTime(ts) {
+  const d = new Date(ts);
+  return `${formatShortDate(ts)} ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+async function loadActivity(prospectId) {
+  const list = document.getElementById('activity-list');
+  list.innerHTML = '<li class="doc-empty" style="padding-left:34px">Loading…</li>';
+  const [contactsRes, enquiriesRes, auditRes] = await Promise.all([
+    db.from('prospect_contacts')
+      .select('prospect_id, employee, outcome, notes, next_action, follow_up_date, contacted_at')
+      .eq('prospect_id', prospectId)
+      .order('contacted_at', { ascending: false }),
+    db.from('website_enquiries')
+      .select('prospect_id, received_at, form, message, channel, utm_campaign, is_new_lead')
+      .eq('prospect_id', prospectId).order('received_at', { ascending: false }),
+    db.from('prospect_name_audit')
+      .select('prospect_id, old_name, new_name, old_address, new_address, old_postcode, new_postcode, old_contact_phone, new_contact_phone, old_contact_email, new_contact_email, old_lead_type, new_lead_type, old_assigned_to_email, new_assigned_to_email, old_lead_origin_id, new_lead_origin_id, edited_at, edited_by_email')
+      .eq('prospect_id', prospectId)
+      .order('edited_at', { ascending: false }),
+  ]);
+  if (!currentLead || currentLead.id !== prospectId) return; // moved on while this was in flight
+  if (contactsRes.error) { list.innerHTML = `<li class="doc-empty" style="padding-left:34px">Couldn't load the contact log. Refresh to try again.</li>`; return; }
+  [enquiriesRes, auditRes].forEach(r => { if (r.error) console.error('Activity load (partial):', r.error); });
+
+  // Same ownership guard as quote options/install checklist (2026-09-25).
+  const contacts = (contactsRes.data || []).filter(r => r.prospect_id === prospectId);
+  const enquiries = (enquiriesRes.data || []).filter(r => r.prospect_id === prospectId);
+  const edits = (auditRes.data || []).filter(r => r.prospect_id === prospectId);
+
+  currentProgress = leadProgress(contacts, currentLead.created_at);
+  renderProgress();
+  renderInstallChecklist();
+
+  const items = [
+    ...contacts.map(c => ({ at: c.contacted_at, html: contactItemHtml(c) })),
+    ...enquiries.map(e => ({ at: e.received_at, html: enquiryItemHtml(e) })),
+    ...edits.map(h => ({ at: h.edited_at, html: editItemHtml(h) })).filter(i => i.html),
+    { at: currentLead.created_at, html: addedItemHtml() },
+  ].sort((a, b) => new Date(b.at) - new Date(a.at));
+  document.getElementById('activity-count').textContent = `${contacts.length} contact${contacts.length === 1 ? '' : 's'} logged`;
+  list.innerHTML = items.map(i => i.html).join('');
+}
+
+function contactItemHtml(c) {
+  const cfg = CONTACT_OUTCOME[c.outcome] || { color: '#999', label: c.outcome };
+  const date = c.follow_up_date ? `<div class="clog-next">${escapeHtml(cfg.dateLabel || 'Date')}: ${formatShortDate(c.follow_up_date)}</div>` : '';
+  const notes = c.notes ? `<div class="clog-notes">${escapeHtml(c.notes)}</div>` : '';
+  const nextAction = c.next_action ? `<div class="clog-notes">Next: ${escapeHtml(c.next_action)}</div>` : '';
+  return `<li><span class="tl-dot" style="background:${cfg.color}"></span>
+    <div class="tl-top">
+      <span class="outcome-tag" style="background:${cfg.color}22;color:${cfg.color}"><span class="dot" style="background:${cfg.color}"></span>${escapeHtml(cfg.label)}</span>
+      <span class="clog-meta">${escapeHtml(c.employee || '')} · ${formatDateTime(c.contacted_at)}</span>
+    </div>${notes}${nextAction}${date}</li>`;
+}
+
+function enquiryItemHtml(r) {
+  return `<li><span class="tl-dot" style="background:#2563eb"></span>
+    <div class="tl-top"><span class="tl-kind">Website enquiry · ${escapeHtml(r.form)}</span><span class="clog-meta">${formatDateTime(r.received_at)}${r.is_new_lead ? '' : ' · repeat enquiry'}</span></div>
+    <div class="web-enq-meta">Came from: <strong>${escapeHtml(r.channel || 'Unknown')}</strong>${r.utm_campaign ? ` · campaign “${escapeHtml(r.utm_campaign)}”` : ''}</div>
+    ${r.message ? `<pre class="web-enq-msg">${escapeHtml(r.message)}</pre>` : ''}</li>`;
+}
+
+function editItemHtml(h) {
+  const changes = detailsHistoryChanges(h);
+  if (!changes.length) return '';
+  return `<li><span class="tl-dot"></span>
+    <div class="tl-top"><span class="tl-kind">Details edited</span><span class="clog-meta">${escapeHtml(h.edited_by_email || 'Unknown')} · ${formatDateTime(h.edited_at)}</span></div>
+    <div class="clog-notes">${changes.join('<br>')}</div></li>`;
+}
+
+function addedItemHtml() {
+  const origin = originLabel(leadOriginKey(currentLead));
+  return `<li><span class="tl-dot"></span>
+    <div class="tl-top"><span class="tl-kind">Lead added</span><span class="clog-meta">${formatDateTime(currentLead.created_at)}</span></div>
+    <div class="clog-notes">Origin: ${escapeHtml(origin)}</div></li>`;
+}
+
+/* ── Lead details edit (prospect_name_audit, migrations 025/031/042/049 —
+   written by a database trigger on every change, "not client-driven") ── */
 let selectedEditLeadType = null;
 (function initDetailsEditChips() {
   const chipsEl = document.getElementById('ld-type-chips');
@@ -779,8 +1171,7 @@ let selectedEditLeadType = null;
 
 // "Assigned to" chips (migration 042) — same click-to-select pattern as
 // the Type chips above, but with an explicit "Unassigned" option (empty
-// string) since, unlike lead_type, having no assignee is a valid state,
-// not something details-save-btn should block on.
+// string) since, unlike lead_type, having no assignee is a valid state.
 let selectedEditAssignedTo = '';
 const ASSIGNED_CHIP_COLOR = Object.assign({ '': '#94a3b8' }, Object.fromEntries(REP_ORDER.map(email => [email, REP[email].color])));
 (function initAssignedChips() {
@@ -805,14 +1196,9 @@ const ASSIGNED_CHIP_COLOR = Object.assign({ '': '#94a3b8' }, Object.fromEntries(
 })();
 
 function setDetailsEditing(editing) {
-  ['ld-name', 'ld-address', 'ld-postcode', 'ld-phone', 'ld-email'].forEach(id => {
-    document.getElementById(id).disabled = !editing;
-  });
-  document.getElementById('ld-type-chips').classList.toggle('disabled', !editing);
-  document.getElementById('ld-assigned-chips').classList.toggle('disabled', !editing);
+  document.getElementById('ld-view').style.display = editing ? 'none' : '';
+  document.getElementById('ld-form').style.display = editing ? '' : 'none';
   document.getElementById('details-edit-btn').style.display = editing ? 'none' : '';
-  document.getElementById('details-cancel-btn').style.display = editing ? '' : 'none';
-  document.getElementById('details-save-btn').style.display = editing ? '' : 'none';
 }
 
 document.getElementById('details-edit-btn').addEventListener('click', () => setDetailsEditing(true));
@@ -844,9 +1230,14 @@ document.getElementById('details-save-btn').addEventListener('click', async () =
     lead_type: selectedEditLeadType,
     assigned_to_email: selectedEditAssignedTo || null,
   };
-  const { error } = await db.from('prospects').update(updates).eq('id', currentLead.id);
+  const newOrigin = document.getElementById('ld-origin').value || null;
+  const originChanged = isAdmin(currentUser) && newOrigin !== (currentLead.lead_origin_id || null);
+  if (originChanged) updates.lead_origin_id = newOrigin;
+  // lead_cost is set by the database from the supplier (049), so read it back.
+  const { data: saved, error } = await db.from('prospects').update(updates).eq('id', currentLead.id).select('lead_cost').single();
   btn.disabled = false; btn.textContent = 'Save';
   if (error) { alert('Failed to save: ' + error.message); return; }
+  updates.lead_cost = saved?.lead_cost ?? null;
 
   // Fire-and-forget — a notification failure shouldn't block or roll back
   // the save that already succeeded. Only fires on a genuine new
@@ -863,124 +1254,22 @@ document.getElementById('details-save-btn').addEventListener('click', async () =
   renderLeadsTable();
   populateLeadFields(currentLead);
   setDetailsEditing(false);
-  loadDetailsHistory(currentLead.id);
+  loadActivity(currentLead.id);
 });
-
-function detailsHistoryChanges(h) {
-  const changes = [];
-  if (h.old_name !== h.new_name) changes.push(`Name: "${escapeHtml(h.old_name || '(empty)')}" → "${escapeHtml(h.new_name || '(empty)')}"`);
-  if (h.old_address !== h.new_address) changes.push(`Address: "${escapeHtml(h.old_address || '(empty)')}" → "${escapeHtml(h.new_address || '(empty)')}"`);
-  if (h.old_postcode !== h.new_postcode) changes.push(`Postcode: "${escapeHtml(h.old_postcode || '(empty)')}" → "${escapeHtml(h.new_postcode || '(empty)')}"`);
-  if (h.old_contact_phone !== h.new_contact_phone) changes.push(`Phone: "${escapeHtml(h.old_contact_phone || '(empty)')}" → "${escapeHtml(h.new_contact_phone || '(empty)')}"`);
-  if (h.old_contact_email !== h.new_contact_email) changes.push(`Email: "${escapeHtml(h.old_contact_email || '(empty)')}" → "${escapeHtml(h.new_contact_email || '(empty)')}"`);
-  if (h.old_lead_type !== h.new_lead_type) {
-    const oldLabel = LEAD_TYPE[h.old_lead_type]?.label || h.old_lead_type || '(empty)';
-    const newLabel = LEAD_TYPE[h.new_lead_type]?.label || h.new_lead_type || '(empty)';
-    changes.push(`Type: "${escapeHtml(oldLabel)}" → "${escapeHtml(newLabel)}"`);
-  }
-  if (h.old_assigned_to_email !== h.new_assigned_to_email) {
-    changes.push(`Assigned to: "${escapeHtml(repName(h.old_assigned_to_email))}" → "${escapeHtml(repName(h.new_assigned_to_email))}"`);
-  }
-  return changes;
-}
-
-async function loadDetailsHistory(prospectId) {
-  const list = document.getElementById('name-history-list');
-  list.textContent = 'Loading…';
-  const { data, error } = await db.from('prospect_name_audit')
-    .select('old_name, new_name, old_address, new_address, old_postcode, new_postcode, old_contact_phone, new_contact_phone, old_contact_email, new_contact_email, old_lead_type, new_lead_type, old_assigned_to_email, new_assigned_to_email, edited_at, edited_by_email')
-    .eq('prospect_id', prospectId)
-    .order('edited_at', { ascending: false });
-  if (!currentLead || currentLead.id !== prospectId) return; // moved on while this was in flight
-  if (error) { list.innerHTML = `<div class="doc-empty">Couldn't load edit history.</div>`; return; }
-  if (!data.length) { list.innerHTML = `<div class="doc-empty">No edits yet.</div>`; return; }
-  list.innerHTML = data.map(h => `
-    <div class="contact-log-item">
-      <div class="clog-top">
-        <span class="clog-meta">${escapeHtml(h.edited_by_email || 'Unknown')} · ${formatShortDate(h.edited_at)}</span>
-      </div>
-      <div class="clog-notes">${detailsHistoryChanges(h).join('<br>')}</div>
-    </div>`).join('');
-}
-
-let detailsHistoryLoaded = false;
-document.getElementById('details-history-toggle-btn').addEventListener('click', () => {
-  const list = document.getElementById('name-history-list');
-  const btn = document.getElementById('details-history-toggle-btn');
-  const showing = list.style.display !== 'none';
-  if (showing) { list.style.display = 'none'; btn.textContent = 'Show history'; return; }
-  list.style.display = '';
-  btn.textContent = 'Hide history';
-  if (!detailsHistoryLoaded) { detailsHistoryLoaded = true; loadDetailsHistory(currentLead.id); }
-});
-
-/* ── Contact log history (migration 021 opened prospect_contacts' read
-   up to any Turbine Energy rep, not just the manager) ────── */
-async function loadContactLog(prospectId) {
-  const list = document.getElementById('contact-log-list');
-  list.textContent = 'Loading…';
-  const { data, error } = await db.from('prospect_contacts')
-    .select('employee, outcome, notes, next_action, follow_up_date, contacted_at')
-    .eq('prospect_id', prospectId)
-    .order('contacted_at', { ascending: false });
-  if (!currentLead || currentLead.id !== prospectId) return; // moved on while this was in flight
-  if (error) { list.innerHTML = `<div class="doc-empty">Couldn't load contact history.</div>`; return; }
-  if (!data.length) { list.innerHTML = `<div class="doc-empty">No contacts logged yet.</div>`; return; }
-  list.innerHTML = data.map(c => {
-    const cfg = CONTACT_OUTCOME[c.outcome] || { color: '#999', label: c.outcome };
-    const followUp = c.follow_up_date ? `<div class="clog-next">Follow-up: ${formatShortDate(c.follow_up_date)}</div>` : '';
-    const notes = c.notes ? `<div class="clog-notes">${escapeHtml(c.notes)}</div>` : '';
-    const nextAction = c.next_action ? `<div class="clog-notes">Next: ${escapeHtml(c.next_action)}</div>` : '';
-    return `
-      <div class="contact-log-item">
-        <div class="clog-top">
-          <span class="outcome-tag" style="background:${cfg.color}22;color:${cfg.color}"><span class="dot" style="background:${cfg.color}"></span>${escapeHtml(cfg.label)}</span>
-          <span class="clog-meta">${escapeHtml(c.employee || '')} · ${formatShortDate(c.contacted_at)}</span>
-        </div>
-        ${notes}${nextAction}${followUp}
-      </div>`;
-  }).join('');
-}
-
-/* ── install-hub handoff ─────────────────────────────────── */
-/* ── Website enquiries (website_enquiries, migration 045) ──────────────
-   Every enquiry this customer sent through turbineenergyuk.co.uk —
-   including repeats, which are added to the existing lead rather than
-   creating a duplicate — with where they came from. Written by the
-   ingest-enquiry Edge Function; read-only here. */
-async function loadWebEnquiries(prospectId) {
-  const card = document.getElementById('web-enquiries-card');
-  card.style.display = 'none';
-  const { data, error } = await db.from('website_enquiries')
-    .select('prospect_id, received_at, form, message, channel, page_url, landing_page, utm_campaign, is_new_lead')
-    .eq('prospect_id', prospectId).order('received_at', { ascending: false });
-  if (!currentLead || currentLead.id !== prospectId) return;   // stale response guard
-  if (error) { console.error('Failed to load website enquiries:', error); return; }
-  const rows = (data || []).filter(r => r.prospect_id === prospectId);
-  if (!rows.length) return;
-  card.style.display = '';
-  document.getElementById('web-enquiries-list').innerHTML = rows.map(r => `
-    <div class="web-enq">
-      <div class="web-enq-head">
-        <strong>${escapeHtml(r.form)}</strong>
-        <span class="web-enq-meta">${escapeHtml(formatShortDate(r.received_at))} ${escapeHtml(new Date(r.received_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }))}${r.is_new_lead ? '' : ' · repeat enquiry'}</span>
-      </div>
-      <div class="web-enq-meta">Came from: <strong>${escapeHtml(r.channel || 'Unknown')}</strong>${r.utm_campaign ? ` · campaign “${escapeHtml(r.utm_campaign)}”` : ''}</div>
-      ${r.message ? `<pre class="web-enq-msg">${escapeHtml(r.message)}</pre>` : ''}
-    </div>`).join('');
-}
 
 /* ── Install checklist (install_checklists, migration 044) ─────────────
-   Shown once a job's latest outcome is Scheduled for Install or Completed
-   (or whenever a checklist already exists). Each tick/name saves on its
-   own via upsert; the database stamps who changed it and when. */
+   Lives in the Install section, which unlocks once the quote is accepted
+   (stage 5 "Won" or later), or whenever the job has already been sent to
+   install-hub or has a checklist. Until then the section stays visible but
+   locked, listing what comes next, so new staff can see the whole flow.
+   Each tick/name saves on its own via upsert; the database stamps who
+   changed it and when. */
 const INSTALL_TASKS = [
   { key: 'scaffold',    label: 'Scaffold scheduled',    placeholder: 'Scaffolding company' },
   { key: 'electrician', label: 'Electrician scheduled', placeholder: 'Electrician' },
   { key: 'roofer',      label: 'Roofer scheduled',      placeholder: 'Roofer' },
   { key: 'kit',         label: 'Kit ordered',           placeholder: 'Supplier' },
 ];
-const INSTALL_CHECKLIST_OUTCOMES = new Set(['Scheduled for Install', 'Completed']);
 let currentChecklist = null;
 
 async function loadInstallChecklist(prospectId) {
@@ -1008,11 +1297,29 @@ function renderInstallChecklistProgress() {
   INSTALL_TASKS.forEach(t => { const m = document.getElementById(`ic-meta-${t.key}`); if (m) m.innerHTML = installTaskMeta(t); });
 }
 
+function installUnlocked() {
+  if (!currentLead) return false;
+  if (currentLead.install_hub_job_id || currentChecklist) return true;
+  const stage = CONTACT_OUTCOME[currentLead.latest_outcome]?.stage;
+  return typeof stage === 'number' && stage >= 4;
+}
+
 function renderInstallChecklist() {
-  const card = document.getElementById('install-checklist-card');
-  const show = !!currentLead && (INSTALL_CHECKLIST_OUTCOMES.has(currentLead.latest_outcome) || !!currentChecklist);
-  card.style.display = show ? '' : 'none';
-  if (!show) return;
+  const unlocked = installUnlocked();
+  const closed = !!currentLead && typeof CONTACT_OUTCOME[currentLead.latest_outcome]?.stage === 'string';
+  document.getElementById('install-sec').classList.toggle('locked', !unlocked);
+  document.getElementById('install-unlocked').style.display = unlocked ? '' : 'none';
+  const lockedEl = document.getElementById('install-locked');
+  lockedEl.style.display = unlocked ? 'none' : '';
+  if (!unlocked) {
+    document.getElementById('ic-progress').textContent = 'Locked';
+    document.getElementById('ic-progress').classList.remove('all-done');
+    lockedEl.innerHTML = closed
+      ? '<span>This lead is closed, so there is no install to plan.</span>'
+      : `<span>Unlocks when the quote is accepted. Then you will:</span>
+         <ul><li>Send the order contract and take the deposit</li><li>Apply to the DNO and wait for approval</li><li>Book the install date and send it to the installs team</li>${INSTALL_TASKS.map(t => `<li>${escapeHtml(t.label)}</li>`).join('')}</ul>`;
+    return;
+  }
   document.getElementById('ic-status').textContent = '';
   document.getElementById('ic-rows').innerHTML = INSTALL_TASKS.map(t => {
     const na = !!currentChecklist?.[`${t.key}_na`];
@@ -1065,7 +1372,7 @@ function renderInstallHubStatus() {
   document.getElementById('ih-sent').style.display = sent ? 'block' : 'none';
   if (sent) {
     document.getElementById('ih-sent-status').textContent =
-      `Sent to install-hub ${formatShortDate(currentLead.sent_to_install_hub_at)}${currentLead.sent_to_install_hub_by_email ? ' by ' + currentLead.sent_to_install_hub_by_email : ''}.`;
+      `Sent to the installs team ${formatShortDate(currentLead.sent_to_install_hub_at)}${currentLead.sent_to_install_hub_by_email ? ' by ' + currentLead.sent_to_install_hub_by_email : ''}.`;
   } else {
     document.getElementById('ih-scheduled-date').value = '';
     document.getElementById('ih-status').textContent = '';
@@ -1086,7 +1393,7 @@ document.getElementById('ih-send-btn').addEventListener('click', async () => {
     body: { prospect_id: currentLead.id, scheduled_date: scheduledDate },
   });
 
-  btn.disabled = false; btn.textContent = 'Send to install-hub';
+  btn.disabled = false; btn.textContent = 'Send to installs team';
 
   if (error || data?.error) {
     statusEl.textContent = `Failed: ${data?.error || error.message}`;
@@ -1100,6 +1407,7 @@ document.getElementById('ih-send-btn').addEventListener('click', async () => {
   const listRow = allLeads.find(l => l.id === currentLead.id);
   if (listRow) Object.assign(listRow, currentLead);
   renderInstallHubStatus();
+  renderInstallChecklist();
 });
 
 document.getElementById('back-btn').addEventListener('click', () => {
@@ -1147,6 +1455,10 @@ const QUOTE_COST_FIELDS = [
   { key: 'plumbing_cost', label: 'Plumbing (£)' },
 ];
 let currentQuoteOptions = [];
+function updateQuotesCount() {
+  const n = currentQuoteOptions.length;
+  document.getElementById('quotes-count').textContent = n ? `${n} option${n === 1 ? '' : 's'}` : '';
+}
 
 function qoFieldId(optionId, field) { return `qo-${field}-${optionId}`; }
 function qoInput(optionId, field) { return document.getElementById(qoFieldId(optionId, field)); }
@@ -1370,6 +1682,7 @@ async function deleteQuoteOption(optionId) {
   currentQuoteOptions = currentQuoteOptions.filter(o => o.id !== optionId);
   optionRowsEl(optionId).forEach(row => row.remove());
   document.getElementById('quote-options-empty').style.display = currentQuoteOptions.length ? 'none' : 'block';
+  updateQuotesCount();
   if (wasSelected) syncLeadSelectedQuotePrice();
   if (currentLead && document.getElementById('deleted-options-list').style.display !== 'none') {
     loadDeletedQuoteOptions(currentLead.id);
@@ -1436,6 +1749,7 @@ document.getElementById('add-quote-option-btn').addEventListener('click', async 
 
   currentQuoteOptions.push(data);
   document.getElementById('quote-options-empty').style.display = 'none';
+  updateQuotesCount();
   document.getElementById('quote-options-list').insertAdjacentHTML('beforeend', quoteOptionRowsHtml(data));
   loadOptionDocuments(data.id);
   setOptionEditing(data.id, true); // straight into edit mode — a freshly added option has nothing worth viewing yet
@@ -1463,6 +1777,7 @@ async function loadQuoteOptions(prospectId) {
   const listEl = document.getElementById('quote-options-list');
   listEl.innerHTML = currentQuoteOptions.map(quoteOptionRowsHtml).join('');
   document.getElementById('quote-options-empty').style.display = currentQuoteOptions.length ? 'none' : 'block';
+  updateQuotesCount();
   currentQuoteOptions.forEach(opt => loadOptionDocuments(opt.id));
 }
 
@@ -1832,14 +2147,21 @@ async function openLeadDocument(linkEl) {
 document.getElementById('cm-outcome').addEventListener('change', e => {
   const group = document.getElementById('cm-followup-date-group');
   const cfg = CONTACT_OUTCOME[e.target.value];
+  // Next-step hint under the outcome chips, so the rep sees what logging
+  // this outcome commits them to (staged flow, 2026-10-12).
+  const hint = document.getElementById('cm-next-hint');
+  hint.textContent = cfg ? `Next step: ${cfg.next}` : '';
+  hint.style.display = cfg ? '' : 'none';
   if (cfg && cfg.requiresDate) {
     group.style.display = 'block';
-    const todayStr = new Date().toISOString().slice(0, 10);
+    document.getElementById('cm-followup-date-label').textContent = cfg.dateLabel || 'Date';
     const input = document.getElementById('cm-followup-date');
-    input.min = todayStr;
-    if (!input.value) {
-      const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
-      input.value = tomorrow.toISOString().slice(0, 10);
+    input.min = localDateStr(new Date());
+    // Pre-fill with this outcome's default, unless the rep already picked
+    // a date by hand (input.dataset.auto = the last value we filled in).
+    if (!input.value || input.value === input.dataset.auto) {
+      input.value = addDaysStr(new Date(), cfg.dateDays ?? 1);
+      input.dataset.auto = input.value;
     }
   } else {
     group.style.display = 'none';
@@ -1855,6 +2177,8 @@ function openContactModal(prospectId, prospectName) {
   document.getElementById('cm-outcome').value = '';
   document.getElementById('cm-followup-date-group').style.display = 'none';
   document.getElementById('cm-followup-date').value = '';
+  document.getElementById('cm-followup-date').dataset.auto = '';
+  document.getElementById('cm-next-hint').style.display = 'none';
   document.getElementById('cm-notes').value = '';
   document.getElementById('cm-next-action').value = '';
   document.getElementById('contact-modal-overlay').classList.add('open');
@@ -1862,10 +2186,10 @@ function openContactModal(prospectId, prospectName) {
 function closeContactModal() {
   document.getElementById('contact-modal-overlay').classList.remove('open');
 }
-document.getElementById('log-contact-btn').addEventListener('click', () => {
+['log-contact-btn', 'log-contact-btn-2'].forEach(id => document.getElementById(id).addEventListener('click', () => {
   if (!currentLead) return;
   openContactModal(currentLead.id, currentLead.customer_name || currentLead.address || currentLead.postcode || 'Unnamed lead');
-});
+}));
 document.getElementById('cm-cancel').addEventListener('click', closeContactModal);
 document.getElementById('cm-close-btn').addEventListener('click', closeContactModal);
 document.getElementById('contact-modal-overlay').addEventListener('click', e => {
@@ -1916,7 +2240,7 @@ document.getElementById('cm-submit').addEventListener('click', async () => {
   if (currentLead && currentLead.id === prospectId) {
     currentLead.latest_outcome = outcome;
     document.getElementById('lead-status-sub').innerHTML = statusBadgeHtml(outcome);
-    loadContactLog(prospectId);
+    loadActivity(prospectId);
     renderInstallChecklist();
   }
 });
@@ -1951,6 +2275,8 @@ function openLeadModal() {
   document.getElementById('lm-email').value = '';
   selectedLeadType = null;
   document.querySelectorAll('#lm-type-chips .outcome-chip').forEach(c => { c.classList.remove('on'); c.style.background = ''; c.style.borderColor = ''; });
+  document.getElementById('lm-origin').innerHTML = originOptionsHtml(null);
+  document.getElementById('lm-origin').value = '';
   document.getElementById('lead-modal-overlay').classList.add('open');
 }
 function closeLeadModal() {
@@ -1974,6 +2300,7 @@ document.getElementById('lm-submit').addEventListener('click', async () => {
   const postcode = document.getElementById('lm-postcode').value.trim();
   const phone = document.getElementById('lm-phone').value.trim();
   const email = document.getElementById('lm-email').value.trim();
+  const originId = document.getElementById('lm-origin').value || null;
 
   if (!customerName) { alert('Please enter the customer name.'); return; }
   if (!selectedLeadType) { alert('Please pick commercial or domestic.'); return; }
@@ -2013,7 +2340,8 @@ document.getElementById('lm-submit').addEventListener('click', async () => {
     lng: geo.longitude,
     geocode_source: 'postcodes.io',
     created_by_email: currentUser?.email || null,
-  }]).select('id, customer_name, lead_type, contact_phone, contact_email, address, postcode, created_at, install_hub_job_id, sent_to_install_hub_at, sent_to_install_hub_by_email').single();
+    lead_origin_id: originId,
+  }]).select('id, customer_name, lead_type, contact_phone, contact_email, address, postcode, created_at, install_hub_job_id, sent_to_install_hub_at, sent_to_install_hub_by_email, assigned_to_email, lead_channel, lead_origin_id, lead_cost').single();
 
   btn.disabled = false; btn.textContent = 'Add lead';
 
@@ -2026,6 +2354,88 @@ document.getElementById('lm-submit').addEventListener('click', async () => {
   renderSidebarFilters();
   renderLeadsTable();
   openLeadDetail(inserted);
+});
+
+/* ── Lead suppliers modal (lead_origins, 049) — insert/update are
+   manager-only in RLS; the button is hidden for everyone else. ── */
+function renderOriginsList() {
+  const counts = {};
+  allLeads.forEach(d => { if (d.lead_origin_id) counts[d.lead_origin_id] = (counts[d.lead_origin_id] || 0) + 1; });
+  const list = document.getElementById('origins-list');
+  if (!leadOrigins.length) { list.innerHTML = '<div class="doc-empty">No suppliers yet. Add the first one below.</div>'; return; }
+  list.innerHTML = leadOrigins.map(o => `
+    <div class="origin-row ${o.active ? '' : 'inactive'}" data-id="${escapeHtml(o.id)}">
+      <input type="text" id="om-name-${escapeHtml(o.id)}" value="${escapeHtml(o.name)}" aria-label="Supplier name"/>
+      <input type="number" id="om-cost-${escapeHtml(o.id)}" min="0" step="0.01" value="${o.cost_per_lead ?? ''}" placeholder="£ per lead" aria-label="Cost per lead"/>
+      <label class="origin-active"><input type="checkbox" id="om-active-${escapeHtml(o.id)}" ${o.active ? 'checked' : ''}/> Active</label>
+      <button class="btn-secondary" type="button" data-save="${escapeHtml(o.id)}">Save</button>
+      <div class="origin-meta">${counts[o.id] || 0} lead${counts[o.id] === 1 ? '' : 's'} in the CRM</div>
+    </div>`).join('');
+}
+
+async function afterOriginsChanged() {
+  const before = new Set(leadOrigins.map(o => o.id));
+  await fetchLeadOrigins();
+  leadOrigins.forEach(o => { if (!before.has(o.id)) activeSourceFilters.add(o.id); });
+  renderOriginsList();
+  renderSidebarFilters();
+  renderLeadsTable();
+  if (currentLead) populateLeadFields(currentLead);
+}
+
+function parseCost(raw) {
+  if (raw === '' || raw == null) return { value: null };
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return { error: 'Cost per lead must be a positive number, or left blank.' };
+  return { value: Math.round(n * 100) / 100 };
+}
+
+document.getElementById('origins-list').addEventListener('click', async e => {
+  const id = e.target.closest('[data-save]')?.dataset.save;
+  if (!id) return;
+  const status = document.getElementById('om-status');
+  const name = document.getElementById(`om-name-${id}`).value.trim();
+  const cost = parseCost(document.getElementById(`om-cost-${id}`).value);
+  if (!name) { status.textContent = 'A supplier needs a name.'; return; }
+  if (cost.error) { status.textContent = cost.error; return; }
+  status.textContent = 'Saving…';
+  const { error } = await db.from('lead_origins')
+    .update({ name, cost_per_lead: cost.value, active: document.getElementById(`om-active-${id}`).checked })
+    .eq('id', id);
+  if (error) { status.textContent = error.code === '23505' ? 'A supplier with that name already exists.' : 'Failed to save: ' + error.message; return; }
+  status.textContent = `Saved ${name}.`;
+  await afterOriginsChanged();
+});
+
+document.getElementById('om-add-btn').addEventListener('click', async () => {
+  const status = document.getElementById('om-status');
+  const name = document.getElementById('om-new-name').value.trim();
+  const cost = parseCost(document.getElementById('om-new-cost').value);
+  if (!name) { status.textContent = 'Enter the supplier\'s name.'; return; }
+  if (cost.error) { status.textContent = cost.error; return; }
+  status.textContent = 'Adding…';
+  const { error } = await db.from('lead_origins').insert({ name, cost_per_lead: cost.value });
+  if (error) { status.textContent = error.code === '23505' ? 'A supplier with that name already exists.' : 'Failed to add: ' + error.message; return; }
+  document.getElementById('om-new-name').value = '';
+  document.getElementById('om-new-cost').value = '';
+  status.textContent = `Added ${name}.`;
+  await afterOriginsChanged();
+});
+
+function openOriginsModal() {
+  document.getElementById('om-status').textContent = '';
+  renderOriginsList();
+  document.getElementById('origins-modal-overlay').classList.add('open');
+}
+function closeOriginsModal() { document.getElementById('origins-modal-overlay').classList.remove('open'); }
+document.getElementById('lead-suppliers-btn').addEventListener('click', openOriginsModal);
+document.getElementById('om-close-btn').addEventListener('click', closeOriginsModal);
+document.getElementById('om-done-btn').addEventListener('click', closeOriginsModal);
+document.getElementById('origins-modal-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('origins-modal-overlay')) closeOriginsModal();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('origins-modal-overlay').classList.contains('open')) closeOriginsModal();
 });
 
 /* ── Boot ────────────────────────────────────────────────── */
@@ -2050,7 +2460,10 @@ async function boot(user) {
   document.getElementById('nav-dashboard-link').style.display = isAdmin(user) ? '' : 'none';
   document.getElementById('nav-home-link').style.display = isAdmin(user) ? '' : 'none';
   document.getElementById('show-deleted-leads-btn').style.display = isAdmin(user) ? '' : 'none';
+  document.getElementById('lead-suppliers-btn').style.display = isAdmin(user) ? '' : 'none';
   document.getElementById('wrap').style.display = 'block';
+  await fetchLeadOrigins();
+  originFilterKeys().forEach(k => activeSourceFilters.add(k));
   await refreshLeadsList();
   // home.html's pipeline links here as crm.html?lead=<id> (same convention
   // as index.html?lead=<id>).
