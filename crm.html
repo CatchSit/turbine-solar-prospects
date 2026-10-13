@@ -124,6 +124,23 @@ tbody tr:hover { background: var(--surface2); }
 .lock-msg { display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; color: var(--text2); }
 .lock-msg ul { margin: 0; padding-left: 18px; color: var(--text3); display: grid; gap: 4px; }
 .sub-h { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+#live-toast { position: fixed; right: 20px; bottom: 20px; z-index: 3000; max-width: 380px; background: #1f2937; color: #fff; font-size: 13px; line-height: 1.4; padding: 12px 16px; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.25); opacity: 0; transform: translateY(10px); pointer-events: none; transition: opacity .2s, transform .2s; }
+#live-toast.show { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) { #live-toast { transition: none; } }
+/* Customer emails to send (shared/customer-email-config.js, email_log 050) */
+.emails-due { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.email-due { border: 1px solid #e9cf9a; background: #fdf6e7; border-radius: 10px; padding: 12px; }
+.email-due-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.email-due-title { font-size: 13px; font-weight: 700; color: #6b4a12; }
+.email-due-meta { font-size: 12px; color: var(--text2); margin-top: 3px; }
+.email-due-meta .overdue { color: var(--alert); font-weight: 600; }
+.email-due-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
+.email-due-actions a.btn-primary { text-decoration: none; display: inline-block; }
+.email-due-hint { font-size: 11.5px; color: var(--text3); }
+.email-upcoming { font-size: 12px; color: var(--text3); }
+.ns-email { font-size: 12px; font-weight: 600; color: #8a5a10; background: #fdf0d5; padding: 3px 9px; border-radius: 100px; cursor: pointer; border: none; font-family: inherit; }
+.cm-email-opt { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; padding: 10px 11px; border-radius: 8px; background: #fdf6e7; border: 1px solid #e9cf9a; font-size: 12.5px; color: #6b4a12; }
+.cm-email-opt input { margin-top: 2px; accent-color: var(--accent); }
 .quote-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 12px; }
 .quote-field label { display: block; font-size: 11.5px; color: var(--text2); margin-bottom: 5px; }
 .quote-field input { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 13px; background: var(--surface2); color: var(--text); }
@@ -210,7 +227,37 @@ tbody tr:hover { background: var(--surface2); }
 #contact-modal-overlay, #lead-modal-overlay, #origins-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(17,24,39,0.4); z-index: 2000; align-items: center; justify-content: center; }
 #contact-modal-overlay.open, #lead-modal-overlay.open, #origins-modal-overlay.open { display: flex; }
 #contact-modal, #lead-modal, #origins-modal { width: 420px; max-width: 92vw; max-height: 88vh; overflow-y: auto; background: var(--surface); border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
-#contact-modal { width: 560px; }
+/* Log Contact, widened 2026-10-12 so it fits on one screen: outcomes as a
+   grid of stage cards on the left, details panel on the right. */
+#contact-modal { width: min(1120px, 96vw); max-height: 92vh; display: flex; flex-direction: column; overflow: hidden; }
+#contact-modal .cm-body { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 22px; overflow-y: auto; flex: 1; min-height: 0; }
+#contact-modal .cm-col-h { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 10px; }
+#contact-modal #cm-outcome-chips { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.cm-stage.exit-lost { grid-column: 1 / -1; }
+.cm-stage.exit-bad, .cm-stage.exit-later { grid-column: span 2; }
+.cm-stage { border: 1px solid var(--border); border-radius: 10px; padding: 8px 9px 9px; background: var(--surface); }
+.cm-stage .outcome-section-label { display: flex; justify-content: space-between; gap: 6px; margin-bottom: 7px; }
+.cm-stage.is-current { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accentDim); }
+.cm-stage.is-current .outcome-section-label::after { content: "Current stage"; color: var(--accentDk); text-transform: none; letter-spacing: 0; font-weight: 600; }
+.cm-stage.exit-lost .outcome-section-label { color: var(--alert); }
+.cm-stage.exit-bad .outcome-section-label { color: #7d5ba6; }
+.cm-stage.exit-later .outcome-section-label { color: var(--warn); }
+.cm-stage.exit-lost, .cm-stage.exit-bad, .cm-stage.exit-later { background: var(--bg); }
+#contact-modal .outcome-chip { font-size: 12.5px; padding: 5px 10px 5px 8px; text-align: left; }
+#contact-modal .outcome-chips { gap: 5px; }
+.cm-details { border-left: 1px solid var(--border); padding-left: 22px; display: flex; flex-direction: column; }
+.cm-selected { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; padding: 10px 12px; border-radius: 8px; background: var(--surface2); color: var(--text); }
+.cm-selected.empty { font-weight: 500; color: var(--text3); }
+.cm-selected .chip-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+#contact-modal .cm-email-opt { display: flex; }
+#contact-modal .cm-details textarea { min-height: 64px; }
+#contact-modal .modal-body label { margin-top: 12px; }
+#contact-modal .modal-body .cm-email-opt { margin-top: 10px; }
+@media (max-width: 1100px) { #contact-modal #cm-outcome-chips { grid-template-columns: repeat(2, minmax(0, 1fr)); } .cm-stage.exit-bad, .cm-stage.exit-later { grid-column: 1 / -1; } }
+@media (max-width: 860px) {
+  #contact-modal .cm-body { grid-template-columns: 1fr; }
+  .cm-details { border-left: 0; padding-left: 0; border-top: 1px solid var(--border); padding-top: 14px; }
+}
 #origins-modal { width: 600px; }
 .modal-body select { width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 13px; background: var(--surface2); color: var(--text); }
 .origin-row { display: grid; grid-template-columns: 1fr 110px auto auto; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
@@ -327,6 +374,7 @@ tbody tr:hover { background: var(--surface2); }
         <span class="ns-label">Next step</span>
         <span class="ns-text" id="ns-text">—</span>
         <span class="ns-due" id="ns-due"></span>
+        <button class="ns-email" type="button" id="ns-email" style="display:none"></button>
         <span class="ns-status" id="lead-status-sub"></span>
       </div>
     </div>
@@ -376,6 +424,7 @@ tbody tr:hover { background: var(--surface2); }
             <span class="sec-count" id="activity-count"></span>
           </div>
           <div class="sec-b">
+            <div class="emails-due" id="emails-due"></div>
             <div class="composer">
               <span>Spoke to them, or tried to? Log it here and the next step updates itself.</span>
               <button class="log-contact-btn" type="button" id="log-contact-btn-2">Log contact</button>
@@ -465,6 +514,8 @@ tbody tr:hover { background: var(--surface2); }
   </div>
 </div>
 
+<div id="live-toast" role="status" aria-live="polite"></div>
+
 <!-- ── Log Contact modal (ported from index.html) ─────────── -->
 <div id="contact-modal-overlay">
   <div id="contact-modal">
@@ -477,31 +528,39 @@ tbody tr:hover { background: var(--surface2); }
       <button class="modal-close" id="cm-close-btn" aria-label="Close">✕</button>
     </div>
 
-    <div class="modal-body">
+    <div class="modal-body cm-body">
       <input type="hidden" id="cm-prospect-id"/>
+      <input type="hidden" id="cm-employee"/>
 
-      <label>Your name</label>
-      <input type="text" id="cm-employee" placeholder="Enter your name…" readonly/>
+      <div class="cm-outcomes">
+        <div class="cm-col-h">What happened? <span class="required">*</span></div>
+        <div class="outcome-sections" id="cm-outcome-chips"></div>
+        <select id="cm-outcome" style="display:none"></select>
+      </div>
 
-      <label>Outcome <span class="required">*</span></label>
-      <div class="outcome-sections" id="cm-outcome-chips"></div>
-      <select id="cm-outcome" style="display:none"></select>
-
+      <div class="cm-details">
+      <div class="cm-col-h">Details</div>
+      <div class="cm-selected empty" id="cm-selected">Pick what happened on the left.</div>
       <div class="cm-next-hint" id="cm-next-hint" style="display:none"></div>
       <div id="cm-followup-date-group" style="display:none">
         <label><span id="cm-followup-date-label">Date</span> <span class="required">*</span></label>
         <input type="date" id="cm-followup-date"/>
       </div>
+      <label class="cm-email-opt" id="cm-email-opt" style="display:none">
+        <input type="checkbox" id="cm-email-open" checked/>
+        <span id="cm-email-opt-text"></span>
+      </label>
 
       <label>Notes <span class="optional-label">— optional</span></label>
       <textarea id="cm-notes" placeholder="What was said? Action items? Any sensitivities?"></textarea>
 
       <label>Next action <span class="optional-label">— optional</span></label>
       <textarea id="cm-next-action" placeholder="What needs to happen next…"></textarea>
+      </div>
     </div>
 
     <div class="modal-footer">
-      <span class="modal-shortcuts">Esc to cancel · ⌘+↵ to save</span>
+      <span class="modal-shortcuts">Esc to cancel · Ctrl+Enter to save</span>
       <div class="modal-btns">
         <button class="btn-secondary" id="cm-cancel">Cancel</button>
         <button class="btn-primary" id="cm-submit">Save log</button>
@@ -586,6 +645,7 @@ tbody tr:hover { background: var(--surface2); }
 <script src="shared/manager-config.js"></script>
 <script src="shared/lead-type-config.js"></script>
 <script src="shared/contact-outcome-config.js"></script>
+<script src="shared/customer-email-config.js"></script>
 <script src="shared/rep-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
@@ -696,9 +756,33 @@ function originOptionsHtml(currentId) {
 }
 
 /* ── Leads table ─────────────────────────────────────────── */
+const LEAD_COLUMNS = 'id, customer_name, lead_type, contact_phone, contact_email, address, postcode, created_at, install_hub_job_id, sent_to_install_hub_at, sent_to_install_hub_by_email, assigned_to_email, lead_channel, lead_origin_id, lead_cost, deleted_at';
+
+/* ── Several people on one lead (2026-10-12): no locking. A save only goes
+   through if the fields being saved still hold the values this page
+   loaded (whereUnchanged), so nobody silently overwrites someone else's
+   newer change; the open lead also updates live (subscribeToLead). ── */
+function whereUnchanged(query, original, cols) {
+  cols.forEach(c => {
+    const v = original[c];
+    query = (v === null || v === undefined) ? query.is(c, null) : query.eq(c, v);
+  });
+  return query;
+}
+function isMe(email) { return !!email && email.toLowerCase() === (currentUser?.email || '').toLowerCase(); }
+
+let toastTimer = null;
+function showToast(text) {
+  const el = document.getElementById('live-toast');
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 7000);
+}
+
 async function fetchLeads() {
   const { data, error } = await db.from('prospects')
-    .select('id, customer_name, lead_type, contact_phone, contact_email, address, postcode, created_at, install_hub_job_id, sent_to_install_hub_at, sent_to_install_hub_by_email, assigned_to_email, lead_channel, lead_origin_id, lead_cost')
+    .select(LEAD_COLUMNS)
     .eq('source', 'manual')
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
@@ -973,6 +1057,8 @@ function populateLeadFields(lead) {
 function openLeadDetail(lead) {
   currentLead = lead;
   currentProgress = null;
+  currentEmails = { due: [], upcoming: null, logsOk: true };
+  renderEmailsDue();
   document.getElementById('leads-view').style.display = 'none';
   document.getElementById('detail-view').style.display = 'block';
   window.scrollTo(0, 0);
@@ -995,6 +1081,7 @@ function openLeadDetail(lead) {
   document.getElementById('deleted-docs-toggle-btn').textContent = 'Show recently deleted';
 
   renderProgress();
+  subscribeToLead(lead.id);
   loadQuoteOptions(lead.id);
   loadLeadDocuments(lead.id);
   renderInstallHubStatus();
@@ -1076,9 +1163,9 @@ function formatDateTime(ts) {
 async function loadActivity(prospectId) {
   const list = document.getElementById('activity-list');
   list.innerHTML = '<li class="doc-empty" style="padding-left:34px">Loading…</li>';
-  const [contactsRes, enquiriesRes, auditRes] = await Promise.all([
+  const [contactsRes, enquiriesRes, auditRes, emailLogRes] = await Promise.all([
     db.from('prospect_contacts')
-      .select('prospect_id, employee, outcome, notes, next_action, follow_up_date, contacted_at')
+      .select('id, prospect_id, employee, outcome, notes, next_action, follow_up_date, contacted_at')
       .eq('prospect_id', prospectId)
       .order('contacted_at', { ascending: false }),
     db.from('website_enquiries')
@@ -1088,15 +1175,23 @@ async function loadActivity(prospectId) {
       .select('prospect_id, old_name, new_name, old_address, new_address, old_postcode, new_postcode, old_contact_phone, new_contact_phone, old_contact_email, new_contact_email, old_lead_type, new_lead_type, old_assigned_to_email, new_assigned_to_email, old_lead_origin_id, new_lead_origin_id, edited_at, edited_by_email')
       .eq('prospect_id', prospectId)
       .order('edited_at', { ascending: false }),
+    db.from('email_log')
+      .select('prospect_id, related_contact_id, email_type, sequence_no, status, to_email, created_by_email, created_at')
+      .eq('prospect_id', prospectId)
+      .order('created_at', { ascending: false }),
   ]);
   if (!currentLead || currentLead.id !== prospectId) return; // moved on while this was in flight
   if (contactsRes.error) { list.innerHTML = `<li class="doc-empty" style="padding-left:34px">Couldn't load the contact log. Refresh to try again.</li>`; return; }
-  [enquiriesRes, auditRes].forEach(r => { if (r.error) console.error('Activity load (partial):', r.error); });
+  [enquiriesRes, auditRes, emailLogRes].forEach(r => { if (r.error) console.error('Activity load (partial):', r.error); });
 
   // Same ownership guard as quote options/install checklist (2026-09-25).
   const contacts = (contactsRes.data || []).filter(r => r.prospect_id === prospectId);
   const enquiries = (enquiriesRes.data || []).filter(r => r.prospect_id === prospectId);
   const edits = (auditRes.data || []).filter(r => r.prospect_id === prospectId);
+  const emailLogs = (emailLogRes.data || []).filter(r => r.prospect_id === prospectId);
+  knownLatestContactAt = contacts[0]?.contacted_at || null;
+  currentEmails = { ...dueCustomerEmails(contacts, emailLogs), logsOk: !emailLogRes.error };
+  renderEmailsDue();
 
   currentProgress = leadProgress(contacts, currentLead.created_at);
   renderProgress();
@@ -1106,6 +1201,7 @@ async function loadActivity(prospectId) {
     ...contacts.map(c => ({ at: c.contacted_at, html: contactItemHtml(c) })),
     ...enquiries.map(e => ({ at: e.received_at, html: enquiryItemHtml(e) })),
     ...edits.map(h => ({ at: h.edited_at, html: editItemHtml(h) })).filter(i => i.html),
+    ...emailLogs.map(l => ({ at: l.created_at, html: emailLogItemHtml(l) })),
     { at: currentLead.created_at, html: addedItemHtml() },
   ].sort((a, b) => new Date(b.at) - new Date(a.at));
   document.getElementById('activity-count').textContent = `${contacts.length} contact${contacts.length === 1 ? '' : 's'} logged`;
@@ -1144,6 +1240,222 @@ function addedItemHtml() {
   return `<li><span class="tl-dot"></span>
     <div class="tl-top"><span class="tl-kind">Lead added</span><span class="clog-meta">${formatDateTime(currentLead.created_at)}</span></div>
     <div class="clog-notes">Origin: ${escapeHtml(origin)}</div></li>`;
+}
+
+/* ── Customer emails to send (shared/customer-email-config.js; email_log,
+   migration 050). Nothing sends itself: "Open in Outlook" opens a pre-
+   filled email in the rep's own mail app (mailto:) to review and send,
+   then the rep records it with "Mark as sent" (or "Skip"), which is what
+   stops it showing here and counts the keep-in-touch emails. ── */
+let currentEmails = { due: [], upcoming: null, logsOk: true };
+// Newest contact this page has shown, and its value when the Log Contact
+// form was opened — used to warn before a second rep logs over the top.
+let knownLatestContactAt = null;
+let contactModalKnownAt = null;
+
+function emailItemKey(item) { return `${item.type}|${item.contact.id}|${item.sequenceNo}`; }
+
+function renderEmailsDue() {
+  const panel = document.getElementById('emails-due');
+  const badge = document.getElementById('ns-email');
+  const { due, upcoming } = currentEmails;
+  badge.style.display = due.length ? '' : 'none';
+  badge.textContent = `✉ ${due.length} customer email${due.length === 1 ? '' : 's'} to send`;
+  if (!currentLead) { panel.innerHTML = ''; return; }
+  const today = localDateStr(new Date());
+  const hasEmail = !!currentLead.contact_email;
+  panel.innerHTML = due.map(item => {
+    const { subject } = buildCustomerEmail(item, currentLead, getUserName(currentUser));
+    const overdue = item.dueDate < today;
+    const to = hasEmail
+      ? `To ${escapeHtml(currentLead.contact_email)}, CC info@`
+      : '<span class="overdue">No email address on this lead. Add one in Customer → Edit, or skip.</span>';
+    return `<div class="email-due" data-key="${escapeHtml(emailItemKey(item))}">
+      <div class="email-due-top">
+        <span class="email-due-title">✉ Email to send: ${escapeHtml(customerEmailLabel(item.type, item.sequenceNo))}</span>
+        <span class="email-due-meta">${overdue ? `<span class="overdue">Due since ${formatShortDate(item.dueDate)}</span>` : 'Due today'}</span>
+      </div>
+      <div class="email-due-meta">“${escapeHtml(subject)}” · ${to}</div>
+      <div class="email-due-actions">
+        ${hasEmail ? `<a class="btn-primary" href="#" data-email-action="open">Open in Outlook</a>` : ''}
+        <button class="btn-secondary" type="button" data-email-action="sent" ${hasEmail ? '' : 'disabled'}>Mark as sent</button>
+        <button class="btn-ghost" type="button" data-email-action="skipped">Skip</button>
+        ${hasEmail ? '<span class="email-due-hint">Check it in Outlook, click Send there, then Mark as sent.</span>' : ''}
+      </div>
+    </div>`;
+  }).join('') + (upcoming
+    ? `<div class="email-upcoming">Next customer email: ${escapeHtml(customerEmailLabel(upcoming.type, upcoming.sequenceNo))}, due ${formatShortDate(upcoming.dueDate)}.</div>`
+    : '');
+}
+
+function emailItemMailto(item) {
+  const { subject, body } = buildCustomerEmail(item, currentLead, getUserName(currentUser));
+  return customerEmailMailto({ to: currentLead.contact_email, subject, body, assignedTo: currentLead.assigned_to_email, senderEmail: currentUser?.email });
+}
+
+document.getElementById('emails-due').addEventListener('click', async e => {
+  const btn = e.target.closest('[data-email-action]');
+  if (!btn || !currentLead) return;
+  const key = btn.closest('.email-due').dataset.key;
+  const item = currentEmails.due.find(i => emailItemKey(i) === key);
+  if (!item) return;
+  const action = btn.dataset.emailAction;
+  if (action === 'open') {
+    e.preventDefault();
+    window.location.href = emailItemMailto(item);
+    return;
+  }
+  if (action === 'skipped' && !confirm('Skip this email? It won\'t be sent and will drop off the list.')) return;
+  btn.disabled = true;
+  const prospectId = currentLead.id;
+  const { subject } = buildCustomerEmail(item, currentLead, getUserName(currentUser));
+  const { error } = await db.from('email_log').insert({
+    prospect_id: prospectId,
+    related_contact_id: item.contact.id,
+    email_type: item.type,
+    sequence_no: item.sequenceNo,
+    status: action,
+    to_email: currentLead.contact_email || null,
+    subject,
+    created_by_email: (currentUser?.email || '').toLowerCase(),
+  });
+  // 23505 = someone already recorded it (double click / two reps): fine.
+  if (error && error.code !== '23505') { btn.disabled = false; alert('Failed to save: ' + error.message); return; }
+  if (currentLead && currentLead.id === prospectId) loadActivity(prospectId);
+});
+document.getElementById('ns-email').addEventListener('click', () => {
+  document.getElementById('emails-due').scrollIntoView({ behavior: 'smooth', block: 'center' });
+});
+
+function emailLogItemHtml(l) {
+  const sent = l.status === 'sent';
+  return `<li><span class="tl-dot" style="background:${sent ? '#c08438' : 'var(--text3)'}"></span>
+    <div class="tl-top"><span class="tl-kind">${sent ? 'Customer email sent' : 'Customer email skipped'}</span><span class="clog-meta">${escapeHtml(l.created_by_email || '')} · ${formatDateTime(l.created_at)}</span></div>
+    <div class="clog-notes">${escapeHtml(customerEmailLabel(l.email_type, l.sequence_no))}${sent && l.to_email ? ` · to ${escapeHtml(l.to_email)}` : ''}</div></li>`;
+}
+
+async function refreshCurrentLead() {
+  if (!currentLead) return;
+  const id = currentLead.id;
+  const { data, error } = await db.from('prospects').select(LEAD_COLUMNS).eq('id', id).maybeSingle();
+  if (error || !data || !currentLead || currentLead.id !== id) return;
+  applyLeadRow(data);
+}
+
+// Merge a fresh prospects row into the open lead and its list row.
+function applyLeadRow(row) {
+  if (!currentLead || row.id !== currentLead.id) return;
+  const fields = Object.fromEntries(LEAD_COLUMNS.split(',').map(c => c.trim()).filter(c => c in row).map(c => [c, row[c]]));
+  Object.assign(currentLead, fields);
+  const listRow = allLeads.find(l => l.id === row.id);
+  if (listRow) Object.assign(listRow, fields);
+  if (document.getElementById('ld-form').style.display === 'none') populateLeadFields(currentLead);
+  renderInstallHubStatus();
+  renderSidebarFilters();
+  renderLeadsTable();
+  loadActivity(row.id);
+}
+
+/* ── Live updates for the open lead (Supabase Realtime, migration 051).
+   Someone else logs a contact, edits the details, changes a quote, ticks
+   the install checklist or records an email → this page refreshes that
+   part and says who did it. Your own changes are recognised and don't
+   pop up. Anything you're halfway through editing is never replaced. ── */
+let leadChannel = null;
+let lastOwnLeadSaveAt = 0;
+let lastOwnQuoteActionAt = 0;
+let activityRefreshTimer = null;
+
+function scheduleActivityRefresh(leadId) {
+  clearTimeout(activityRefreshTimer);
+  activityRefreshTimer = setTimeout(() => { if (currentLead?.id === leadId) loadActivity(leadId); }, 400);
+}
+function quoteOptionBeingEdited() {
+  return !!document.querySelector('#quote-options-list input[id^="qo-label-"]:not(:disabled)');
+}
+function unsubscribeFromLead() {
+  if (leadChannel) { db.removeChannel(leadChannel); leadChannel = null; }
+}
+
+function subscribeToLead(leadId) {
+  unsubscribeFromLead();
+  if (!db.channel) return;
+  const forLead = { schema: 'public', filter: `prospect_id=eq.${leadId}` };
+  leadChannel = db.channel(`lead-${leadId}`)
+    .on('postgres_changes', { event: 'INSERT', table: 'prospect_contacts', ...forLead }, ({ new: c }) => {
+      if (currentLead?.id !== leadId) return;
+      currentLead.latest_outcome = c.outcome;
+      const listRow = allLeads.find(l => l.id === leadId);
+      if (listRow) listRow.latest_outcome = c.outcome;
+      document.getElementById('lead-status-sub').innerHTML = statusBadgeHtml(c.outcome);
+      renderInstallChecklist();
+      renderSidebarFilters();
+      renderLeadsTable();
+      scheduleActivityRefresh(leadId);
+      if (!isMe(c.employee_email)) showToast(`${c.employee || 'Someone'} just logged: ${CONTACT_OUTCOME[c.outcome]?.label || c.outcome}`);
+    })
+    .on('postgres_changes', { event: 'UPDATE', table: 'prospects', schema: 'public', filter: `id=eq.${leadId}` }, ({ new: p }) => {
+      if (currentLead?.id !== leadId) return;
+      if (Date.now() - lastOwnLeadSaveAt < 5000) return; // our own save, already applied
+      if (p.deleted_at && !currentLead.deleted_at) { showToast('A manager has just deleted this lead.'); return; }
+      const editing = document.getElementById('ld-form').style.display !== 'none';
+      applyLeadRow(p);
+      showToast(editing
+        ? "Someone else just changed this customer's details. If you both changed the same thing, your save will be stopped."
+        : "Someone else just updated this customer's details.");
+    })
+    .on('postgres_changes', { event: '*', table: 'quote_options', ...forLead }, ({ new: o }) => {
+      if (currentLead?.id !== leadId) return;
+      // Our own add/save/select/delete: already applied on this page.
+      if (Date.now() - lastOwnQuoteActionAt < 5000) return;
+      if (isMe(o?.updated_by_email) && Date.now() - lastOwnQuoteActionAt < 60000) return;
+      if (quoteOptionBeingEdited()) {
+        showToast('Someone else just changed the quotes. Finish or cancel your edit to see their changes.');
+        return;
+      }
+      loadQuoteOptions(leadId).then(syncLeadSelectedQuotePrice);
+      showToast(`${o?.updated_by_email ? repName(o.updated_by_email) : 'Someone'} just updated the quotes.`);
+    })
+    .on('postgres_changes', { event: '*', table: 'install_checklists', ...forLead }, ({ new: row }) => {
+      if (currentLead?.id !== leadId || !row) return;
+      const typing = document.activeElement && document.getElementById('ic-rows').contains(document.activeElement);
+      if (typing) return; // don't re-render under someone's cursor; their next save reloads it anyway
+      const changedByOther = INSTALL_TASKS.some(t => row[`${t.key}_updated_by`] && !isMe(row[`${t.key}_updated_by`]) && row[`${t.key}_updated_at`] !== currentChecklist?.[`${t.key}_updated_at`]);
+      currentChecklist = row;
+      renderInstallChecklist();
+      if (changedByOther) showToast('Someone else just updated the install checklist.');
+    })
+    .on('postgres_changes', { event: 'INSERT', table: 'email_log', ...forLead }, ({ new: l }) => {
+      if (currentLead?.id !== leadId) return;
+      scheduleActivityRefresh(leadId);
+      if (!isMe(l.created_by_email)) showToast(`${repName(l.created_by_email)} just marked a customer email as ${l.status}.`);
+    })
+    .subscribe();
+}
+
+// Leads list: keep everyone's Stage column current and pick up leads
+// other people add, without a page refresh.
+let listChannel = null;
+function subscribeToLeadsList() {
+  if (!db.channel || listChannel) return;
+  listChannel = db.channel('leads-list')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'prospect_contacts' }, ({ new: c }) => {
+      const row = allLeads.find(l => l.id === c.prospect_id);
+      if (!row) return;
+      row.latest_outcome = c.outcome;
+      renderSidebarFilters();
+      renderLeadsTable();
+    })
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'prospects', filter: 'source=eq.manual' }, ({ new: p }) => {
+      if (allLeads.some(l => l.id === p.id)) return;
+      const row = Object.fromEntries(LEAD_COLUMNS.split(',').map(c => c.trim()).map(c => [c, p[c] ?? null]));
+      row.latest_outcome = null;
+      row.selected_quote_price = null;
+      allLeads.unshift(row);
+      renderSidebarFilters();
+      renderLeadsTable();
+    })
+    .subscribe();
 }
 
 /* ── Lead details edit (prospect_name_audit, migrations 025/031/042/049 —
@@ -1233,11 +1545,23 @@ document.getElementById('details-save-btn').addEventListener('click', async () =
   const newOrigin = document.getElementById('ld-origin').value || null;
   const originChanged = isAdmin(currentUser) && newOrigin !== (currentLead.lead_origin_id || null);
   if (originChanged) updates.lead_origin_id = newOrigin;
-  // lead_cost is set by the database from the supplier (049), so read it back.
-  const { data: saved, error } = await db.from('prospects').update(updates).eq('id', currentLead.id).select('lead_cost').single();
+  // Conditional on the fields still holding what this page loaded, so a
+  // newer change by someone else isn't overwritten. lead_cost is set by the
+  // database from the supplier (049), so read it back.
+  const DETAIL_FIELDS = ['customer_name', 'address', 'postcode', 'contact_phone', 'contact_email', 'lead_type', 'assigned_to_email', 'lead_origin_id'];
+  lastOwnLeadSaveAt = Date.now();
+  const { data: savedRows, error } = await whereUnchanged(
+    db.from('prospects').update(updates).eq('id', currentLead.id), currentLead, DETAIL_FIELDS,
+  ).select('lead_cost');
   btn.disabled = false; btn.textContent = 'Save';
   if (error) { alert('Failed to save: ' + error.message); return; }
-  updates.lead_cost = saved?.lead_cost ?? null;
+  if (!savedRows?.length) {
+    alert("Someone else changed this customer's details while you were editing, so your changes weren't saved.\n\nThe latest details are now shown. Please make your change again.");
+    setDetailsEditing(false);
+    await refreshCurrentLead();
+    return;
+  }
+  updates.lead_cost = savedRows[0].lead_cost ?? null;
 
   // Fire-and-forget — a notification failure shouldn't block or roll back
   // the save that already succeeded. Only fires on a genuine new
@@ -1389,6 +1713,7 @@ document.getElementById('ih-send-btn').addEventListener('click', async () => {
   btn.disabled = true; btn.textContent = 'Sending…';
   statusEl.textContent = '';
 
+  lastOwnLeadSaveAt = Date.now();
   const { data, error } = await db.functions.invoke('send-to-install-hub', {
     body: { prospect_id: currentLead.id, scheduled_date: scheduledDate },
   });
@@ -1411,6 +1736,7 @@ document.getElementById('ih-send-btn').addEventListener('click', async () => {
 });
 
 document.getElementById('back-btn').addEventListener('click', () => {
+  unsubscribeFromLead();
   currentLead = null;
   document.getElementById('detail-view').style.display = 'none';
   document.getElementById('leads-view').style.display = 'block';
@@ -1433,6 +1759,7 @@ document.getElementById('details-delete-btn').addEventListener('click', async ()
   btn.disabled = false; btn.textContent = 'Delete lead';
   if (error) { alert('Failed to delete: ' + error.message); return; }
 
+  unsubscribeFromLead();
   currentLead = null;
   document.getElementById('detail-view').style.display = 'none';
   document.getElementById('leads-view').style.display = 'block';
@@ -1631,9 +1958,19 @@ async function saveQuoteOption(optionId) {
 
   const btn = document.getElementById(`qo-save-${optionId}`);
   btn.disabled = true; btn.textContent = 'Saving…';
-  const { error } = await db.from('quote_options').update(updates).eq('id', optionId);
+  // Only if nobody else changed this option's figures since it was loaded.
+  const loaded = currentQuoteOptions.find(o => o.id === optionId);
+  lastOwnQuoteActionAt = Date.now();
+  let query = db.from('quote_options').update(updates).eq('id', optionId);
+  if (loaded) query = whereUnchanged(query, loaded, ['label', ...QUOTE_COST_FIELDS.map(f => f.key), 'quote_price']);
+  const { data: savedRows, error } = await query.select('id');
   btn.disabled = false; btn.textContent = 'Save';
   if (error) { alert('Failed to save quote option: ' + error.message); return; }
+  if (!savedRows?.length) {
+    alert("Someone else changed this quote option while you were editing, so your changes weren't saved.\n\nThe latest figures are now shown. Please make your change again.");
+    if (currentLead) await loadQuoteOptions(currentLead.id);
+    return;
+  }
 
   const opt = currentQuoteOptions.find(o => o.id === optionId);
   if (opt) Object.assign(opt, updates);
@@ -1662,6 +1999,7 @@ function syncLeadSelectedQuotePrice() {
 }
 
 async function selectQuoteOption(optionId) {
+  lastOwnQuoteActionAt = Date.now();
   const { error } = await db.rpc('select_quote_option', { p_option_id: optionId });
   if (error) { alert('Failed to mark as selected: ' + error.message); return; }
   if (currentLead) await loadQuoteOptions(currentLead.id); // is_selected changed on every option, not just this one
@@ -1671,6 +2009,7 @@ async function selectQuoteOption(optionId) {
 async function deleteQuoteOption(optionId) {
   if (!confirm('Delete this quote option? It can be restored later from "Recently deleted" below.')) return;
   const wasSelected = currentQuoteOptions.find(o => o.id === optionId)?.is_selected;
+  lastOwnQuoteActionAt = Date.now();
   // Soft delete (deleted_at set), not a real DELETE — trg_guard_quote_
   // option_soft_delete (037) rejects this update outright for a
   // non-manager, so a permission failure surfaces as a genuine error here,
@@ -1738,6 +2077,7 @@ async function restoreQuoteOption(optionId) {
 document.getElementById('add-quote-option-btn').addEventListener('click', async () => {
   if (!currentLead) return;
   const position = currentQuoteOptions.length;
+  lastOwnQuoteActionAt = Date.now();
   const { data, error } = await db.from('quote_options').insert({
     prospect_id: currentLead.id,
     label: `Option ${position + 1}`,
@@ -2112,10 +2452,16 @@ async function openLeadDocument(linkEl) {
   const sectionsEl = document.getElementById('cm-outcome-chips');
   const selectEl = document.getElementById('cm-outcome');
   CONTACT_OUTCOME_SECTIONS.forEach(section => {
+    // One card per stage (and per closing group), so the whole flow fits
+    // on screen at once; openContactModal() highlights the current stage.
+    const stage = CONTACT_OUTCOME[section.outcomes[0]]?.stage;
+    const cardEl = document.createElement('div');
+    cardEl.className = 'cm-stage' + (typeof stage === 'string' ? ` exit-${stage}` : '');
+    cardEl.dataset.stage = String(stage);
     const labelEl = document.createElement('div');
     labelEl.className = 'outcome-section-label';
     labelEl.textContent = section.label;
-    sectionsEl.appendChild(labelEl);
+    cardEl.appendChild(labelEl);
 
     const rowEl = document.createElement('div');
     rowEl.className = 'outcome-chips';
@@ -2140,7 +2486,8 @@ async function openLeadDocument(linkEl) {
       opt.value = name; opt.textContent = name;
       selectEl.appendChild(opt);
     });
-    sectionsEl.appendChild(rowEl);
+    cardEl.appendChild(rowEl);
+    sectionsEl.appendChild(cardEl);
   });
 })();
 
@@ -2149,9 +2496,24 @@ document.getElementById('cm-outcome').addEventListener('change', e => {
   const cfg = CONTACT_OUTCOME[e.target.value];
   // Next-step hint under the outcome chips, so the rep sees what logging
   // this outcome commits them to (staged flow, 2026-10-12).
+  const selectedEl = document.getElementById('cm-selected');
+  selectedEl.classList.toggle('empty', !cfg);
+  selectedEl.innerHTML = cfg
+    ? `<span class="chip-dot" style="background:${cfg.color}"></span>${escapeHtml(cfg.label)}`
+    : 'Pick what happened on the left.';
   const hint = document.getElementById('cm-next-hint');
   hint.textContent = cfg ? `Next step: ${cfg.next}` : '';
   hint.style.display = cfg ? '' : 'none';
+  // Customer email for this outcome (customer-email-config.js): offer to
+  // open it in Outlook straight after saving. Only when the lead has an
+  // email address; it also stays on the lead's to-do list either way.
+  const emailType = OUTCOME_EMAIL[e.target.value]?.type;
+  const canEmail = !!emailType && !!currentLead?.contact_email;
+  document.getElementById('cm-email-opt').style.display = canEmail ? '' : 'none';
+  if (canEmail) {
+    document.getElementById('cm-email-opt-text').textContent =
+      `Open the "${customerEmailLabel(emailType, 1)}" email to the customer in Outlook after saving, so you can check it and send it.`;
+  }
   if (cfg && cfg.requiresDate) {
     group.style.display = 'block';
     document.getElementById('cm-followup-date-label').textContent = cfg.dateLabel || 'Date';
@@ -2171,14 +2533,23 @@ document.getElementById('cm-outcome').addEventListener('change', e => {
 function openContactModal(prospectId, prospectName) {
   document.getElementById('cm-prospect-id').value = prospectId;
   document.getElementById('cm-prospect-name').textContent = prospectName;
-  document.getElementById('cm-prospect-meta').textContent = '';
   document.getElementById('cm-employee').value = currentUser ? getUserName(currentUser) : '';
+  document.getElementById('cm-prospect-meta').textContent = `Logging as ${document.getElementById('cm-employee').value || 'you'}`;
+  const selectedEl = document.getElementById('cm-selected');
+  selectedEl.classList.add('empty');
+  selectedEl.textContent = 'Pick what happened on the left.';
+  contactModalKnownAt = currentLead && currentLead.id === prospectId ? knownLatestContactAt : null;
+  const currentStage = currentLead && currentLead.id === prospectId && currentProgress && !currentProgress.exit
+    ? String(Math.max(currentProgress.stageIndex, 0)) : null;
+  document.querySelectorAll('#cm-outcome-chips .cm-stage').forEach(c => c.classList.toggle('is-current', c.dataset.stage === currentStage));
   document.querySelectorAll('#cm-outcome-chips .outcome-chip').forEach(c => { c.classList.remove('on'); c.style.background = ''; c.style.borderColor = ''; });
   document.getElementById('cm-outcome').value = '';
   document.getElementById('cm-followup-date-group').style.display = 'none';
   document.getElementById('cm-followup-date').value = '';
   document.getElementById('cm-followup-date').dataset.auto = '';
   document.getElementById('cm-next-hint').style.display = 'none';
+  document.getElementById('cm-email-opt').style.display = 'none';
+  document.getElementById('cm-email-open').checked = true;
   document.getElementById('cm-notes').value = '';
   document.getElementById('cm-next-action').value = '';
   document.getElementById('contact-modal-overlay').classList.add('open');
@@ -2216,7 +2587,23 @@ document.getElementById('cm-submit').addEventListener('click', async () => {
   const btn = document.getElementById('cm-submit');
   btn.disabled = true; btn.textContent = 'Saving…';
 
-  const { error } = await db.from('prospect_contacts').insert([{
+  // Has someone else logged a contact on this lead since it was opened?
+  // (Several reps can have it open — warn rather than lock, 2026-10-12.)
+  const { data: newestRows } = await db.from('prospect_contacts')
+    .select('employee, employee_email, outcome, contacted_at')
+    .eq('prospect_id', prospectId).order('contacted_at', { ascending: false }).limit(1);
+  const newest = newestRows?.[0];
+  if (newest && !isMe(newest.employee_email) && (!contactModalKnownAt || newest.contacted_at > contactModalKnownAt)) {
+    const when = new Date(newest.contacted_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    const ok = confirm(`${newest.employee || 'Someone else'} logged "${CONTACT_OUTCOME[newest.outcome]?.label || newest.outcome}" on this lead at ${when}, after you opened it.\n\nSave your log as well?`);
+    if (!ok) {
+      btn.disabled = false; btn.textContent = 'Save log';
+      if (currentLead?.id === prospectId) loadActivity(prospectId);
+      return;
+    }
+  }
+
+  const { data: insertedContact, error } = await db.from('prospect_contacts').insert([{
     prospect_id: prospectId,
     employee,
     employee_email: currentUser?.email || null,
@@ -2224,11 +2611,15 @@ document.getElementById('cm-submit').addEventListener('click', async () => {
     notes: notes || null,
     next_action: nextAction || null,
     follow_up_date: CONTACT_OUTCOME[outcome].requiresDate ? (followUpDate || null) : null,
-  }]);
+  }]).select('id, outcome, contacted_at, follow_up_date').single();
 
   btn.disabled = false; btn.textContent = 'Save log';
   if (error) { alert('Failed to save: ' + error.message); return; }
+  const openEmail = document.getElementById('cm-email-opt').style.display !== 'none' && document.getElementById('cm-email-open').checked;
   closeContactModal();
+  if (openEmail && insertedContact && currentLead && currentLead.id === prospectId && currentLead.contact_email) {
+    window.location.href = emailItemMailto({ type: OUTCOME_EMAIL[outcome].type, sequenceNo: 1, contact: insertedContact });
+  }
 
   // This log is now the most recent contact for this prospect (inserted
   // with contacted_at defaulting to now()), so its outcome becomes the new
@@ -2465,6 +2856,7 @@ async function boot(user) {
   await fetchLeadOrigins();
   originFilterKeys().forEach(k => activeSourceFilters.add(k));
   await refreshLeadsList();
+  subscribeToLeadsList();
   // home.html's pipeline links here as crm.html?lead=<id> (same convention
   // as index.html?lead=<id>).
   const leadId = new URLSearchParams(location.search).get('lead');

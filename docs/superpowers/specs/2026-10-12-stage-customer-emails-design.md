@@ -1,6 +1,6 @@
 # Stage-triggered customer emails: design
 
-**Date:** 2026-10-12 · **Status:** DESIGN ONLY. Nothing built, nothing sent. Decisions below supersede section 6 wherever they differ.
+**Date:** 2026-10-12 · **Status:** v1 BUILT 2026-10-12 as "open in Outlook" (mailto) with Mark as sent / Skip; see HANDOVER.md. Emails on: welcome, DNO submitted, keep-in-touch x3, DNO approved, install confirmed, installed. Brevo/automatic sending not built. Decisions below supersede section 6 wherever they differ.
 
 ## User decisions, 2026-10-12 (these override the proposals below)
 - **Nothing sends automatically, for now.** The CRM prepares a ready-to-send email in **Outlook** (To, CC, subject, body filled in). The rep reviews it and clicks Send themselves. This means section 3's Brevo `customer-emails` function, `pg_cron` and the "send scheduled messages" button are **not** used in v1. Automatic sending is a later step, only once the user says they're happy with the drafts.
@@ -8,7 +8,7 @@
 - **The "still being processed" email (E2):** due every 14 days after DNO Submitted, max 3. **It stops once DNO Approved is logged** (or any later or closing outcome). Since nothing sends itself, a due E2 appears in the CRM as a to-do ("Email due: DNO update") with an "Open in Outlook" button.
 - **Replies go to the assigned rep, with info@turbineenergyuk.co.uk CC'd.**
 - DNO placement is done: `DNO Submitted` / `DNO Approved` are live in `shared/contact-outcome-config.js` (stage 6, Install).
-- **Open question:** how the Outlook draft is created. Either a `mailto:` link that opens the rep's Outlook with everything filled in (no setup; the CRM can't tell whether it was actually sent, so the rep clicks "Mark as sent"), or a Microsoft Graph draft saved into the rep's own Outlook Drafts folder (needs the `Mail.ReadWrite` permission added to the Azure AD sign-in; can set Reply-To properly).
+- **Decided: `mailto:`** (opens a pre-filled email in the rep's Outlook; the rep clicks Mark as sent). Considered alternative: Either a `mailto:` link that opens the rep's Outlook with everything filled in (no setup; the CRM can't tell whether it was actually sent, so the rep clicks "Mark as sent"), or a Microsoft Graph draft saved into the rep's own Outlook Drafts folder (needs the `Mail.ReadWrite` permission added to the Azure AD sign-in; can set Reply-To properly).
 **Asked for (verbatim):** "i need to include certain emails within each stages, for exmaple when we send a DNO approval, i want to send an email to the customer letting them know that it has been sent for approval and we will be in touch shortly. Then even if the DNO is back or not, i would like to send another after X amount of days just to keep in touch and let them know its still being processed"
 
 Builds on the new 7-stage outcome flow (the `shared/contact-outcome-config.js` rework and migration `049`, in progress in parallel). This doc changes nothing in that work. It only proposes two new outcome keys (section 1) for that config to add.
