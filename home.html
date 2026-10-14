@@ -573,8 +573,11 @@ const STAGES = [
   // proceeding + bad lead); "Recontact Later" parks a lead, so it stays open
   // under Contacted. "Enquiring Only" moved from Contacted to Lost then.
   { key: 'contacted', label: 'Contacted',        outcomes: ['No Answer', 'Left Message', 'Follow Up', 'Recontact Later'] },
-  { key: 'engaged',   label: 'Meeting / survey', outcomes: ['Info Sent', 'Meeting Booked', 'Survey Booked', 'Survey Completed'] },
+  { key: 'engaged',   label: 'Info / meeting',   outcomes: ['Info Sent', 'Meeting Booked'] },
   { key: 'quoted',    label: 'Quote sent',       outcomes: ['Quote Sent', 'Negotiating'] },
+  // Survey comes after the quote (2026-10-14), so a surveyed lead still has
+  // a quote awaiting a decision: counted with 'quoted' in the tiles below.
+  { key: 'surveyed',  label: 'Survey',           outcomes: ['Survey Booked', 'Survey Completed'] },
   { key: 'won',       label: 'Won',              outcomes: ['Converted', 'Contract Signed', 'DNO Submitted', 'DNO Approved'] },
   { key: 'scheduled', label: 'Scheduled',        outcomes: ['Scheduled for Install'] },
   { key: 'completed', label: 'Completed',        outcomes: ['Completed', 'Job Closed'] },
@@ -698,7 +701,7 @@ function attentionReason(l) {
   if (l.stage === 'scheduled' && l.latest?.follow_up_date && new Date(l.latest.follow_up_date) < today) {
     return { days: daysSince(l.latest.follow_up_date), text: `Install date ${fmtDate(l.latest.follow_up_date)} has passed — not marked completed` };
   }
-  if ((l.stage === 'contacted' || l.stage === 'engaged') && l.latest?.follow_up_date && new Date(l.latest.follow_up_date) < today) {
+  if ((l.stage === 'contacted' || l.stage === 'engaged' || l.stage === 'surveyed') && l.latest?.follow_up_date && new Date(l.latest.follow_up_date) < today) {
     return { days: daysSince(l.latest.follow_up_date), text: `${CONTACT_OUTCOME[l.latest.outcome]?.label || l.latest.outcome} date ${fmtDate(l.latest.follow_up_date)} has passed — no update logged` };
   }
   return null;
@@ -721,7 +724,7 @@ LOADERS.pipeline = async function () {
 
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
   const open = leads.filter(l => !CLOSED_STAGES.has(l.stage));
-  const quoted = leads.filter(l => l.stage === 'quoted');
+  const quoted = leads.filter(l => l.stage === 'quoted' || l.stage === 'surveyed');
   const wonThisMonth = leads.filter(l => l.wonAt && new Date(l.wonAt) >= monthStart);
   const attention = leads.map(l => ({ l, r: attentionReason(l) })).filter(x => x.r).sort((a, b) => b.r.days - a.r.days);
   const sum = arr => arr.reduce((t, l) => t + (l.value || 0), 0);
@@ -762,7 +765,7 @@ LOADERS.pipeline = async function () {
     const k = l.assigned_to_email || '';
     const o = (owners[k] ||= { open: 0, quotedValue: 0, wonMonth: 0, wonMonthValue: 0 });
     if (!CLOSED_STAGES.has(l.stage)) o.open++;
-    if (l.stage === 'quoted') o.quotedValue += l.value || 0;
+    if (l.stage === 'quoted' || l.stage === 'surveyed') o.quotedValue += l.value || 0;
     if (l.wonAt && new Date(l.wonAt) >= monthStart) { o.wonMonth++; o.wonMonthValue += l.value || 0; }
   });
   const ownerOrder = [...REP_ORDER, ''].filter(k => owners[k]).concat(Object.keys(owners).filter(k => k && !REP_ORDER.includes(k)));

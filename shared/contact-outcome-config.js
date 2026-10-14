@@ -15,7 +15,9 @@
 //   dateLabel — what the required date means (Log Contact modal)
 //   dateDays  — default the modal pre-fills the date with (days from today)
 //   nextDays  — for outcomes without a date: due date = logged + nextDays
-const LEAD_STAGES = ["Contacting", "Qualifying", "Survey", "Quote", "Won", "Install", "Complete"];
+// Quote comes before Survey (user, 2026-10-14): the quote goes out first,
+// then the site is surveyed to confirm it before the customer commits.
+const LEAD_STAGES = ["Contacting", "Qualifying", "Quote", "Survey", "Won", "Install", "Complete"];
 
 const CONTACT_OUTCOME = {
   // 1 Contacting
@@ -23,14 +25,14 @@ const CONTACT_OUTCOME = {
   "Left Message":      { stage: 0, color: "#a19c84", soft: "#ebe9df", label: "Left message", requiresDate: true, dateDays: 2, dateLabel: "Call again on", next: "Call again if they haven't replied" },
   "Follow Up":         { stage: 0, color: "#c08438", soft: "#f3e3cb", label: "Call back requested", requiresDate: true, dateDays: 1, dateLabel: "Call back on", next: "Call them back when they asked" },
   // 2 Qualifying
-  "Info Sent":         { stage: 1, color: "#d29a3c", soft: "#f6e8cc", label: "Interested, info sent", requiresDate: true, dateDays: 3, dateLabel: "Chase on", next: "Chase to book a survey or meeting" },
+  "Info Sent":         { stage: 1, color: "#d29a3c", soft: "#f6e8cc", label: "Interested, info sent", requiresDate: true, dateDays: 3, dateLabel: "Chase on", next: "Chase them, then book a meeting or send a quote" },
   "Meeting Booked":    { stage: 1, color: "#3b7dd8", soft: "#dce7f7", label: "Meeting booked", requiresDate: true, dateLabel: "Meeting date", next: "Attend the meeting, then log what happened" },
-  // 3 Survey
-  "Survey Booked":     { stage: 2, color: "#2a9d9d", soft: "#d9f0ef", label: "Survey booked", requiresDate: true, dateLabel: "Survey date", next: "Carry out the site survey" },
-  "Survey Completed":  { stage: 2, color: "#1f8282", soft: "#d3eaea", label: "Survey completed", requiresDate: false, nextDays: 2, next: "Build the quote options and send the quote" },
-  // 4 Quote
-  "Quote Sent":        { stage: 3, color: "#8a6d3b", soft: "#ede2cf", label: "Quote sent", requiresDate: true, dateDays: 3, dateLabel: "Chase on", next: "Chase the quote" },
-  "Negotiating":       { stage: 3, color: "#a5834a", soft: "#efe5d2", label: "Negotiating", requiresDate: true, dateDays: 3, dateLabel: "Chase on", next: "Send the revised quote, then chase" },
+  // 3 Quote
+  "Quote Sent":        { stage: 2, color: "#8a6d3b", soft: "#ede2cf", label: "Quote sent", requiresDate: true, dateDays: 3, dateLabel: "Chase on", next: "Chase the quote, and book a survey if they want to go ahead" },
+  "Negotiating":       { stage: 2, color: "#a5834a", soft: "#efe5d2", label: "Negotiating", requiresDate: true, dateDays: 3, dateLabel: "Chase on", next: "Send the revised quote, then chase" },
+  // 4 Survey
+  "Survey Booked":     { stage: 3, color: "#2a9d9d", soft: "#d9f0ef", label: "Survey booked", requiresDate: true, dateLabel: "Survey date", next: "Carry out the site survey" },
+  "Survey Completed":  { stage: 3, color: "#1f8282", soft: "#d3eaea", label: "Survey completed", requiresDate: false, nextDays: 2, next: "Update the quote if the survey changed anything, then get the customer's go-ahead" },
   // 5 Won
   "Converted":         { stage: 4, color: "#2ba45e", soft: "#e6f4ec", label: "Quote accepted", requiresDate: false, nextDays: 0, next: "Send the order contract to sign and request the deposit" },
   "Contract Signed":   { stage: 4, color: "#23914f", soft: "#dcefe3", label: "Contract signed, deposit paid", requiresDate: false, nextDays: 5, next: "Apply to the DNO for grid connection approval" },
