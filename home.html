@@ -163,6 +163,27 @@ tfoot td { border-top: 1px solid var(--borderH); border-bottom: 0; }
 .cols-axis { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text3); margin-top: 6px; }
 .error-box { background: var(--alertSoft); color: var(--alert); border-radius: 8px; padding: 10px 12px; font-size: 12.5px; }
 .loading { color: var(--text3); font-size: 13px; padding: 18px 0; }
+/* Team activity + Tools (moved from the old dashboard.html, 2026-10-13) */
+.act-filters { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 18px; border-bottom: 1px solid var(--border); }
+.act-filters select, .act-filters input, .tool-select { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; background: var(--surface2); font-family: inherit; color: var(--text); }
+.act-filters input { min-width: 220px; }
+#act-table th[data-col] { cursor: pointer; user-select: none; }
+#act-table th .sort-ind { color: var(--accent); }
+.act-table-wrap { max-height: 560px; overflow: auto; }
+.act-chart { position: relative; height: 220px; }
+.outcome-tag { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px 3px 6px; border-radius: 100px; font-size: 11px; white-space: nowrap; }
+.outcome-tag .dot { width: 6px; height: 6px; border-radius: 50%; }
+.tool-desc { font-size: 12.5px; color: var(--text2); margin-bottom: 12px; max-width: 760px; }
+.tool-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tool-status { font-size: 12.5px; color: var(--text2); }
+.tool-log { font-size: 11.5px; color: var(--text2); font-family: ui-monospace, Consolas, monospace; white-space: pre-wrap; max-height: 180px; overflow-y: auto; margin-top: 10px; }
+.tool-log:empty { display: none; }
+.tool-btn { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 500; }
+.tool-btn:disabled { opacity: .6; cursor: default; }
+.area-checks { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12.5px; margin-bottom: 12px; }
+.area-checks label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.grant-rows { display: flex; flex-direction: column; gap: 10px; max-width: 520px; }
+.grant-rows > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 
 /* ── Login / denied ── */
 #login-screen, #denied-state { display: none; position: fixed; inset: 0; background: var(--bg); z-index: 100; align-items: center; justify-content: center; padding: 24px; }
@@ -208,7 +229,6 @@ tfoot td { border-top: 1px solid var(--borderH); border-bottom: 0; }
     <span class="nav-user" id="nav-user"></span>
     <a class="nav-link" href="index.html">Map</a>
     <a class="nav-link" href="crm.html">CRM</a>
-    <a class="nav-link" href="dashboard.html">Dashboard</a>
     <button id="sign-out-btn">Sign out</button>
   </div>
 </div>
@@ -216,9 +236,11 @@ tfoot td { border-top: 1px solid var(--borderH); border-bottom: 0; }
 <div id="app">
   <nav id="rail" aria-label="Sections">
     <button class="rail-btn" data-section="pipeline">Pipeline</button>
+    <button class="rail-btn" data-section="activity">Team activity</button>
     <button class="rail-btn" data-section="marketing">Marketing &amp; analytics</button>
     <button class="rail-btn" data-section="api">API usage &amp; quotas</button>
     <button class="rail-btn" data-section="health">System health</button>
+    <button class="rail-btn" data-section="tools">Tools</button>
     <button class="rail-btn" data-section="audit">Audit log</button>
     <div class="rail-foot">Visits to this page are recorded in the audit log.</div>
   </nav>
@@ -237,6 +259,50 @@ tfoot td { border-top: 1px solid var(--borderH); border-bottom: 0; }
         <div><span class="stamp" id="pipeline-stamp"></span><button class="refresh-btn" data-refresh="pipeline">Refresh</button></div>
       </div>
       <div id="pipeline-body"><div class="loading">Loading pipeline…</div></div>
+    </section>
+
+    <!-- ── Team activity (was dashboard.html's charts + contact log) ── -->
+    <section class="section" id="sec-activity">
+      <div class="section-head">
+        <div>
+          <h1>Team activity</h1>
+          <p>Every contact the team has logged, by day and by person. Filter, sort and export the full contact log.</p>
+        </div>
+        <div class="filters">
+          <div class="chips" id="act-period">
+            <button class="chip active" data-period="week">7 days</button>
+            <button class="chip" data-period="month">30 days</button>
+            <button class="chip" data-period="all">All time</button>
+          </div>
+          <span class="stamp" id="activity-stamp"></span>
+          <button class="refresh-btn" data-refresh="activity">Refresh</button>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="card"><div class="card-head"><h2>Daily activity</h2><span class="hint" id="act-daily-hint"></span></div><div class="card-body"><div class="act-chart"><canvas id="act-chart-daily"></canvas></div></div></div>
+        <div class="card"><div class="card-head"><h2>By person</h2><span class="hint">Contacts logged in this period</span></div><div class="card-body"><div class="act-chart"><canvas id="act-chart-person"></canvas></div></div></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Contact log</h2><button class="refresh-btn" id="act-export-btn" type="button">Export CSV</button></div>
+        <div class="act-filters">
+          <select id="act-f-person"><option value="">Everyone</option></select>
+          <select id="act-f-outcome"><option value="">All outcomes</option></select>
+          <input type="text" id="act-f-search" placeholder="Search customer, address or postcode…"/>
+        </div>
+        <div class="act-table-wrap">
+          <table id="act-table">
+            <thead><tr>
+              <th data-col="contacted_at">Date<span class="sort-ind"></span></th>
+              <th data-col="lead">Lead<span class="sort-ind"></span></th>
+              <th data-col="employee">Person<span class="sort-ind"></span></th>
+              <th data-col="outcome">Outcome<span class="sort-ind"></span></th>
+              <th data-col="follow_up_date">Date set<span class="sort-ind"></span></th>
+              <th data-col="notes">Notes<span class="sort-ind"></span></th>
+            </tr></thead>
+            <tbody id="act-tbody"><tr><td colspan="6" class="loading">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
     </section>
 
     <!-- ── Marketing ── -->
@@ -275,6 +341,41 @@ tfoot td { border-top: 1px solid var(--borderH); border-bottom: 0; }
       <div id="health-body"><div class="loading">Running checks…</div></div>
     </section>
 
+    <!-- ── Tools (was dashboard.html's run buttons + grant areas) ── -->
+    <section class="section" id="sec-tools">
+      <div class="section-head">
+        <div>
+          <h1>Tools</h1>
+          <p>Jobs a manager runs by hand: the day's text reminders, roof checks for map areas, and grant status by council area.</p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Text message reminders</h2><span class="hint">Run once a day</span></div>
+        <div class="card-body">
+          <div class="tool-desc">One click texts every eligible lead: appointment reminders (meeting or survey booked for tomorrow), quote follow-ups (quote sent 3 days ago with nothing logged since) and install-day confirmations (installs-team jobs booked for tomorrow). A reminder is never sent twice.</div>
+          <div class="tool-row"><button class="tool-btn" id="sms-run-btn" type="button">Send scheduled texts now</button><span class="tool-status" id="sms-status"></span></div>
+          <div class="tool-log" id="sms-log"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Solar roof checks (map)</h2><span class="hint">Google Solar API, capped per month</span></div>
+        <div class="card-body">
+          <div class="tool-desc">Checks map buildings in the chosen areas for existing panels and roof potential, in batches, until the area is done or this month's allowance runs out. Keep this tab open while it runs.</div>
+          <div class="area-checks" id="enrich-area-list"></div>
+          <div class="tool-row">
+            <button class="tool-btn" id="enrich-run-btn" type="button">Run roof checks</button>
+            <button class="refresh-btn" id="enrich-stop-btn" type="button" style="display:none">Stop</button>
+            <span class="tool-status" id="enrich-status"></span>
+          </div>
+          <div class="tool-log" id="enrich-log"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Grant funding by area</h2><span class="hint">Shades the map and its area filter</span></div>
+        <div class="card-body"><div class="grant-rows" id="grant-area-rows"><div class="loading">Loading…</div></div></div>
+      </div>
+    </section>
+
     <!-- ── Audit ── -->
     <section class="section" id="sec-audit">
       <div class="section-head">
@@ -297,6 +398,8 @@ tfoot td { border-top: 1px solid var(--borderH); border-bottom: 0; }
 <script src="shared/escape-html.js"></script>
 <script src="shared/contact-outcome-config.js"></script>
 <script src="shared/rep-config.js"></script>
+<script src="shared/grant-area-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
 const { createClient } = supabase;
@@ -407,7 +510,7 @@ function logSignInOnce(user) {
 }
 
 /* ── Section switching ──────────────────────────────────── */
-const SECTIONS = ['pipeline', 'marketing', 'api', 'health', 'audit'];
+const SECTIONS = ['pipeline', 'activity', 'marketing', 'api', 'health', 'tools', 'audit'];
 const LOADERS = {};          // filled in below, one per section
 const loaded = new Set();    // sections loaded at least once this page load
 const viewed = new Set();    // sections audit-logged this page load
@@ -1161,7 +1264,7 @@ const GADS_REPORT_EVERY_DAYS = 30;
 
 async function getLastGadsExport() {
   const { data, error } = await db.from('manager_audit_log')
-    .select('created_at, user_name, user_email').eq('action', 'export')
+    .select('created_at, user_name, user_email').eq('action', 'export').eq('section', 'marketing')
     .order('created_at', { ascending: false }).limit(1);
   if (error) { console.error('Last Google Ads export lookup failed:', error); return null; }
   return data?.[0] || null;
@@ -1450,7 +1553,7 @@ LOADERS.health = async function () {
 /* ════════════════════════════════════════════════════════════
    AUDIT LOG
    ════════════════════════════════════════════════════════════ */
-const SECTION_LABELS = { pipeline: 'Pipeline', marketing: 'Marketing & analytics', api: 'API usage & quotas', health: 'System health', audit: 'Audit log' };
+const SECTION_LABELS = { pipeline: 'Pipeline', activity: 'Team activity', marketing: 'Marketing & analytics', api: 'API usage & quotas', health: 'System health', tools: 'Tools', audit: 'Audit log' };
 let auditRows = [];
 
 LOADERS.audit = async function () {
@@ -1483,7 +1586,7 @@ function renderAudit() {
   const tableRows = rows.map(r => `<tr>
     <td style="white-space:nowrap">${escapeHtml(fmtDateTime(r.created_at))}</td>
     <td>${escapeHtml(r.user_name || r.user_email)}</td>
-    <td>${r.action === 'sign_in' ? 'Signed in' : r.action === 'export' ? 'Downloaded won jobs for Google Ads' : 'Viewed section'}</td>
+    <td>${r.action === 'sign_in' ? 'Signed in' : r.action === 'export' ? (r.section === 'activity' ? 'Downloaded the contact log' : 'Downloaded won jobs for Google Ads') : 'Viewed section'}</td>
     <td>${r.section ? escapeHtml(SECTION_LABELS[r.section] || r.section) : '<span class="muted">—</span>'}</td></tr>`).join('');
 
   body.innerHTML = (summary ? `<div class="tiles">${summary}</div>` : '') + `
@@ -1492,6 +1595,333 @@ function renderAudit() {
     <tbody>${tableRows || '<tr><td colspan="4" class="empty">No activity yet.</td></tr>'}</tbody></table></div>`;
 }
 document.getElementById('audit-person').addEventListener('change', renderAudit);
+
+/* ════════════════════════════════════════════════════════════
+   TEAM ACTIVITY — moved from the retired dashboard.html (2026-10-13):
+   daily and per-person contact charts plus the full contact log with
+   filters, sorting and CSV export (the download is audit-logged).
+   ════════════════════════════════════════════════════════════ */
+let actContacts = [];
+let actLeads = {};                    // prospect_id → { name, source }
+let actPeriod = 'week';
+let actSort = { col: 'contacted_at', asc: false };
+const actCharts = {};
+
+// Group by the account-tied email, not the free-text name a rep typed;
+// legacy rows without an email fall back to the name.
+function actPersonKey(c) { return c.employee_email || c.employee; }
+function actLeadName(c) { return actLeads[c.prospect_id]?.name || 'Unknown'; }
+
+LOADERS.activity = async function () {
+  const tbody = document.getElementById('act-tbody');
+  tbody.innerHTML = '<tr><td colspan="6" class="loading">Loading…</td></tr>';
+  try {
+    actContacts = await fetchAll(() => db.from('prospect_contacts')
+      .select('id, prospect_id, employee, employee_email, outcome, notes, next_action, follow_up_date, contacted_at')
+      .is('deleted_at', null).order('contacted_at', { ascending: false }));
+    const ids = [...new Set(actContacts.map(c => c.prospect_id))];
+    actLeads = {};
+    for (let i = 0; i < ids.length; i += 150) {
+      const { data, error } = await db.from('prospects').select('id, customer_name, address, postcode, source').in('id', ids.slice(i, i + 150));
+      if (error) throw error;
+      data.forEach(p => { actLeads[p.id] = { name: p.customer_name || p.address || p.postcode || 'Unnamed lead', source: p.source }; });
+    }
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="6">${errorHtml("Couldn't load the contact log: " + (e.message || e))}</td></tr>`;
+    return;
+  }
+  stamp('activity-stamp');
+  actPopulateFilters();
+  actBuildCharts();
+  actRenderTable();
+};
+
+function actPeriodRows() {
+  if (actPeriod === 'all') return actContacts;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - (actPeriod === 'week' ? 7 : 30));
+  // Calendar-day boundary, so the person chart and the daily chart agree.
+  cutoff.setHours(0, 0, 0, 0);
+  return actContacts.filter(c => new Date(c.contacted_at) >= cutoff);
+}
+
+function actPopulateFilters() {
+  const people = new Map();
+  actContacts.forEach(c => { const k = actPersonKey(c); if (!people.has(k)) people.set(k, c.employee); });
+  const personSel = document.getElementById('act-f-person');
+  const keepPerson = personSel.value;
+  personSel.innerHTML = '<option value="">Everyone</option>' + [...people.entries()]
+    .sort((a, b) => (a[1] || '').localeCompare(b[1] || ''))
+    .map(([k, n]) => `<option value="${escapeHtml(k)}">${escapeHtml(n || k)}</option>`).join('');
+  personSel.value = people.has(keepPerson) ? keepPerson : '';
+
+  const outcomeSel = document.getElementById('act-f-outcome');
+  if (outcomeSel.options.length <= 1) {
+    CONTACT_OUTCOME_ORDER.forEach(o => outcomeSel.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(o)}">${escapeHtml(CONTACT_OUTCOME[o].label)}</option>`));
+  }
+}
+
+function actBuildCharts() {
+  if (typeof Chart === 'undefined') return; // chart library blocked/offline: the log still works
+  const keys = [], labels = [], values = [];
+  if (actPeriod === 'all') {
+    const months = [...new Set(actContacts.map(c => c.contacted_at.slice(0, 7)))].sort();
+    months.forEach(m => { keys.push(m); labels.push(new Date(m + '-02').toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })); values.push(0); });
+    actContacts.forEach(c => { const i = keys.indexOf(c.contacted_at.slice(0, 7)); if (i >= 0) values[i]++; });
+    document.getElementById('act-daily-hint').textContent = 'By month';
+  } else {
+    const days = actPeriod === 'week' ? 7 : 30;
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      keys.push(d.toISOString().slice(0, 10));
+      labels.push(d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }));
+      values.push(0);
+    }
+    actContacts.forEach(c => { const i = keys.indexOf(c.contacted_at.slice(0, 10)); if (i >= 0) values[i]++; });
+    document.getElementById('act-daily-hint').textContent = 'Contacts logged per day';
+  }
+  if (actCharts.daily) actCharts.daily.destroy();
+  actCharts.daily = new Chart(document.getElementById('act-chart-daily'), {
+    type: 'bar',
+    data: { labels, datasets: [{ data: values, backgroundColor: '#2ba45e', borderRadius: 4, maxBarThickness: 22 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 } } } },
+  });
+
+  const byPerson = {};
+  actPeriodRows().forEach(c => {
+    const k = actPersonKey(c);
+    (byPerson[k] ||= { label: c.employee || k, count: 0 }).count++;
+  });
+  const sorted = Object.values(byPerson).sort((a, b) => b.count - a.count);
+  if (actCharts.person) actCharts.person.destroy();
+  actCharts.person = new Chart(document.getElementById('act-chart-person'), {
+    type: 'bar',
+    data: { labels: sorted.map(p => p.label), datasets: [{ data: sorted.map(p => p.count), backgroundColor: '#1f8a52', borderRadius: 6, maxBarThickness: 20 }] },
+    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 } } } },
+  });
+}
+
+function actFilteredRows() {
+  const person = document.getElementById('act-f-person').value;
+  const outcome = document.getElementById('act-f-outcome').value;
+  const search = document.getElementById('act-f-search').value.trim().toLowerCase();
+  return actPeriodRows().filter(c => {
+    if (person && actPersonKey(c) !== person) return false;
+    if (outcome && c.outcome !== outcome) return false;
+    if (search && !actLeadName(c).toLowerCase().includes(search)) return false;
+    return true;
+  });
+}
+
+function actSortRows(rows) {
+  const { col, asc } = actSort;
+  const dir = asc ? 1 : -1;
+  const val = c => {
+    if (col === 'contacted_at' || col === 'follow_up_date') return c[col] ? new Date(c[col]).getTime() : -Infinity;
+    if (col === 'lead') return actLeadName(c).toLowerCase();
+    if (col === 'outcome') return (CONTACT_OUTCOME[c.outcome]?.label || c.outcome || '').toLowerCase();
+    return (c[col] || '').toLowerCase();
+  };
+  return [...rows].sort((a, b) => { const av = val(a), bv = val(b); return av < bv ? -dir : av > bv ? dir : 0; });
+}
+
+function actRenderTable() {
+  const rows = actSortRows(actFilteredRows());
+  document.querySelectorAll('#act-table th[data-col]').forEach(th => {
+    th.querySelector('.sort-ind').textContent = th.dataset.col === actSort.col ? (actSort.asc ? ' ▲' : ' ▼') : '';
+  });
+  const tbody = document.getElementById('act-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="6" class="empty">${actContacts.length ? 'No contacts match these filters.' : 'No contacts logged yet.'}</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(c => {
+    const cfg = CONTACT_OUTCOME[c.outcome] || { color: '#999', label: c.outcome };
+    const lead = actLeads[c.prospect_id];
+    const href = lead?.source === 'manual' ? `crm.html?lead=${encodeURIComponent(c.prospect_id)}` : `index.html?lead=${encodeURIComponent(c.prospect_id)}`;
+    return `<tr>
+      <td style="white-space:nowrap">${new Date(c.contacted_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+      <td><a href="${href}">${escapeHtml(actLeadName(c))}</a></td>
+      <td>${escapeHtml(c.employee || '')}</td>
+      <td><span class="outcome-tag" style="background:${cfg.color}22;color:${cfg.color}"><span class="dot" style="background:${cfg.color}"></span>${escapeHtml(cfg.label)}</span></td>
+      <td style="white-space:nowrap">${c.follow_up_date ? new Date(c.follow_up_date).toLocaleDateString('en-GB') : ''}</td>
+      <td>${escapeHtml(c.notes || '')}</td></tr>`;
+  }).join('');
+}
+
+document.querySelectorAll('#act-period .chip').forEach(btn => btn.addEventListener('click', () => {
+  actPeriod = btn.dataset.period;
+  document.querySelectorAll('#act-period .chip').forEach(b => b.classList.toggle('active', b === btn));
+  actBuildCharts();
+  actRenderTable();
+}));
+['act-f-person', 'act-f-outcome'].forEach(id => document.getElementById(id).addEventListener('change', actRenderTable));
+document.getElementById('act-f-search').addEventListener('input', actRenderTable);
+document.querySelectorAll('#act-table th[data-col]').forEach(th => th.addEventListener('click', () => {
+  const col = th.dataset.col;
+  if (actSort.col === col) actSort.asc = !actSort.asc; else actSort = { col, asc: true };
+  actRenderTable();
+}));
+
+document.getElementById('act-export-btn').addEventListener('click', async () => {
+  const rows = actSortRows(actFilteredRows());
+  const header = ['Date', 'Lead', 'Person', 'Outcome', 'Notes', 'Next action', 'Date set'];
+  const lines = rows.map(r => [
+    r.contacted_at || '', actLeadName(r), r.employee || '', CONTACT_OUTCOME[r.outcome]?.label || r.outcome || '',
+    r.notes || '', r.next_action || '', r.follow_up_date || '',
+  ].map(csvCell).join(','));
+  const csv = [header.map(csvCell).join(','), ...lines].join('\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  Object.assign(document.createElement('a'), { href: url, download: `turbine-contacts-${new Date().toISOString().slice(0, 10)}.csv` }).click();
+  URL.revokeObjectURL(url);
+  await audit('export', 'activity');
+});
+
+/* ════════════════════════════════════════════════════════════
+   TOOLS — moved from the retired dashboard.html (2026-10-13). Each runs
+   with this page's own signed-in manager session (the edge functions
+   require a real @turbineenergyuk.co.uk user; no service-role bypass).
+   ════════════════════════════════════════════════════════════ */
+async function functionErrorDetail(error) {
+  let detail = error.message;
+  try {
+    if (error.context && typeof error.context.json === 'function') {
+      const body = await error.context.clone().json();
+      detail = body?.error ? body.error : `HTTP ${error.context.status}: ${JSON.stringify(body)}`;
+    }
+  } catch { /* body wasn't JSON */ }
+  return detail;
+}
+
+LOADERS.tools = function () {
+  initEnrichPanel();
+  renderGrantAreas();
+};
+
+/* SMS reminders: one sms-scheduler call scans every eligible lead across all
+   three message types (capped server-side by MAX_SENDS_PER_RUN). */
+document.getElementById('sms-run-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('sms-run-btn');
+  const statusEl = document.getElementById('sms-status');
+  const logEl = document.getElementById('sms-log');
+  btn.disabled = true;
+  statusEl.textContent = 'Sending…';
+  const { data, error } = await db.functions.invoke('sms-scheduler', { body: {} });
+  btn.disabled = false;
+  if (error) {
+    statusEl.textContent = 'Something went wrong. See below.';
+    logEl.textContent += `Error: ${await functionErrorDetail(error)}\n`;
+    return;
+  }
+  const c = data.counts;
+  const line = (label, x) => `${label}: ${x.sent} sent, ${x.skipped_opted_out} opted out, ${x.skipped_no_phone} no phone, ${x.failed} failed, ${x.already_sent} already sent.`;
+  statusEl.textContent = `Done: ${data.sentThisRun} sent this run.`;
+  logEl.textContent += [line('Appointment reminders', c.appointment_reminder), line('Quote follow-ups', c.quote_followup), line('Install confirmations', c.install_confirmation)].join('\n') + '\n';
+});
+
+/* Solar roof checks: calls solar-enrichment repeatedly until no pending
+   rows remain in the chosen areas or the monthly budget runs out. */
+let enrichRunning = false;
+let enrichPanelReady = false;
+function initEnrichPanel() {
+  if (enrichPanelReady) return;
+  enrichPanelReady = true;
+  const preselected = ['Doncaster', 'Sheffield']; // the areas with funding currently available
+  document.getElementById('enrich-area-list').innerHTML = GRANT_AREA_NAMED.map(area =>
+    `<label><input type="checkbox" value="${escapeHtml(area)}" class="enrich-area-cb" ${preselected.includes(area) ? 'checked' : ''}> ${escapeHtml(area)}</label>`).join('');
+}
+
+document.getElementById('enrich-run-btn').addEventListener('click', async () => {
+  const areas = [...document.querySelectorAll('.enrich-area-cb:checked')].map(cb => cb.value);
+  const logEl = document.getElementById('enrich-log');
+  const statusEl = document.getElementById('enrich-status');
+  if (!areas.length) { statusEl.textContent = 'Tick at least one area first.'; return; }
+
+  enrichRunning = true;
+  document.getElementById('enrich-run-btn').style.display = 'none';
+  document.getElementById('enrich-stop-btn').style.display = '';
+  logEl.textContent = '';
+
+  // Up-front estimate so the log can show what's left (optional).
+  let totalPending = null;
+  try {
+    const { data: countData, error: countErr } = await db.functions.invoke('solar-enrichment', { body: { areaCounts: true } });
+    if (!countErr && countData?.counts) {
+      totalPending = areas.reduce((sum, a) => sum + (countData.counts[a] || 0), 0);
+      logEl.textContent += `${totalPending.toLocaleString()} building(s) waiting in ${areas.join(', ')}.\n`;
+    }
+  } catch { /* estimate only */ }
+
+  const totals = { prospect: 0, has_solar: 0, no_coverage: 0, error: 0 };
+  let processedSoFar = 0;
+  let batchNum = 0;
+  const MAX_BATCHES = 250; // runaway guard, above a full month's budget at BATCH_SIZE=40
+
+  while (enrichRunning && batchNum < MAX_BATCHES) {
+    batchNum++;
+    statusEl.textContent = `Running batch ${batchNum}…`;
+    const { data, error } = await db.functions.invoke('solar-enrichment', { body: { areas } });
+    if (error) { logEl.textContent += `Batch ${batchNum}: error: ${await functionErrorDetail(error)}\n`; break; }
+    if (data.error) { logEl.textContent += `Batch ${batchNum}: error: ${JSON.stringify(data.error)}\n`; break; }
+    if (data.budgetExhausted) { logEl.textContent += `Batch ${batchNum}: this month's Solar API allowance is used up (${data.usedThisPeriod}/${data.monthlyCap}). Stopping.\n`; break; }
+
+    totals.prospect += data.prospect || 0;
+    totals.has_solar += data.has_solar || 0;
+    totals.no_coverage += data.no_coverage || 0;
+    totals.error += data.error || 0;
+    processedSoFar += data.processed || 0;
+
+    let left = '';
+    if (totalPending !== null && data.processed) {
+      const remaining = Math.max(totalPending - processedSoFar, 0);
+      const batchesLeft = Math.ceil(remaining / data.processed);
+      left = `, about ${remaining.toLocaleString()} left (${batchesLeft} batch${batchesLeft === 1 ? '' : 'es'})`;
+    }
+    logEl.textContent += `Batch ${batchNum}: checked ${data.processed} (prospect ${data.prospect}, has solar ${data.has_solar}, no coverage ${data.no_coverage}, error ${data.error}). Allowance used ${data.usedThisPeriod}/${data.monthlyCap}${left}\n`;
+    logEl.scrollTop = logEl.scrollHeight;
+    if (!data.processed) { logEl.textContent += 'Done: nothing left to check in the chosen area(s).\n'; break; }
+  }
+
+  enrichRunning = false;
+  document.getElementById('enrich-run-btn').style.display = '';
+  document.getElementById('enrich-stop-btn').style.display = 'none';
+  statusEl.textContent = `Finished: ${totals.prospect} prospect, ${totals.has_solar} has solar, ${totals.no_coverage} no coverage, ${totals.error} error (${batchNum} batch${batchNum === 1 ? '' : 'es'}).`;
+});
+document.getElementById('enrich-stop-btn').addEventListener('click', () => { enrichRunning = false; });
+
+/* Grant funding status per council area (grant_areas, 016; manager-only
+   update via is_manager(), 043). Read by index.html to shade the map. */
+async function renderGrantAreas() {
+  const el = document.getElementById('grant-area-rows');
+  const { data, error } = await db.from('grant_areas').select('local_authority, status');
+  if (error) { el.innerHTML = errorHtml("Couldn't load grant areas: " + error.message); return; }
+  const statusByArea = Object.fromEntries((data || []).map(r => [r.local_authority, r.status]));
+  el.innerHTML = '';
+  GRANT_AREA_NAMED.forEach(area => {
+    const row = document.createElement('div');
+    row.innerHTML = `<span style="font-weight:500">${escapeHtml(area)}</span>`;
+    const select = document.createElement('select');
+    select.className = 'tool-select';
+    select.setAttribute('aria-label', `Grant status for ${area}`);
+    GRANT_STATUS_ORDER.forEach(status => {
+      const opt = document.createElement('option');
+      opt.value = status;
+      opt.textContent = GRANT_STATUS[status].label;
+      if (statusByArea[area] === status) opt.selected = true;
+      select.appendChild(opt);
+    });
+    select.addEventListener('change', async () => {
+      const { error: updateError } = await db.from('grant_areas').update({
+        status: select.value,
+        updated_at: new Date().toISOString(),
+        updated_by_email: currentUser.email,
+      }).eq('local_authority', area);
+      if (updateError) { alert('Failed to update the grant status: ' + updateError.message); renderGrantAreas(); }
+    });
+    row.appendChild(select);
+    el.appendChild(row);
+  });
+}
 </script>
 </body>
 </html>

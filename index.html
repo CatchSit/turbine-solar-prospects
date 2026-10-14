@@ -445,7 +445,6 @@
     <a class="nav-dashboard-link" href="crm.html">CRM</a>
     <button class="nav-add-lead-btn" id="add-lead-btn">+ Add lead</button>
     <a class="nav-dashboard-link" id="nav-home-link" href="home.html" style="display:none">Home</a>
-    <a class="nav-dashboard-link" id="nav-dashboard-link" href="dashboard.html" style="display:none">Dashboard</a>
     <button class="nav-signout-btn" id="sign-out-btn">Sign out</button>
   </div>
 </nav>
@@ -774,7 +773,6 @@ function onAuthenticated(user) {
   const name = getUserName(user);
   document.getElementById('nav-user-name').textContent = name;
   document.getElementById('nav-avatar').textContent = getInitials(name);
-  document.getElementById('nav-dashboard-link').style.display = isAdmin(user) ? '' : 'none';
   document.getElementById('nav-home-link').style.display = isAdmin(user) ? '' : 'none';
   return true;
 }

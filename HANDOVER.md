@@ -81,6 +81,19 @@ This is a sibling project to `mcs-map` (Amco Renewables' installer map/CRM at `C
 
 **Log Contact modal — outcomes grouped into a visual pipeline (2026-09-30).** Brainstormed with the user: the flat `CONTACT_OUTCOME_ORDER` chip row in the "Log contact" modal (`crm.html` + `index.html`, both copies — noted "ported verbatim") is now grouped into 4 labelled sections via a new `CONTACT_OUTCOME_SECTIONS` in `shared/contact-outcome-config.js`: **Not progressing** (Not Interested, Already Has Solar, Enquiring Only, No Answer), **Early contact** (Follow Up, Meeting Booked, Quote Sent), **Committed** (Survey Booked, Converted, Scheduled for Install), **Done** (Completed). Deliberately scoped to just this modal — the sidebar status filter chips, status badges, and `dashboard.html` all keep using the flat `CONTACT_OUTCOME_ORDER`, unchanged. Verified the section lists cover all 11 outcomes with no gaps/dupes/typos before wiring it in.
 
+**Dashboard merged into Manager Home — 2026-10-13, LIVE 2026-10-14.** Requested: "we have a separate page called dashboard when it's not needed". `home.html` gains two rail tabs; no migration needed (`manager_audit_log.section` has no CHECK).
+- **Team activity:** 7 days / 30 days / All time chips; Daily activity and By person charts (Chart.js 4.5.1 from jsdelivr, as dashboard used); the full contact log with person, outcome and search filters, sortable columns and **Export CSV**.
+  - The CSV download is now audit-logged as `export` with section `activity`, shown as "Downloaded the contact log".
+  - **The Google Ads monthly reminder now only counts `export` rows with section `marketing`**, so a contact-log download can't tick it off.
+  - The Lead column shows the customer name (was address only) and links to the lead in the CRM, or on the map for map prospects.
+- **Tools:** Text message reminders (sms-scheduler), Solar roof checks (solar-enrichment batch loop, unchanged logic), and Grant funding by area (`grant_areas`).
+  - The copy was rewritten in plain English; the behaviour is the same.
+- **Dropped:** dashboard's "API usage this month" box. Home's API usage & quotas tab already shows Solar, Maps and SMS.
+- **Access:** these features were on a page that only *hid* its link from non-managers. They're now behind Home's `is_manager()` database gate.
+- **`dashboard.html` is now a stub:** it sets `localStorage mh-section = 'activity'` and forwards to `home.html`, so old bookmarks land on Team activity. The Dashboard nav links were removed from `crm.html`, `index.html` and `home.html`.
+  - The edge-function code comments in `sms-scheduler`/`solar-enrichment` still mention dashboard.html (comments only, not redeployed).
+- **Verified:** headless Chrome against the mocked fixture: the contact log loads with links, the period chips and search work, both charts render, Tools shows 4 areas and the grant statuses, and the old URL forwards to Home. No console errors. Not yet tried signed in on the live site.
+
 **Several people on one lead — 2026-10-13, LIVE. Migrations `050` and `051_concurrent_editing.sql` applied 2026-10-13** (051 is publication-only and can't be checked over REST: confirm with two signed-in browsers). Asked before opening the CRM to the whole team: "should we lock out the lead… or can we deal with multiple people accessing". **Decided: no locking** (stuck locks, people legitimately need the same lead at once). The user chose items 1, 2 and 4 of the options. The "who's viewing" presence badge (3) was not chosen.
 - **(1) No silent overwrites (`whereUnchanged()` in crm.html):** Customer details Save and quote option Save are conditional updates.
   - They only apply if every field being saved still holds the value the page loaded: details are customer_name, address, postcode, contact_phone, contact_email, lead_type, assigned_to_email, lead_origin_id; quotes are label, the cost fields and quote_price.

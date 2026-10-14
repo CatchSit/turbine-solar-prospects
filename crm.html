@@ -305,7 +305,6 @@ tbody tr:hover { background: var(--surface2); }
   <div class="nav-right">
     <a class="nav-link" href="index.html">Map</a>
     <a class="nav-link" id="nav-home-link" href="home.html" style="display:none">Home</a>
-    <a class="nav-link" id="nav-dashboard-link" href="dashboard.html" style="display:none">Dashboard</a>
     <button id="sign-out-btn">Sign out</button>
   </div>
 </div>
@@ -2848,7 +2847,6 @@ async function refreshLeadsList() {
 
 async function boot(user) {
   currentUser = user;
-  document.getElementById('nav-dashboard-link').style.display = isAdmin(user) ? '' : 'none';
   document.getElementById('nav-home-link').style.display = isAdmin(user) ? '' : 'none';
   document.getElementById('show-deleted-leads-btn').style.display = isAdmin(user) ? '' : 'none';
   document.getElementById('lead-suppliers-btn').style.display = isAdmin(user) ? '' : 'none';
