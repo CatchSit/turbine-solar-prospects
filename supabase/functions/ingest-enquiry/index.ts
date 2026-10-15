@@ -13,6 +13,13 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 // an existing CRM lead) is added to that lead, not duplicated; new website
 // leads are assigned to Greg.
 // See migration 045 and docs/superpowers/specs/2026-09-30-manager-home-design.md.
+//
+// Sofar site (2026-10-15): sofarsolarstore.co.uk "Find an installer" (Next.js
+// /api/enquiry) calls this too, with its own secret SOFAR_INGEST_SECRET so it
+// can be rotated separately. Which secret matched - not the request body -
+// decides that a lead is a Sofar-site lead. Every enquiry comes to Turbine,
+// wherever the visitor is (Greg's decision), so out-of-area postcodes are
+// still created as leads.
 
 const SUPABASE_URL              = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -20,6 +27,7 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error('Missing required secrets \u2014 check SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY')
 }
 const INGEST_SECRET = Deno.env.get('WEBSITE_INGEST_SECRET')
+const SOFAR_INGEST_SECRET = Deno.env.get('SOFAR_INGEST_SECRET')
 const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
 const ASSIGN_TO = 'greg@turbineenergyuk.co.uk'
@@ -67,6 +75,16 @@ function classify(action: string, subject: string) {
   return { form: `Contact \u2014 ${topic.label}`, leadType: topic.leadType, company: null }
 }
 
+// Sofar site: subject is the visitor's answer to "home or business?".
+function classifySofar(subject: string, company: string | null) {
+  const business = subject === 'business'
+  return {
+    form: `Sofar site \u2014 ${business ? 'Business' : 'Home'}`,
+    leadType: business ? 'commercial' : 'domestic',
+    company: business ? company : null,
+  }
+}
+
 function lineValue(text: string, label: string): string | null {
   const m = text.match(new RegExp(`${label}:\\s*([^\\n]+)`, 'i'))
   const v = m?.[1]?.trim()
@@ -91,7 +109,7 @@ function deriveChannel(a: Attribution, consented: boolean): string {
   if (!consented) return 'Not tracked (no cookie consent)'
   let host = ''
   try { host = a.referrer ? new URL(a.referrer).hostname.replace(/^www\./, '') : '' } catch { /* bad referrer */ }
-  if (!host || host.endsWith('turbineenergyuk.co.uk')) return 'Direct'
+  if (!host || host.endsWith('turbineenergyuk.co.uk') || host.endsWith('sofarsolarstore.co.uk')) return 'Direct'
   if (/google\.|bing\.|duckduckgo\.|yahoo\.|ecosia\./.test(host)) return 'Organic search'
   if (/facebook\.|instagram\.|linkedin\.|t\.co$|x\.com|twitter\.|tiktok\./.test(host)) return 'Social'
   if (/chatgpt\.|openai\.|perplexity\.|claude\.ai|gemini\.google|copilot\./.test(host)) return 'AI assistant'
@@ -107,14 +125,17 @@ async function geocode(postcode: string | null) {
   } catch { return null }
 }
 
+// Deleted leads (soft delete, migration 048) are skipped: an enquiry
+// attached to one would be invisible in the CRM, so a returning customer
+// whose old lead was deleted gets a fresh lead instead (fixed 2026-10-13).
 async function findExistingLead(email: string | null, phone: string | null): Promise<string | null> {
   if (email) {
-    const { data } = await db.from('prospects').select('id').eq('source', 'manual').ilike('contact_email', email).limit(1)
+    const { data } = await db.from('prospects').select('id').eq('source', 'manual').is('deleted_at', null).ilike('contact_email', email).limit(1)
     if (data?.length) return data[0].id
   }
   const want = digits(phone)
   if (want.length >= 9) {
-    const { data } = await db.from('prospects').select('id, contact_phone').eq('source', 'manual').not('contact_phone', 'is', null)
+    const { data } = await db.from('prospects').select('id, contact_phone').eq('source', 'manual').is('deleted_at', null).not('contact_phone', 'is', null)
     const hit = (data || []).find(p => digits(p.contact_phone) === want)
     if (hit) return hit.id
   }
@@ -126,15 +147,17 @@ const json = (body: unknown, status: number) =>
 
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'POST only' }, 405)
-  if (!INGEST_SECRET) return json({ error: 'Unavailable \u2014 WEBSITE_INGEST_SECRET not configured' }, 503)
-  if (!timingSafeEqual(req.headers.get('x-ingest-secret') || '', INGEST_SECRET)) return json({ error: 'Forbidden' }, 403)
+  if (!INGEST_SECRET && !SOFAR_INGEST_SECRET) return json({ error: 'Unavailable \u2014 no ingest secret configured' }, 503)
+  const given = req.headers.get('x-ingest-secret') || ''
+  const fromSofar = !!SOFAR_INGEST_SECRET && timingSafeEqual(given, SOFAR_INGEST_SECRET)
+  if (!fromSofar && !(INGEST_SECRET && timingSafeEqual(given, INGEST_SECRET))) return json({ error: 'Forbidden' }, 403)
 
   let b: Record<string, unknown>
   try { b = await req.json() } catch { return json({ error: 'Invalid JSON' }, 400) }
 
   const action = clip(b.action, 60) || ''
   const subject = clip(b.subject, 200) || ''
-  const kind = classify(action, subject)
+  const kind = fromSofar ? classifySofar(subject, clip(b.company, 200)) : classify(action, subject)
   if (!kind) return json({ skipped: true, reason: 'non-sales contact topic' }, 200)
 
   const name = clip(b.name, 200)
@@ -158,7 +181,16 @@ Deno.serve(async (req) => {
     utm_campaign: pick('utm_campaign') ?? undefined, utm_term: pick('utm_term') ?? undefined,
     utm_content: pick('utm_content') ?? undefined, gclid: pick('gclid') ?? undefined, fbclid: pick('fbclid') ?? undefined,
   }
-  const channel = deriveChannel(attrib, consented)
+  // The Sofar site sets no cookies, so it sends the form page's referrer
+  // instead of stored first-touch attribution.
+  let channel: string
+  if (fromSofar) {
+    attrib.referrer = clip(b.referrer, 1000) ?? undefined
+    const via = deriveChannel(attrib, true)
+    channel = via === 'Direct' ? 'Sofar site' : `Sofar site \u2014 ${via}`
+  } else {
+    channel = deriveChannel(attrib, consented)
+  }
 
   let prospectId = await findExistingLead(email, phone)
   const isNew = !prospectId
