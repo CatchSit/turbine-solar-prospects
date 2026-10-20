@@ -95,9 +95,9 @@ This is a sibling project to `mcs-map` (Amco Renewables' installer map/CRM at `C
 **Outlook emails on CRM leads — 2026-10-20, BUILT, NOT SWITCHED ON.** Design, Greg's decisions and the switch-on steps are in `docs/superpowers/specs/2026-10-20-outlook-email-sync-design.md`. IT's setup steps are in `docs/it-setup-outlook-mail-sync.md`; Greg is handling consent with IT.
 - **What it does:**
   - The `mail-sync` Edge Function runs every 10 minutes via pg_cron (migration 053) and reads info@ plus the five reps' mailboxes through Microsoft Graph, app-only. Exchange RBAC for Applications limits it to a "CRM Mail Sync" group.
-  - It keeps only emails to or from a lead's `contact_email`, has Claude (`claude-opus-5-5`, low effort, JSON schema output) summarise each one and suggest an outcome, and stores the result in `lead_emails` (migration 052).
+  - It keeps only emails to or from a lead's `contact_email`, has Claude (`claude-haiku-5-5`, low effort, JSON schema output; switched from Opus 2026-10-20 to keep the cost to pennies) summarise each one under 14 days old and suggest an outcome, and stores the result in `lead_emails` (migration 052).
   - **The email body is never stored** (Greg's decision). It's read in memory, and only Graph's `uniqueBody`, so not the quoted thread.
-  - The first run backfills 60 days. Stage suggestions are only made for emails under 14 days old and newer than the lead's latest contact; older emails get a summary only.
+  - The first run backfills 60 days. Claude only reads emails under 14 days old; older ones are listed with no summary or suggestion, at no cost. A suggestion is only made when the email is newer than the lead's latest contact.
 - **CRM (`crm.html`):**
   - Emails appear in the Activity timeline with direction, subject, summary and "Open in Outlook".
   - An open suggestion shows as a blue card above the timeline. **Apply…** opens Log contact pre-filled (outcome, AI date, notes) and the rep saves it, which marks the suggestion applied with `applied_contact_id`. **Dismiss** marks it dismissed.

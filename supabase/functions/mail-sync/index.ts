@@ -34,13 +34,13 @@ const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
 const OWN_DOMAIN = '@turbineenergyuk.co.uk'
 const BACKFILL_DAYS = 60                 // "last 2 months" (Greg, 2026-10-20)
-const SUGGEST_WITHIN_DAYS = 14           // older emails get a summary but no stage suggestion
+const AI_WITHIN_DAYS = 14                // older (backfilled) emails are listed without Claude: no summary, no suggestion, no cost
 const PAGE_SIZE = 50
 const MAX_MESSAGES_PER_MAILBOX = 400     // per run; the rest is picked up next run
 const MAX_AI_CALLS_PER_RUN = 20          // bounds cost, and keeps a run inside the Edge Function time limit
 const MAX_BODY_CHARS = 12000
 const RUN_LOCK_MINUTES = 15
-const MODEL = 'claude-opus-5-5'
+const MODEL = 'claude-haiku-5-5'          // smallest model: plenty for a short summary, and keeps the cost to pennies
 
 // Mirror of shared/contact-outcome-config.js (keys, labels, stages). Keep
 // in sync when outcomes change: the browser file can't be imported here.
@@ -175,7 +175,7 @@ async function readEmail(ctx: {
     `Today: ${new Date().toISOString().slice(0, 10)}`,
     `Lead: ${ctx.leadName}`,
     `Where the lead stands now: ${current ? `${current[1]} (${current[2]})` : 'not contacted yet'}${ctx.lastContactAt ? `, last logged ${ctx.lastContactAt.slice(0, 10)}` : ''}`,
-    ctx.allowSuggestion ? '' : 'This email is older than the latest CRM entry or more than two weeks old: summarise it, and set suggested_outcome to "none".',
+    ctx.allowSuggestion ? '' : 'This email is older than the latest CRM entry: summarise it, and set suggested_outcome to "none".',
     '',
     'CRM outcomes:',
     outcomeList,
@@ -191,20 +191,17 @@ async function readEmail(ctx: {
   ].join('\n')
 
   try {
-    // Server-side fallback ("default" routes a declined request to a
-    // suitable model); passed untyped because the SDK's types may not
-    // include the scalar form yet.
+    // Passed untyped because the pinned SDK's types may not include
+    // output_config yet. No server-side fallback: Haiku doesn't support it.
     const params = {
       model: MODEL,
       max_tokens: 2000,
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
       output_config: { effort: 'low', format: { type: 'json_schema', schema: OUTPUT_SCHEMA } },
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userText }],
     }
     // deno-lint-ignore no-explicit-any
-    const res = await anthropic.beta.messages.create(params as any)
+    const res = await anthropic.messages.create(params as any) as Anthropic.Message
     if (res.stop_reason === 'refusal' || res.stop_reason === 'max_tokens') {
       return { summary: '', outcome: null, followUp: null, reason: null, status: 'skipped' }
     }
@@ -293,18 +290,21 @@ async function syncMailbox(token: string, mailbox: string, syncedThrough: string
             }
             continue
           }
-          if (budget.aiCalls >= MAX_AI_CALLS_PER_RUN) { result.more = true; break pages }
-          await fillLatestContact(lead)
           const ageDays = (Date.now() - new Date(m.receivedDateTime).getTime()) / 86400000
-          const allowSuggestion = ageDays <= SUGGEST_WITHIN_DAYS && (!lead.last_contact_at || m.receivedDateTime > lead.last_contact_at)
-          if (body === null) body = await readBodyText(token, mailbox, m.id)
-          budget.aiCalls++
-          const reading = await readEmail({
-            leadName: lead.customer_name || 'Unnamed lead', currentOutcome: lead.latest_outcome,
-            lastContactAt: lead.last_contact_at || null, direction: fromLead ? 'in' : 'out',
-            from: `${m.from?.emailAddress?.name || ''} <${from}>`.trim(), subject: m.subject || '',
-            sentAt: m.receivedDateTime, body, allowSuggestion,
-          })
+          let reading: Reading = { summary: '', outcome: null, followUp: null, reason: null, status: 'skipped' }
+          if (ageDays <= AI_WITHIN_DAYS) {
+            if (budget.aiCalls >= MAX_AI_CALLS_PER_RUN) { result.more = true; break pages }
+            await fillLatestContact(lead)
+            const allowSuggestion = !lead.last_contact_at || m.receivedDateTime > lead.last_contact_at
+            if (body === null) body = await readBodyText(token, mailbox, m.id)
+            budget.aiCalls++
+            reading = await readEmail({
+              leadName: lead.customer_name || 'Unnamed lead', currentOutcome: lead.latest_outcome,
+              lastContactAt: lead.last_contact_at || null, direction: fromLead ? 'in' : 'out',
+              from: `${m.from?.emailAddress?.name || ''} <${from}>`.trim(), subject: m.subject || '',
+              sentAt: m.receivedDateTime, body, allowSuggestion,
+            })
+          }
           const { error } = await db.from('lead_emails').insert({
             prospect_id: lead.id,
             internet_message_id: m.internetMessageId,

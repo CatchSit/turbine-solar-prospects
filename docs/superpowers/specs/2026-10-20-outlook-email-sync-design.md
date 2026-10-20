@@ -23,7 +23,8 @@ pg_cron (every 10 min, migration 053)
             list messages since mail_sync_mailboxes.synced_through (first run: 60 days back)
        -> keep messages whose from/to/cc matches a lead's contact_email (manual, not deleted)
        -> read uniqueBody (just the new text, not the quoted thread), in memory only
-       -> Claude (claude-opus-5-5, effort low, JSON schema output): summary + suggested outcome + date + reason
+       -> emails under 14 days old only: Claude (claude-haiku-5-5, effort low, JSON schema output): summary + suggested outcome + date + reason
+       -> older (backfilled) emails: listed with no Claude call
        -> insert lead_emails row (no body), body discarded
 crm.html lead page
   -> Activity timeline shows each email (direction, subject, summary, "Open in Outlook")
@@ -35,11 +36,11 @@ crm.html lead page
 ## Choices made, and why
 
 - **Suggestions are applied by a person, not automatically.** This matches Greg's rule for customer emails: review everything until he's happy, then automate. An email could be misread, for example a sarcastic "great, cancel it then", and a customer email could even try to instruct the AI. A person always saves the stage change, and the Log contact form shows exactly what will be logged. To automate later, the function could insert the `prospect_contacts` row itself when it's confident. Nothing else in the design would need to change.
-- **Stage suggestions only for recent emails:** within 14 days, and newer than the lead's latest logged contact. Backfilled emails get a summary only, so two months of old emails don't flood the leads with suggestions that are already out of date.
+- **Claude only reads recent emails:** under 14 days old. Older backfilled emails appear on the timeline (who, when, subject, Outlook link) with no summary and no suggestion. This keeps the cost down (Greg asked for the cheapest option, 2026-10-20), and means two months of old emails don't flood the leads with out-of-date suggestions. A suggestion is also only made when the email is newer than the lead's latest logged contact.
 - **No body is stored anywhere.** Not in the table, and not in the logs: errors log the message ID and the error, never the content. What is stored is the sender, recipients, subject, time, Outlook link, summary and suggestion.
 - **One row per email per lead.** A message CC'd to info@ and a rep is stored once, using `internet_message_id`, with both mailboxes listed.
 - **Visibility:** `can_see_lead_emails()` allows managers (`is_manager()`) and the lead's `assigned_to_email`. Other reps see nothing, including the list markers. People can only change `suggestion_status` (open → applied or dismissed); a trigger enforces this.
-- **Cost:** Claude runs only on matched emails, with at most 20 per run, which also keeps each run inside the Edge Function time limit. The backfill catches up over a few hours. Each email is a short prompt at low effort.
+- **Cost:** the smallest model (Claude Haiku 5.5, changed from Opus 5.5 on 2026-10-20 when Greg asked for the cheapest option), only on matched emails under 14 days old, at most 20 per run (which also keeps each run inside the Edge Function time limit). Estimated at pennies to a pound or two a month; not yet measured. Set a monthly spend limit in the Anthropic console.
 - **Data protection:** customer email text is sent to the Anthropic API for the summary. Anthropic doesn't use commercial API data for training by default. Worth adding to the privacy notice: "we use AI services to summarise correspondence".
 
 ## Vic
