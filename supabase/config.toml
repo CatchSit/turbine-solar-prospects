@@ -23,3 +23,9 @@ verify_jwt = true
 # session. Authenticity comes from the x-ingest-secret header instead
 # (WEBSITE_INGEST_SECRET), checked inside the function.
 verify_jwt = false
+
+[functions.mail-sync]
+# Run by pg_cron every 10 minutes (migration 053), which has no user
+# session. Authenticity comes from the x-sync-secret header instead
+# (MAIL_SYNC_SECRET), checked inside the function.
+verify_jwt = false

@@ -92,6 +92,27 @@ This is a sibling project to `mcs-map` (Amco Renewables' installer map/CRM at `C
 - `fetchLatestOutcomes` now returns each lead's latest contact row (adds `follow_up_date`) and every list row carries `latest_contact`, which the realtime handlers and the Log contact save keep current.
 - **Verified:** headless against the mock (columns, due dates, search, Stage filter hiding a column, card opens the lead), no console errors. Not yet seen signed in on the live site.
 
+**Outlook emails on CRM leads — 2026-10-20, BUILT, NOT SWITCHED ON.** Design, Greg's decisions and the switch-on steps are in `docs/superpowers/specs/2026-10-20-outlook-email-sync-design.md`. IT's setup steps are in `docs/it-setup-outlook-mail-sync.md`; Greg is handling consent with IT.
+- **What it does:**
+  - The `mail-sync` Edge Function runs every 10 minutes via pg_cron (migration 053) and reads info@ plus the five reps' mailboxes through Microsoft Graph, app-only. Exchange RBAC for Applications limits it to a "CRM Mail Sync" group.
+  - It keeps only emails to or from a lead's `contact_email`, has Claude (`claude-opus-5-5`, low effort, JSON schema output) summarise each one and suggest an outcome, and stores the result in `lead_emails` (migration 052).
+  - **The email body is never stored** (Greg's decision). It's read in memory, and only Graph's `uniqueBody`, so not the quoted thread.
+  - The first run backfills 60 days. Stage suggestions are only made for emails under 14 days old and newer than the lead's latest contact; older emails get a summary only.
+- **CRM (`crm.html`):**
+  - Emails appear in the Activity timeline with direction, subject, summary and "Open in Outlook".
+  - An open suggestion shows as a blue card above the timeline. **Apply…** opens Log contact pre-filled (outcome, AI date, notes) and the rep saves it, which marks the suggestion applied with `applied_contact_id`. **Dismiss** marks it dismissed.
+  - The list Status column and the Stages cards show "✉ Email suggests a change".
+  - Live updates come through the `lead_emails` publication.
+  - **Nothing changes a stage automatically.**
+- **Access:** `can_see_lead_emails()` allows managers plus the assigned rep. A trigger lets people change only `suggestion_status` (open → applied/dismissed) and stamps `resolved_by/at`. Rows are only ever inserted by the service role. `mail_sync_mailboxes` is readable by managers only.
+- **Vic is not set up as a manager.** Their address is an AOL one, so they can't sign in or be synced. The steps for when they have a Turbine mailbox are in the spec.
+- **Secrets needed:** `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `ANTHROPIC_API_KEY`, `MAIL_SYNC_SECRET`. The same `MAIL_SYNC_SECRET` value goes in Vault as `mail_sync_secret` for 053.
+- **Keep in sync:** `OUTCOMES` in `mail-sync/index.ts` mirrors `shared/contact-outcome-config.js`, which can't be imported into the function. **Update both when outcomes change.** The function file is ASCII-only.
+- **Verified:**
+  - The function type-checks: `npx deno check --node-modules-dir=none supabase/functions/mail-sync/index.ts`.
+  - Headless test against the mock (two emails on a lead): list and board markers, suggestion card, timeline entries, Apply pre-filling Log contact, and the save marking the suggestion applied. No console errors.
+- **Not yet tested:** the function has **not run against real Graph or Claude**, because there's no consent or keys yet. The first manual `curl` run in the spec is the real test.
+
 **Dashboard merged into Manager Home — 2026-10-13, LIVE 2026-10-14.** Requested: "we have a separate page called dashboard when it's not needed". `home.html` gains two rail tabs; no migration needed (`manager_audit_log.section` has no CHECK).
 - **Team activity:** 7 days / 30 days / All time chips; Daily activity and By person charts (Chart.js 4.5.1 from jsdelivr, as dashboard used); the full contact log with person, outcome and search filters, sortable columns and **Export CSV**.
   - The CSV download is now audit-logged as `export` with section `activity`, shown as "Downloaded the contact log".

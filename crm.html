@@ -171,6 +171,19 @@ tbody tr:hover { background: var(--surface2); }
 .email-due-actions a.btn-primary { text-decoration: none; display: inline-block; }
 .email-due-hint { font-size: 11.5px; color: var(--text3); }
 .email-upcoming { font-size: 12px; color: var(--text3); }
+/* Outlook emails on the lead (mail-sync, lead_emails 052) */
+.email-suggestions { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.email-suggestions:empty { display: none; }
+.email-sugg { border: 1px solid #b9d3f0; background: #eef5fd; border-radius: 10px; padding: 12px; }
+.email-sugg-title { font-size: 13px; font-weight: 700; color: #1d4f8a; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.email-sugg-title .chip-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.email-sugg-meta { font-size: 12px; color: var(--text2); margin-top: 4px; }
+.email-sugg-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
+.tl-email-subject { font-size: 12.5px; font-weight: 600; margin-top: 5px; overflow-wrap: anywhere; }
+.tl-email-link { font-size: 11.5px; margin-top: 5px; display: inline-block; }
+.tl-email-ai { font-size: 11.5px; color: #1d4f8a; margin-top: 5px; }
+.bc-email { margin-top: 6px; font-size: 11.5px; font-weight: 600; color: #1d4f8a; }
+.status-email { display: inline-block; margin-top: 4px; font-size: 11px; font-weight: 600; color: #1d4f8a; background: #eef5fd; border-radius: 100px; padding: 2px 8px; }
 .ns-email { font-size: 12px; font-weight: 600; color: #8a5a10; background: #fdf0d5; padding: 3px 9px; border-radius: 100px; cursor: pointer; border: none; font-family: inherit; }
 .cm-email-opt { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; padding: 10px 11px; border-radius: 8px; background: #fdf6e7; border: 1px solid #e9cf9a; font-size: 12.5px; color: #6b4a12; }
 .cm-email-opt input { margin-top: 2px; accent-color: var(--accent); }
@@ -464,6 +477,7 @@ tbody tr:hover { background: var(--surface2); }
             <span class="sec-count" id="activity-count"></span>
           </div>
           <div class="sec-b">
+            <div class="email-suggestions" id="email-suggestions"></div>
             <div class="emails-due" id="emails-due"></div>
             <div class="composer">
               <span>Spoke to them, or tried to? Log it here and the next step updates itself.</span>
@@ -967,7 +981,7 @@ function renderLeadsTable() {
       <td>${escapeHtml(d.customer_name || 'Unnamed lead')}</td>
       <td>${typeTag}</td>
       <td><span class="tag"><span class="tag-dot" style="background:${originColor(leadOriginKey(d))}"></span>${escapeHtml(originLabel(leadOriginKey(d)))}</span></td>
-      <td>${statusBadgeHtml(d.latest_outcome)}</td>
+      <td>${statusBadgeHtml(d.latest_outcome)}${openSuggestionLeadIds.has(d.id) ? '<br><span class="status-email">✉ Email suggests a change</span>' : ''}</td>
       <td>${quoteCell}</td>
       <td>${contact}</td>
       <td>${escapeHtml(d.address || '') || '—'}</td>
@@ -1040,6 +1054,7 @@ function boardCardHtml(d) {
     <div class="bc-outcome"><span class="tag-dot" style="background:${color}"></span>${escapeHtml(outcomeLabel)}${exitLabel ? ` · ${escapeHtml(exitLabel.split(' (')[0])}` : ''}</div>
     <div class="bc-meta">${meta}</div>
     ${dueHtml}
+    ${openSuggestionLeadIds.has(d.id) ? '<div class="bc-email">✉ Email suggests a change</div>' : ''}
   </button>`;
 }
 
@@ -1332,7 +1347,7 @@ function formatDateTime(ts) {
 async function loadActivity(prospectId) {
   const list = document.getElementById('activity-list');
   list.innerHTML = '<li class="doc-empty" style="padding-left:34px">Loading…</li>';
-  const [contactsRes, enquiriesRes, auditRes, emailLogRes] = await Promise.all([
+  const [contactsRes, enquiriesRes, auditRes, emailLogRes, leadEmailsRes] = await Promise.all([
     db.from('prospect_contacts')
       .select('id, prospect_id, employee, outcome, notes, next_action, follow_up_date, contacted_at')
       .eq('prospect_id', prospectId)
@@ -1348,16 +1363,23 @@ async function loadActivity(prospectId) {
       .select('prospect_id, related_contact_id, email_type, sequence_no, status, to_email, created_by_email, created_at')
       .eq('prospect_id', prospectId)
       .order('created_at', { ascending: false }),
+    // Only managers and the assigned rep get rows back (RLS, 052).
+    db.from('lead_emails')
+      .select('id, prospect_id, mailboxes, web_link, direction, from_email, from_name, subject, sent_at, summary, ai_status, ai_outcome, ai_follow_up_date, ai_reason, suggestion_status, resolved_by_email, resolved_at')
+      .eq('prospect_id', prospectId)
+      .order('sent_at', { ascending: false }),
   ]);
   if (!currentLead || currentLead.id !== prospectId) return; // moved on while this was in flight
   if (contactsRes.error) { list.innerHTML = `<li class="doc-empty" style="padding-left:34px">Couldn't load the contact log. Refresh to try again.</li>`; return; }
-  [enquiriesRes, auditRes, emailLogRes].forEach(r => { if (r.error) console.error('Activity load (partial):', r.error); });
+  [enquiriesRes, auditRes, emailLogRes, leadEmailsRes].forEach(r => { if (r.error) console.error('Activity load (partial):', r.error); });
 
   // Same ownership guard as quote options/install checklist (2026-09-25).
   const contacts = (contactsRes.data || []).filter(r => r.prospect_id === prospectId);
   const enquiries = (enquiriesRes.data || []).filter(r => r.prospect_id === prospectId);
   const edits = (auditRes.data || []).filter(r => r.prospect_id === prospectId);
   const emailLogs = (emailLogRes.data || []).filter(r => r.prospect_id === prospectId);
+  currentLeadEmails = (leadEmailsRes.data || []).filter(r => r.prospect_id === prospectId);
+  renderEmailSuggestions();
   knownLatestContactAt = contacts[0]?.contacted_at || null;
   currentEmails = { ...dueCustomerEmails(contacts, emailLogs), logsOk: !emailLogRes.error };
   renderEmailsDue();
@@ -1371,10 +1393,102 @@ async function loadActivity(prospectId) {
     ...enquiries.map(e => ({ at: e.received_at, html: enquiryItemHtml(e) })),
     ...edits.map(h => ({ at: h.edited_at, html: editItemHtml(h) })).filter(i => i.html),
     ...emailLogs.map(l => ({ at: l.created_at, html: emailLogItemHtml(l) })),
+    ...currentLeadEmails.map(m => ({ at: m.sent_at, html: leadEmailItemHtml(m) })),
     { at: currentLead.created_at, html: addedItemHtml() },
   ].sort((a, b) => new Date(b.at) - new Date(a.at));
   document.getElementById('activity-count').textContent = `${contacts.length} contact${contacts.length === 1 ? '' : 's'} logged`;
   list.innerHTML = items.map(i => i.html).join('');
+}
+
+/* ── Outlook emails (mail-sync Edge Function, lead_emails 052) ───────
+   Emails to/from the lead's address in info@ and the reps' mailboxes,
+   each with Claude's one-line summary. No email body is stored. When an
+   email suggests a stage change it shows as a card above the timeline:
+   Apply opens Log contact pre-filled (a person always saves it), Dismiss
+   hides it. Visible to managers and the assigned rep only. ── */
+let currentLeadEmails = [];
+let pendingEmailSuggestionId = null;   // set while Log contact was opened from a suggestion
+let openSuggestionLeadIds = new Set(); // leads with an open suggestion (list + board markers)
+
+function mailboxLabel(mb) {
+  if (!mb) return '';
+  if (mb === 'info@turbineenergyuk.co.uk') return 'info@';
+  return REP[mb] ? `${REP[mb].name}'s mailbox` : mb;
+}
+
+function leadEmailItemHtml(m) {
+  const fromCustomer = m.direction === 'in';
+  const who = fromCustomer ? (m.from_name || m.from_email || 'Customer') : (REP[m.from_email]?.name || m.from_name || m.from_email || 'Turbine Energy');
+  const dot = fromCustomer ? '#2563eb' : '#64748b';
+  const where = (m.mailboxes || []).map(mailboxLabel).join(', ');
+  const cfg = CONTACT_OUTCOME[m.ai_outcome];
+  const sugg = cfg ? `<div class="tl-email-ai">Suggested: ${escapeHtml(cfg.label)}${m.suggestion_status === 'applied' ? ' (applied)' : m.suggestion_status === 'dismissed' ? ' (dismissed)' : ''}</div>` : '';
+  return `<li><span class="tl-dot" style="background:${dot}"></span>
+    <div class="tl-top"><span class="tl-kind">${fromCustomer ? 'Email from customer' : 'Email to customer'} · ${escapeHtml(who)}</span><span class="clog-meta">${formatDateTime(m.sent_at)}</span></div>
+    <div class="tl-email-subject">${escapeHtml(m.subject || '(no subject)')}</div>
+    ${m.summary ? `<div class="clog-notes">${escapeHtml(m.summary)}</div>` : m.ai_status === 'pending' ? '<div class="clog-notes">Summary on its way.</div>' : ''}
+    ${sugg}
+    ${m.web_link ? `<a class="tl-email-link" href="${escapeHtml(m.web_link)}" target="_blank" rel="noopener">Open in Outlook${where ? ` (${escapeHtml(where)})` : ''}</a>` : ''}</li>`;
+}
+
+function renderEmailSuggestions() {
+  const panel = document.getElementById('email-suggestions');
+  const open = currentLeadEmails.filter(m => m.suggestion_status === 'open' && CONTACT_OUTCOME[m.ai_outcome]);
+  if (currentLead) {
+    if (open.length) openSuggestionLeadIds.add(currentLead.id); else openSuggestionLeadIds.delete(currentLead.id);
+  }
+  panel.innerHTML = open.map(m => {
+    const cfg = CONTACT_OUTCOME[m.ai_outcome];
+    const date = m.ai_follow_up_date ? ` · ${escapeHtml(cfg.dateLabel || 'Date')}: ${formatShortDate(m.ai_follow_up_date)}` : '';
+    return `<div class="email-sugg" data-id="${escapeHtml(m.id)}">
+      <div class="email-sugg-title">✉ ${m.direction === 'in' ? 'Customer email' : 'Our email'} suggests: <span class="chip-dot" style="background:${cfg.color}"></span>${escapeHtml(cfg.label)}</div>
+      <div class="email-sugg-meta">“${escapeHtml(m.subject || '(no subject)')}”, ${formatDateTime(m.sent_at)}${date}</div>
+      ${m.ai_reason ? `<div class="email-sugg-meta">Why: ${escapeHtml(m.ai_reason)}</div>` : ''}
+      <div class="email-sugg-actions">
+        <button class="btn-primary" type="button" data-sugg-action="apply">Apply…</button>
+        <button class="btn-ghost" type="button" data-sugg-action="dismiss">Dismiss</button>
+        <span class="email-due-hint">Apply opens Log contact filled in, so you can check it before saving.</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function resolveEmailSuggestion(id, status, contactId) {
+  const { data, error } = await db.from('lead_emails')
+    .update({ suggestion_status: status, applied_contact_id: contactId || null })
+    .eq('id', id).eq('suggestion_status', 'open')
+    .select('id');
+  if (error) { alert("Couldn't update the email suggestion: " + error.message); return false; }
+  if (!data?.length) showToast('Someone else has already dealt with that suggestion.');
+  return true;
+}
+
+document.getElementById('email-suggestions').addEventListener('click', async e => {
+  const btn = e.target.closest('[data-sugg-action]');
+  if (!btn || !currentLead) return;
+  const m = currentLeadEmails.find(x => x.id === btn.closest('.email-sugg').dataset.id);
+  if (!m) return;
+  if (btn.dataset.suggAction === 'dismiss') {
+    btn.disabled = true;
+    if (await resolveEmailSuggestion(m.id, 'dismissed')) loadActivity(currentLead.id);
+    else btn.disabled = false;
+    return;
+  }
+  openContactModal(currentLead.id, currentLead.customer_name || currentLead.address || currentLead.postcode || 'Unnamed lead');
+  pendingEmailSuggestionId = m.id;
+  document.querySelector(`#cm-outcome-chips .outcome-chip[data-value="${CSS.escape(m.ai_outcome)}"]`)?.click();
+  if (m.ai_follow_up_date && CONTACT_OUTCOME[m.ai_outcome]?.requiresDate) {
+    const input = document.getElementById('cm-followup-date');
+    input.value = m.ai_follow_up_date;
+    input.dataset.auto = '';
+  }
+  document.getElementById('cm-notes').value = `From ${m.direction === 'in' ? 'the customer' : 'our'} email on ${formatShortDate(m.sent_at)} ("${m.subject || 'no subject'}"): ${m.summary || ''}`.trim();
+});
+
+async function fetchOpenEmailSuggestionLeadIds() {
+  const { data, error } = await db.from('lead_emails').select('prospect_id').eq('suggestion_status', 'open');
+  if (error) { console.error('Failed to load email suggestions:', error); return new Set(); }
+  return new Set((data || []).map(r => r.prospect_id));
 }
 
 function contactItemHtml(c) {
@@ -1546,11 +1660,17 @@ function unsubscribeFromLead() {
   if (leadChannel) { db.removeChannel(leadChannel); leadChannel = null; }
 }
 
+let leadEmailsReloadTimer = null;
 function subscribeToLead(leadId) {
   unsubscribeFromLead();
   if (!db.channel) return;
   const forLead = { schema: 'public', filter: `prospect_id=eq.${leadId}` };
   leadChannel = db.channel(`lead-${leadId}`)
+    .on('postgres_changes', { event: '*', table: 'lead_emails', ...forLead }, () => {
+      if (currentLead?.id !== leadId) return;
+      clearTimeout(leadEmailsReloadTimer);
+      leadEmailsReloadTimer = setTimeout(() => { if (currentLead?.id === leadId) { loadActivity(leadId); renderLeadsTable(); } }, 800);
+    })
     .on('postgres_changes', { event: 'INSERT', table: 'prospect_contacts', ...forLead }, ({ new: c }) => {
       if (currentLead?.id !== leadId) return;
       currentLead.latest_outcome = c.outcome;
@@ -1614,6 +1734,12 @@ function subscribeToLeadsList() {
       row.latest_outcome = c.outcome;
       row.latest_contact = c;
       renderSidebarFilters();
+      renderLeadsTable();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'lead_emails' }, ({ new: m }) => {
+      if (!m?.prospect_id) return;
+      if (m.suggestion_status === 'open') openSuggestionLeadIds.add(m.prospect_id);
+      else if (currentLead?.id !== m.prospect_id) return;   // the lead page re-checks its own lead
       renderLeadsTable();
     })
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'prospects', filter: 'source=eq.manual' }, ({ new: p }) => {
@@ -2724,6 +2850,7 @@ function openContactModal(prospectId, prospectName) {
   document.getElementById('cm-email-open').checked = true;
   document.getElementById('cm-notes').value = '';
   document.getElementById('cm-next-action').value = '';
+  pendingEmailSuggestionId = null;
   document.getElementById('contact-modal-overlay').classList.add('open');
 }
 function closeContactModal() {
@@ -2787,6 +2914,10 @@ document.getElementById('cm-submit').addEventListener('click', async () => {
 
   btn.disabled = false; btn.textContent = 'Save log';
   if (error) { alert('Failed to save: ' + error.message); return; }
+  if (pendingEmailSuggestionId && insertedContact) {
+    await resolveEmailSuggestion(pendingEmailSuggestionId, 'applied', insertedContact.id);
+    pendingEmailSuggestionId = null;
+  }
   const openEmail = document.getElementById('cm-email-opt').style.display !== 'none' && document.getElementById('cm-email-open').checked;
   closeContactModal();
   if (openEmail && insertedContact && currentLead && currentLead.id === prospectId && currentLead.contact_email) {
@@ -3009,7 +3140,8 @@ document.addEventListener('keydown', e => {
 async function refreshLeadsList() {
   allLeads = await fetchLeads();
   const ids = allLeads.map(l => l.id);
-  const [outcomes, quotePrices] = await Promise.all([fetchLatestOutcomes(ids), fetchSelectedQuotePrices(ids)]);
+  const [outcomes, quotePrices, suggestionIds] = await Promise.all([fetchLatestOutcomes(ids), fetchSelectedQuotePrices(ids), fetchOpenEmailSuggestionLeadIds()]);
+  openSuggestionLeadIds = suggestionIds;
   allLeads.forEach(l => {
     l.latest_outcome = outcomes[l.id]?.outcome || null;
     l.latest_contact = outcomes[l.id] || null;
