@@ -27,7 +27,6 @@ alter table mail_sync_mailboxes enable row level security;
 insert into mail_sync_mailboxes (mailbox) values
   ('info@turbineenergyuk.co.uk'),
   ('greg@turbineenergyuk.co.uk'),
-  ('matty@turbineenergyuk.co.uk'),
   ('tim@turbineenergyuk.co.uk'),
   ('chris@turbineenergyuk.co.uk'),
   ('jackie@turbineenergyuk.co.uk')

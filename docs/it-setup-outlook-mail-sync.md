@@ -6,11 +6,10 @@
 
 ## What this is for
 
-The Turbine CRM needs to see emails between our sales team and customers, so each customer's emails appear on their CRM record. It needs **read-only** access to these six mailboxes and nothing else:
+The Turbine CRM needs to see emails between our sales team and customers, so each customer's emails appear on their CRM record. It needs **read-only** access to these five mailboxes and nothing else:
 
 - info@turbineenergyuk.co.uk
 - greg@turbineenergyuk.co.uk
-- matty@turbineenergyuk.co.uk
 - tim@turbineenergyuk.co.uk
 - chris@turbineenergyuk.co.uk
 - jackie@turbineenergyuk.co.uk
@@ -27,17 +26,17 @@ The method below (Exchange "RBAC for Applications") limits the app to exactly th
    - **Application (client) ID**
    - **Directory (tenant) ID**
 4. Go to **Certificates & secrets → Client secrets → New client secret**. Description `CRM mail sync`, expiry **24 months**. Copy the secret's **Value** now (it's only shown once).
-5. **API permissions:** leave this alone. Don't add Mail.Read here. Step 3 grants the access instead, limited to the six mailboxes.
+5. **API permissions:** leave this alone. Don't add Mail.Read here. Step 3 grants the access instead, limited to the five mailboxes.
 6. Go to **Identity → Applications → Enterprise applications**, open **Turbine CRM mail sync**, and copy its **Object ID**. This is a different ID from the ones in step 3. It's the Enterprise application's own Object ID.
 
-## Step 2: Make a group of the six mailboxes (Exchange Online PowerShell)
+## Step 2: Make a group of the five mailboxes (Exchange Online PowerShell)
 
 ```powershell
 Connect-ExchangeOnline
 
 New-DistributionGroup -Name "CRM Mail Sync" -Type Security `
-  -Members info@turbineenergyuk.co.uk, greg@turbineenergyuk.co.uk, matty@turbineenergyuk.co.uk, `
-           tim@turbineenergyuk.co.uk, chris@turbineenergyuk.co.uk, jackie@turbineenergyuk.co.uk
+  -Members info@turbineenergyuk.co.uk, greg@turbineenergyuk.co.uk, tim@turbineenergyuk.co.uk, `
+           chris@turbineenergyuk.co.uk, jackie@turbineenergyuk.co.uk
 
 # Hide it from the address book so staff don't email it by accident
 Set-DistributionGroup "CRM Mail Sync" -HiddenFromAddressListsEnabled $true

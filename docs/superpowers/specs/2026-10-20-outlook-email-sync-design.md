@@ -19,7 +19,7 @@ Decisions (2026-10-20):
 ```
 pg_cron (every 10 min, migration 053)
   -> mail-sync Edge Function (x-sync-secret)
-       -> Microsoft Graph, app-only token. Exchange RBAC for Applications limits it to the six mailboxes.
+       -> Microsoft Graph, app-only token. Exchange RBAC for Applications limits it to the five mailboxes (Matty removed 2026-10-20: he has left).
             list messages since mail_sync_mailboxes.synced_through (first run: 60 days back)
        -> keep messages whose from/to/cc matches a lead's contact_email (manual, not deleted)
        -> read uniqueBody (just the new text, not the quoted thread), in memory only
