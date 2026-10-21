@@ -195,6 +195,28 @@ tfoot td { border-top: 1px solid var(--borderH); border-bottom: 0; }
 #ms-btn { margin-top: 28px; width: 100%; padding: 14px 0; background: var(--text); color: #fff; border: 0; border-radius: 12px; font-size: 14px; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 12px; }
 #ms-btn:hover { filter: brightness(1.1); }
 #login-error { margin-top: 14px; font-size: 12.5px; color: var(--alert); padding: 10px 12px; background: var(--alertSoft); border-radius: 8px; display: none; }
+
+/* Proposals (054) */
+.prop-form { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 16px; }
+.prop-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text2); }
+.prop-form label.wide, .prop-form .wide { grid-column: 1 / -1; }
+.prop-form input { padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font: inherit; font-size: 13px; color: var(--text); background: var(--surface); }
+.prop-actions { display: flex; gap: 8px; align-items: center; }
+.prop-primary { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+.prop-primary:hover { background: var(--accentDk); color: #fff; }
+.prop-row { cursor: pointer; }
+.prop-row:hover td { background: var(--surface2); }
+.prop-detail td { background: #fbfcfb; padding: 14px 18px 18px; }
+.prop-link { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; font-size: 12.5px; }
+.prop-link code { background: var(--surface2); padding: 4px 8px; border-radius: 6px; font-size: 12px; }
+.prop-bars { display: grid; grid-template-columns: 190px 1fr 60px; gap: 6px 10px; align-items: center; font-size: 12.5px; margin: 6px 0 14px; max-width: 640px; }
+.prop-bar { height: 10px; background: var(--accentTrack); border-radius: 5px; overflow: hidden; }
+.prop-bar span { display: block; height: 100%; background: var(--accent); border-radius: 5px; }
+.prop-tag { display: inline-block; padding: 2px 9px; border-radius: 100px; font-size: 11.5px; white-space: nowrap; background: var(--surface2); color: var(--text2); }
+.prop-tag.open { background: var(--accentDim); color: var(--accentDk); }
+.prop-tag.hot { background: #fdefcc; color: #7a5200; }
+.prop-tag.off { background: var(--alertSoft); color: var(--alert); }
+.prop-new-link { margin-top: 12px; padding: 12px 14px; border-radius: 8px; background: var(--accentDim); font-size: 13px; }
 </style>
 </head>
 <body>
@@ -238,6 +260,7 @@ tfoot td { border-top: 1px solid var(--borderH); border-bottom: 0; }
     <button class="rail-btn" data-section="pipeline">Pipeline</button>
     <button class="rail-btn" data-section="activity">Team activity</button>
     <button class="rail-btn" data-section="marketing">Marketing &amp; analytics</button>
+    <button class="rail-btn" data-section="proposals">Proposals</button>
     <button class="rail-btn" data-section="api">API usage &amp; quotas</button>
     <button class="rail-btn" data-section="health">System health</button>
     <button class="rail-btn" data-section="tools">Tools</button>
@@ -377,6 +400,33 @@ tfoot td { border-top: 1px solid var(--borderH); border-bottom: 0; }
     </section>
 
     <!-- ── Audit ── -->
+    <!-- ── Proposals (054): personalised proposal links + who opened them ── -->
+    <section class="section" id="sec-proposals">
+      <div class="section-head">
+        <div>
+          <h1>Proposals</h1>
+          <p>Create a personalised proposal link for a prospect, then see who opened it, how long they read each page, the figures they tried and what they clicked. Links only work for the person you send them to; they are not on the website menus or Google.</p>
+        </div>
+        <div><button class="refresh-btn" id="prop-new-btn" type="button">New proposal</button> <button class="refresh-btn" data-refresh="proposals">Refresh</button></div>
+      </div>
+      <div class="card" id="prop-new" hidden>
+        <div class="card-head"><h2>New care home proposal</h2><span class="hint">The starting figures can still be changed by the reader</span></div>
+        <div class="card-body">
+          <form id="prop-form" class="prop-form" autocomplete="off">
+            <label class="wide">Care home name<input name="recipient_name" required maxlength="80" placeholder="e.g. Oakwood Care Home"></label>
+            <label>Contact name<input name="contact_name" maxlength="80" placeholder="Optional"></label>
+            <label>Contact email<input name="contact_email" type="email" maxlength="120" placeholder="Optional"></label>
+            <label>Annual electricity spend (£)<input name="annual_spend" type="number" min="10000" max="120000" step="1000" value="45000" required></label>
+            <label>Unit rate (p per kWh)<input name="unit_rate_p" type="number" min="18" max="40" step="1" value="26" required></label>
+            <label>Usable roof (m²)<input name="roof_m2" type="number" min="50" max="2000" step="25" value="600" required></label>
+            <label class="wide">Notes<input name="notes" maxlength="1000" placeholder="Optional, only you see this"></label>
+            <div class="wide prop-actions"><button type="submit" class="refresh-btn prop-primary">Create link</button> <button type="button" class="refresh-btn" id="prop-cancel">Cancel</button> <span id="prop-form-msg" class="muted"></span></div>
+          </form>
+        </div>
+      </div>
+      <div id="proposals-body"><div class="loading">Loading…</div></div>
+    </section>
+
     <section class="section" id="sec-audit">
       <div class="section-head">
         <div>
@@ -510,7 +560,7 @@ function logSignInOnce(user) {
 }
 
 /* ── Section switching ──────────────────────────────────── */
-const SECTIONS = ['pipeline', 'activity', 'marketing', 'api', 'health', 'tools', 'audit'];
+const SECTIONS = ['pipeline', 'activity', 'marketing', 'proposals', 'api', 'health', 'tools', 'audit'];
 const LOADERS = {};          // filled in below, one per section
 const loaded = new Set();    // sections loaded at least once this page load
 const viewed = new Set();    // sections audit-logged this page load
@@ -1556,7 +1606,7 @@ LOADERS.health = async function () {
 /* ════════════════════════════════════════════════════════════
    AUDIT LOG
    ════════════════════════════════════════════════════════════ */
-const SECTION_LABELS = { pipeline: 'Pipeline', activity: 'Team activity', marketing: 'Marketing & analytics', api: 'API usage & quotas', health: 'System health', tools: 'Tools', audit: 'Audit log' };
+const SECTION_LABELS = { pipeline: 'Pipeline', activity: 'Team activity', marketing: 'Marketing & analytics', proposals: 'Proposals', api: 'API usage & quotas', health: 'System health', tools: 'Tools', audit: 'Audit log' };
 let auditRows = [];
 
 LOADERS.audit = async function () {
@@ -1598,6 +1648,172 @@ function renderAudit() {
     <tbody>${tableRows || '<tr><td colspan="4" class="empty">No activity yet.</td></tr>'}</tbody></table></div>`;
 }
 document.getElementById('audit-person').addEventListener('change', renderAudit);
+
+/* ════════════════════════════════════════════════════════════
+   PROPOSALS (migration 054, 2026-10-21). Personalised proposal links served
+   by the website plugin at /proposal/<code>; each visit is written by the
+   public page through proposal_track() and read here (managers only).
+   ════════════════════════════════════════════════════════════ */
+const PROPOSAL_BASE = 'https://www.turbineenergyuk.co.uk/proposal/';
+const PROPOSAL_PAGES = { 1: 'Cover', 2: 'Barton Brook case study', 3: 'Their figures', 4: 'For their team', 5: 'Ways to pay & next step' };
+const PROPOSAL_CLICKS = { book_survey: 'Clicked Book a survey', call: 'Tapped the phone number', download_pdf: 'Downloaded the PDF' };
+let propRows = [];
+let propVisits = {};          // proposal_id → visits, newest first
+let propOpen = null;          // expanded proposal id
+
+function propCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+  const a = new Uint8Array(12); crypto.getRandomValues(a);
+  return Array.from(a, b => chars[b % chars.length]).join('');
+}
+function propDuration(sec) {
+  sec = Math.round(sec || 0);
+  if (sec < 60) return sec + 's';
+  const m = Math.floor(sec / 60), r = sec % 60;
+  return m < 60 ? m + 'm' + (r ? ' ' + r + 's' : '') : Math.floor(m / 60) + 'h ' + (m % 60) + 'm';
+}
+function propDevice(ua) {
+  ua = ua || '';
+  const type = /iPad|Tablet/i.test(ua) ? 'Tablet' : /Mobi|iPhone|Android/i.test(ua) ? 'Phone' : 'Computer';
+  const os = /iPhone|iPad|Mac OS/i.test(ua) ? 'Apple' : /Android/i.test(ua) ? 'Android' : /Windows/i.test(ua) ? 'Windows' : '';
+  const br = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : /Firefox\//.test(ua) ? 'Firefox' : '';
+  return [type, os, br].filter(Boolean).join(' · ');
+}
+function propSummary(id) {
+  const v = propVisits[id] || [];
+  const pages = {}; let active = 0; const clicks = new Set(); const devices = new Set();
+  v.forEach(x => {
+    active += x.active_seconds || 0;
+    Object.entries(x.pages || {}).forEach(([k, s]) => { pages[k] = (pages[k] || 0) + s; });
+    (x.clicks || []).forEach(c => clicks.add(c.what));
+    devices.add(propDevice(x.user_agent));
+  });
+  const tried = v.find(x => x.inputs && x.inputs.changed);
+  return { visits: v, opens: v.length, active, pages, clicks, devices, tried, first: v[v.length - 1], last: v[0] };
+}
+
+LOADERS.proposals = async function () {
+  const body = document.getElementById('proposals-body');
+  body.innerHTML = '<div class="loading">Loading…</div>';
+  const [p, v] = await Promise.all([
+    db.from('sales_proposals').select('*').order('created_at', { ascending: false }).limit(500),
+    db.from('proposal_visits').select('proposal_id, session_id, started_at, last_seen_at, active_seconds, pages, inputs, clicks, user_agent, viewport')
+      .order('last_seen_at', { ascending: false }).limit(5000),
+  ]);
+  if (p.error || v.error) {
+    const msg = (p.error || v.error).message;
+    body.innerHTML = errorHtml(/sales_proposals|proposal_visits/.test(msg) && /exist|schema cache/.test(msg)
+      ? 'Proposals aren\'t set up yet: migration 054_sales_proposals.sql needs running in Supabase.' : 'Couldn\'t load proposals: ' + msg);
+    return;
+  }
+  propRows = p.data || [];
+  propVisits = {};
+  (v.data || []).forEach(x => { (propVisits[x.proposal_id] = propVisits[x.proposal_id] || []).push(x); });
+  renderProposals();
+};
+
+function renderProposals() {
+  const body = document.getElementById('proposals-body');
+  const live = propRows.filter(r => !r.revoked_at);
+  const opened = live.filter(r => (propVisits[r.id] || []).length);
+  const booked = live.filter(r => propSummary(r.id).clicks.has('book_survey'));
+  const week = Date.now() - 7 * 864e5;
+  const recent = live.filter(r => (propVisits[r.id] || []).some(x => new Date(x.last_seen_at) > week));
+  const tiles = `<div class="tiles">
+    <div class="tile"><div class="tile-label">Live proposals</div><div class="tile-value">${num(live.length)}</div><div class="tile-sub">${num(propRows.length - live.length)} switched off</div></div>
+    <div class="tile"><div class="tile-label">Opened</div><div class="tile-value">${num(opened.length)}</div><div class="tile-sub">${live.length ? Math.round(opened.length / live.length * 100) + '% of live links' : '—'}</div></div>
+    <div class="tile"><div class="tile-label">Read in the last 7 days</div><div class="tile-value">${num(recent.length)}</div><div class="tile-sub">worth a follow-up call</div></div>
+    <div class="tile"><div class="tile-label">Clicked Book a survey</div><div class="tile-value">${num(booked.length)}</div><div class="tile-sub">from the proposal page</div></div>
+  </div>`;
+  const rows = propRows.map(r => {
+    const sm = propSummary(r.id);
+    const tag = r.revoked_at ? '<span class="prop-tag off">Switched off</span>'
+      : sm.clicks.has('book_survey') ? '<span class="prop-tag hot">Clicked Book a survey</span>'
+      : sm.opens ? `<span class="prop-tag open">Opened ${sm.opens === 1 ? 'once' : sm.opens + ' times'}</span>`
+      : '<span class="prop-tag">Not opened yet</span>';
+    const main = `<tr class="prop-row" data-id="${r.id}">
+      <td><b>${escapeHtml(r.recipient_name)}</b>${r.contact_name ? `<div class="muted">${escapeHtml(r.contact_name)}</div>` : ''}</td>
+      <td>${tag}</td>
+      <td style="white-space:nowrap">${sm.last ? escapeHtml(fmtDateTime(sm.last.last_seen_at)) : '<span class="muted">—</span>'}</td>
+      <td class="num">${sm.opens ? propDuration(sm.active) : '<span class="muted">—</span>'}</td>
+      <td class="num">${sm.devices.size || '<span class="muted">—</span>'}</td>
+      <td style="white-space:nowrap">${escapeHtml(fmtDate(r.created_at))}</td></tr>`;
+    return main + (propOpen === r.id ? propDetailRow(r, sm) : '');
+  }).join('');
+  body.innerHTML = tiles + `<div class="card"><div class="card-head"><h2>Proposal links</h2><span class="hint">Click a row for the full detail</span></div>
+    <table><thead><tr><th>Prospect</th><th>Status</th><th>Last viewed</th><th class="num">Reading time</th><th class="num">Devices</th><th>Created</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="6" class="empty">No proposals yet. Click "New proposal" to create the first link.</td></tr>'}</tbody></table></div>`;
+}
+
+function propDetailRow(r, sm) {
+  const url = PROPOSAL_BASE + r.code;
+  const max = Math.max(1, ...Object.values(sm.pages));
+  const bars = Object.keys(PROPOSAL_PAGES).map(k => `<span>${k}. ${PROPOSAL_PAGES[k]}</span>
+    <div class="prop-bar"><span style="width:${Math.round((sm.pages[k] || 0) / max * 100)}%"></span></div><span class="num">${propDuration(sm.pages[k] || 0)}</span>`).join('');
+  const visits = sm.visits.map(x => `<tr>
+    <td style="white-space:nowrap">${escapeHtml(fmtDateTime(x.started_at))}</td>
+    <td>${escapeHtml(propDevice(x.user_agent))}</td>
+    <td class="num">${propDuration(x.active_seconds)}</td>
+    <td>${x.inputs && x.inputs.changed ? `Changed figures: ${escapeHtml(money(x.inputs.spend))} spend, ${escapeHtml(String(x.inputs.rate))}p, ${escapeHtml(num(x.inputs.roof))} m²` : '<span class="muted">Kept the figures you sent</span>'}</td>
+    <td>${(x.clicks || []).map(c => escapeHtml(PROPOSAL_CLICKS[c.what] || c.what)).join(', ') || '<span class="muted">—</span>'}</td></tr>`).join('');
+  return `<tr class="prop-detail"><td colspan="6">
+    <div class="prop-link"><code>${escapeHtml(url)}</code>
+      <button class="refresh-btn" data-prop-copy="${escapeHtml(url)}">Copy link</button>
+      <a class="refresh-btn" href="${escapeHtml(url)}?preview=1" target="_blank" rel="noopener">Preview (not recorded)</a>
+      ${r.revoked_at ? `<span class="muted">Switched off ${escapeHtml(fmtDate(r.revoked_at))}</span>` : `<button class="refresh-btn" data-prop-revoke="${r.id}">Switch link off</button>`}</div>
+    <div class="muted" style="font-size:12px;margin-bottom:6px">Sent with ${escapeHtml(money(r.annual_spend))} spend, ${r.unit_rate_p}p, ${num(r.roof_m2)} m² roof${r.contact_email ? ' · ' + escapeHtml(r.contact_email) : ''}${r.notes ? ' · ' + escapeHtml(r.notes) : ''} · created by ${escapeHtml(r.created_by_email)}</div>
+    ${sm.opens ? `<div style="font-weight:600;font-size:13px;margin-top:10px">Time on each page (all visits)</div><div class="prop-bars">${bars}</div>
+      <table><thead><tr><th>Visit</th><th>Device</th><th class="num">Reading time</th><th>Figures</th><th>Clicks</th></tr></thead><tbody>${visits}</tbody></table>`
+      : '<div class="muted" style="font-size:13px">Not opened yet. Visits appear here a few seconds after someone opens the link.</div>'}
+  </td></tr>`;
+}
+
+document.getElementById('proposals-body').addEventListener('click', async e => {
+  const copy = e.target.closest('[data-prop-copy]');
+  if (copy) {
+    try { await navigator.clipboard.writeText(copy.dataset.propCopy); copy.textContent = 'Copied'; } catch { prompt('Copy this link:', copy.dataset.propCopy); }
+    return;
+  }
+  const off = e.target.closest('[data-prop-revoke]');
+  if (off) {
+    if (!confirm('Switch this link off? Anyone opening it will see "This proposal link is no longer active".')) return;
+    const { error } = await db.from('sales_proposals').update({ revoked_at: new Date().toISOString() }).eq('id', off.dataset.propRevoke);
+    if (error) { alert('Couldn\'t switch it off: ' + error.message); return; }
+    LOADERS.proposals();
+    return;
+  }
+  if (e.target.closest('a, button')) return;
+  const row = e.target.closest('.prop-row');
+  if (row) { propOpen = propOpen === row.dataset.id ? null : row.dataset.id; renderProposals(); }
+});
+
+document.getElementById('prop-new-btn').addEventListener('click', () => {
+  document.getElementById('prop-new').hidden = false;
+  document.getElementById('prop-form-msg').textContent = '';
+  document.querySelector('#prop-form [name=recipient_name]').focus();
+});
+document.getElementById('prop-cancel').addEventListener('click', () => { document.getElementById('prop-new').hidden = true; });
+document.getElementById('prop-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = new FormData(e.target), msg = document.getElementById('prop-form-msg');
+  const clean = k => (f.get(k) || '').toString().trim() || null;
+  const row = {
+    code: propCode(), template: 'care-home',
+    recipient_name: clean('recipient_name'), contact_name: clean('contact_name'), contact_email: clean('contact_email'), notes: clean('notes'),
+    annual_spend: +f.get('annual_spend'), unit_rate_p: +f.get('unit_rate_p'), roof_m2: +f.get('roof_m2'),
+    created_by_email: currentUser.email.toLowerCase(),
+  };
+  msg.textContent = 'Creating…';
+  const { data, error } = await db.from('sales_proposals').insert(row).select().single();
+  if (error) { msg.textContent = 'Couldn\'t create it: ' + error.message; return; }
+  e.target.reset();
+  document.getElementById('prop-new').hidden = true;
+  propOpen = data.id;
+  await LOADERS.proposals();
+  const url = PROPOSAL_BASE + data.code;
+  document.getElementById('proposals-body').insertAdjacentHTML('afterbegin',
+    `<div class="prop-new-link">Link created for <b>${escapeHtml(data.recipient_name)}</b>: <code>${escapeHtml(url)}</code> <button class="refresh-btn" data-prop-copy="${escapeHtml(url)}">Copy link</button></div>`);
+});
 
 /* ════════════════════════════════════════════════════════════
    TEAM ACTIVITY — moved from the retired dashboard.html (2026-10-13):
