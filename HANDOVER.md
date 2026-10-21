@@ -92,7 +92,7 @@ This is a sibling project to `mcs-map` (Amco Renewables' installer map/CRM at `C
 - `fetchLatestOutcomes` now returns each lead's latest contact row (adds `follow_up_date`) and every list row carries `latest_contact`, which the realtime handlers and the Log contact save keep current.
 - **Verified:** headless against the mock (columns, due dates, search, Stage filter hiding a column, card opens the lead), no console errors. Not yet seen signed in on the live site.
 
-**Lead suppliers sending leads straight in (Pockla) — 2026-10-21, BUILT, NOT DEPLOYED.** Greg: "they want some API details of our CRM so they can add the leads directly". Pockla's developer instructions are in `docs/supplier-lead-api.md`.
+**Lead suppliers sending leads straight in (Pockla) — 2026-10-21, LIVE.** 055 applied, `POCKLA_API_KEY` set and `supplier-lead` deployed 2026-10-21. Greg's test-mode call was accepted. Waiting on Pockla's developer. Greg: "they want some API details of our CRM so they can add the leads directly". Pockla's developer instructions are in `docs/supplier-lead-api.md`.
   - **Edge Function `supplier-lead`** (verify_jwt off). Each supplier sends its own key in `x-api-key`, stored as a function secret (`POCKLA_API_KEY`), and listed in the `SUPPLIERS` const. It can only add leads.
   - **Pricing:** Pockla charges £27 a solar lead and £32 an ASHP lead. Migration 055 adds two lead_origins, "Pockla - Solar" and "Pockla - ASHP", and the 049 trigger stamps `lead_cost`.
   - **New leads land unassigned**, as Greg asked.
