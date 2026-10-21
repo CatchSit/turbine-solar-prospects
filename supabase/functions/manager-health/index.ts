@@ -28,11 +28,18 @@ const SECRETS: Record<string, string[]> = {
   'SMS reminders (Twilio)':              ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_FROM_NUMBER'],
   'Contact enrichment (Apollo)':         ['APOLLO_API_KEY'],
   'Contact enrichment (Hunter)':         ['HUNTER_API_KEY'],
+  'Website enquiries into the CRM':      ['WEBSITE_INGEST_SECRET'],
+  'Sofar site enquiries into the CRM':   ['SOFAR_INGEST_SECRET'],
+  'Supplier leads (Pockla)':             ['POCKLA_API_KEY'],
+  'Outlook email sync (Microsoft 365)':  ['MS_TENANT_ID', 'MS_CLIENT_ID', 'MS_CLIENT_SECRET', 'MAIL_SYNC_SECRET'],
+  'Email summaries (Claude AI)':         ['ANTHROPIC_API_KEY'],
+  'Google Analytics 4':                  ['GA4_PROPERTY_ID', 'GA4_SERVICE_ACCOUNT_JSON'],
 }
 
 const FUNCTIONS = [
   'solar-enrichment', 'company-lookup', 'send-to-install-hub', 'notify-assignment',
-  'sms-scheduler', 'sms-inbound', 'contact-enrichment',
+  'sms-scheduler', 'sms-inbound', 'contact-enrichment', 'ingest-enquiry',
+  'supplier-lead', 'mail-sync', 'marketing-analytics',
 ]
 
 const SITE = 'https://www.turbineenergyuk.co.uk'

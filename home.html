@@ -1517,6 +1517,13 @@ const FUNCTION_LABELS = {
   'send-to-install-hub': 'Send to install-hub', 'notify-assignment': 'Lead assignment emails',
   'sms-scheduler': 'SMS reminders', 'sms-inbound': 'SMS opt-outs (STOP replies)',
   'contact-enrichment': 'Contact enrichment (Apollo/Hunter)',
+  'ingest-enquiry': 'Website & Sofar enquiries into the CRM', 'supplier-lead': 'Supplier leads (Pockla)',
+  'mail-sync': 'Outlook email sync', 'marketing-analytics': 'Google Analytics reporting',
+};
+// Built but deliberately not switched on yet - shown grey, not red, while undeployed.
+const FUNCTION_PARKED = {
+  'notify-assignment': 'Built but parked on purpose ("leave the emails here for now").,
+  'mail-sync': 'Waiting on IT consent, the Microsoft secrets and the email schedule (migration 053).',
 };
 
 LOADERS.health = async function () {
@@ -1565,7 +1572,9 @@ LOADERS.health = async function () {
 
     const frows = Object.entries(h.functions).map(([name, up]) => up
       ? statusRow('good', FUNCTION_LABELS[name] || name, `<code>${escapeHtml(name)}</code> is deployed`, 'Deployed')
-      : statusRow('critical', FUNCTION_LABELS[name] || name, `<code>${escapeHtml(name)}</code> isn't deployed — the feature using it won't work.`, 'Not deployed'));
+      : FUNCTION_PARKED[name]
+        ? statusRow('neutral', FUNCTION_LABELS[name] || name, `<code>${escapeHtml(name)}</code> isn't switched on yet. ${FUNCTION_PARKED[name]}`, 'Not switched on')
+        : statusRow('critical', FUNCTION_LABELS[name] || name, `<code>${escapeHtml(name)}</code> isn't deployed — the feature using it won't work.`, 'Not deployed'));
     const srows = Object.entries(h.secrets).map(([feature, ok]) => ok
       ? statusRow('good', feature, '', 'Configured')
       : statusRow('neutral', feature, 'Its API key or secret hasn\'t been added yet.', 'Not set up'));
