@@ -1347,7 +1347,7 @@ function formatDateTime(ts) {
 async function loadActivity(prospectId) {
   const list = document.getElementById('activity-list');
   list.innerHTML = '<li class="doc-empty" style="padding-left:34px">Loading…</li>';
-  const [contactsRes, enquiriesRes, auditRes, emailLogRes, leadEmailsRes] = await Promise.all([
+  const [contactsRes, enquiriesRes, auditRes, emailLogRes, leadEmailsRes, supplierRes] = await Promise.all([
     db.from('prospect_contacts')
       .select('id, prospect_id, employee, outcome, notes, next_action, follow_up_date, contacted_at')
       .eq('prospect_id', prospectId)
@@ -1368,16 +1368,20 @@ async function loadActivity(prospectId) {
       .select('id, prospect_id, mailboxes, web_link, direction, from_email, from_name, subject, sent_at, summary, ai_status, ai_outcome, ai_follow_up_date, ai_reason, suggestion_status, resolved_by_email, resolved_at')
       .eq('prospect_id', prospectId)
       .order('sent_at', { ascending: false }),
+    db.from('supplier_leads')
+      .select('prospect_id, received_at, supplier, product, is_new_lead, external_ref, notes, consent_at, consent_wording, source_url')
+      .eq('prospect_id', prospectId).order('received_at', { ascending: false }),
   ]);
   if (!currentLead || currentLead.id !== prospectId) return; // moved on while this was in flight
   if (contactsRes.error) { list.innerHTML = `<li class="doc-empty" style="padding-left:34px">Couldn't load the contact log. Refresh to try again.</li>`; return; }
-  [enquiriesRes, auditRes, emailLogRes, leadEmailsRes].forEach(r => { if (r.error) console.error('Activity load (partial):', r.error); });
+  [enquiriesRes, auditRes, emailLogRes, leadEmailsRes, supplierRes].forEach(r => { if (r.error) console.error('Activity load (partial):', r.error); });
 
   // Same ownership guard as quote options/install checklist (2026-09-25).
   const contacts = (contactsRes.data || []).filter(r => r.prospect_id === prospectId);
   const enquiries = (enquiriesRes.data || []).filter(r => r.prospect_id === prospectId);
   const edits = (auditRes.data || []).filter(r => r.prospect_id === prospectId);
   const emailLogs = (emailLogRes.data || []).filter(r => r.prospect_id === prospectId);
+  const supplied = (supplierRes.data || []).filter(r => r.prospect_id === prospectId);
   currentLeadEmails = (leadEmailsRes.data || []).filter(r => r.prospect_id === prospectId);
   renderEmailSuggestions();
   knownLatestContactAt = contacts[0]?.contacted_at || null;
@@ -1391,6 +1395,7 @@ async function loadActivity(prospectId) {
   const items = [
     ...contacts.map(c => ({ at: c.contacted_at, html: contactItemHtml(c) })),
     ...enquiries.map(e => ({ at: e.received_at, html: enquiryItemHtml(e) })),
+    ...supplied.map(r => ({ at: r.received_at, html: supplierLeadItemHtml(r) })),
     ...edits.map(h => ({ at: h.edited_at, html: editItemHtml(h) })).filter(i => i.html),
     ...emailLogs.map(l => ({ at: l.created_at, html: emailLogItemHtml(l) })),
     ...currentLeadEmails.map(m => ({ at: m.sent_at, html: leadEmailItemHtml(m) })),
@@ -1508,6 +1513,18 @@ function enquiryItemHtml(r) {
     <div class="tl-top"><span class="tl-kind">Website enquiry · ${escapeHtml(r.form)}</span><span class="clog-meta">${formatDateTime(r.received_at)}${r.is_new_lead ? '' : ' · repeat enquiry'}</span></div>
     <div class="web-enq-meta">Came from: <strong>${escapeHtml(r.channel || 'Unknown')}</strong>${r.utm_campaign ? ` · campaign “${escapeHtml(r.utm_campaign)}”` : ''}</div>
     ${r.message ? `<pre class="web-enq-msg">${escapeHtml(r.message)}</pre>` : ''}</li>`;
+}
+
+// Leads sent in by a supplier (supplier-lead Edge Function, 055). A repeat
+// (matched an existing lead) is flagged so it isn't paid for unchecked.
+const SUPPLIER_PRODUCT_LABEL = { solar: 'Solar', ashp: 'Air source heat pump' };
+function supplierLeadItemHtml(r) {
+  const product = SUPPLIER_PRODUCT_LABEL[r.product] || r.product;
+  const consent = r.consent_at ? `Consent given ${formatDateTime(r.consent_at)}${r.consent_wording ? `: “${escapeHtml(r.consent_wording)}”` : ''}` : 'No consent time sent';
+  return `<li><span class="tl-dot" style="background:#7c3aed"></span>
+    <div class="tl-top"><span class="tl-kind">Lead from ${escapeHtml(r.supplier)} · ${escapeHtml(product)}</span><span class="clog-meta">${formatDateTime(r.received_at)}${r.is_new_lead ? '' : ' · <strong style="color:#b45309">duplicate, already in the CRM</strong>'}</span></div>
+    <div class="web-enq-meta">${consent}${r.external_ref ? ` · their ref ${escapeHtml(r.external_ref)}` : ''}${r.source_url ? ` · <a href="${escapeHtml(r.source_url)}" target="_blank" rel="noopener">form page</a>` : ''}</div>
+    ${r.notes ? `<pre class="web-enq-msg">${escapeHtml(r.notes)}</pre>` : ''}</li>`;
 }
 
 function editItemHtml(h) {

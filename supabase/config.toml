@@ -29,3 +29,9 @@ verify_jwt = false
 # session. Authenticity comes from the x-sync-secret header instead
 # (MAIL_SYNC_SECRET), checked inside the function.
 verify_jwt = false
+
+[functions.supplier-lead]
+# Called server-to-server by lead suppliers (Pockla), which have no Supabase
+# session. Authenticity comes from each supplier's own x-api-key
+# (POCKLA_API_KEY, ...), checked inside the function.
+verify_jwt = false

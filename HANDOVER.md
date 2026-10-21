@@ -92,6 +92,18 @@ This is a sibling project to `mcs-map` (Amco Renewables' installer map/CRM at `C
 - `fetchLatestOutcomes` now returns each lead's latest contact row (adds `follow_up_date`) and every list row carries `latest_contact`, which the realtime handlers and the Log contact save keep current.
 - **Verified:** headless against the mock (columns, due dates, search, Stage filter hiding a column, card opens the lead), no console errors. Not yet seen signed in on the live site.
 
+**Lead suppliers sending leads straight in (Pockla) — 2026-10-21, BUILT, NOT DEPLOYED.** Greg: "they want some API details of our CRM so they can add the leads directly". Pockla's developer instructions are in `docs/supplier-lead-api.md`.
+  - **Edge Function `supplier-lead`** (verify_jwt off). Each supplier sends its own key in `x-api-key`, stored as a function secret (`POCKLA_API_KEY`), and listed in the `SUPPLIERS` const. It can only add leads.
+  - **Pricing:** Pockla charges £27 a solar lead and £32 an ASHP lead. Migration 055 adds two lead_origins, "Pockla - Solar" and "Pockla - ASHP", and the 049 trigger stamps `lead_cost`.
+  - **New leads land unassigned**, as Greg asked.
+  - **A match on email or phone with an existing lead is not created again.** It's logged in `supplier_leads` against that lead with `is_new_lead=false`, and the lead timeline shows "duplicate, already in the CRM".
+  - `supplier_leads` (055) keeps every delivery as sent, including consent time and wording, for checking invoices.
+  - The supplier's `reference` makes retries safe. `"test": true` validates the request without saving anything.
+  - `consent_timestamp` is required.
+  - The lead page timeline shows each delivery; checked headless against the mock.
+  - **To go live:** run 055, `npx supabase secrets set POCKLA_API_KEY=<random>`, `npx supabase functions deploy supplier-lead`, then send Pockla the doc and, separately, the key.
+  - **Adding another supplier:** add lead_origins rows, an entry in `SUPPLIERS`, a key secret, then redeploy.
+
 **Outlook emails on CRM leads — 2026-10-20, BUILT, NOT SWITCHED ON.** Design, Greg's decisions and the switch-on steps are in `docs/superpowers/specs/2026-10-20-outlook-email-sync-design.md`. IT's setup steps are in `docs/it-setup-outlook-mail-sync.md`; Greg is handling consent with IT.
 - **What it does:**
   - The `mail-sync` Edge Function runs every 10 minutes via pg_cron (migration 053) and reads info@ plus the five reps' mailboxes through Microsoft Graph, app-only. Exchange RBAC for Applications limits it to a "CRM Mail Sync" group.
