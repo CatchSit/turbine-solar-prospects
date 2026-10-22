@@ -522,7 +522,7 @@ tbody tr:hover { background: var(--surface2); }
             <div class="quote-status" style="margin-bottom:10px">Site photos, bills and anything not tied to one quote. A quote's own PDF goes inside that quote option above.</div>
             <div class="doc-list" id="doc-list">Loading…</div>
             <div class="doc-upload">
-              <input type="file" accept="application/pdf,image/jpeg,image/png,image/heic,.doc,.docx" class="doc-file-input" id="doc-file-input">
+              <input type="file" accept="application/pdf,image/jpeg,image/png,image/heic,.doc,.docx" class="doc-file-input" id="doc-file-input" multiple>
               <button type="button" class="doc-upload-btn" id="doc-upload-btn">Upload</button>
             </div>
             <div class="doc-upload-status" id="doc-upload-status"></div>
@@ -2197,8 +2197,8 @@ function quoteOptionDetailRowHtml(opt) {
       <div class="quote-status" style="margin-top:16px;font-weight:600">Documents</div>
       <div class="doc-list" id="qo-doc-list-${id}">Loading…</div>
       <div class="doc-upload">
-        <input type="file" accept="application/pdf,image/jpeg,image/png,image/heic,.doc,.docx" class="doc-file-input" id="qo-doc-file-${id}">
-        <button type="button" class="doc-upload-btn" onclick="uploadOptionDocument('${id}')">Upload</button>
+        <input type="file" accept="application/pdf,image/jpeg,image/png,image/heic,.doc,.docx" class="doc-file-input" id="qo-doc-file-${id}" multiple>
+        <button type="button" class="doc-upload-btn" id="qo-doc-btn-${id}" onclick="uploadOptionDocument('${id}')">Upload</button>
       </div>
       <div class="doc-upload-status" id="qo-doc-status-${id}"></div>
       <div style="margin-top:14px">
@@ -2525,40 +2525,14 @@ function toggleDeletedOptionDocs(optionId) {
 
 async function uploadOptionDocument(optionId) {
   if (!currentLead) return;
-  const prospectId = currentLead.id;
-  const fileInput = document.getElementById(`qo-doc-file-${optionId}`);
-  const statusEl = document.getElementById(`qo-doc-status-${optionId}`);
-  const file = fileInput.files[0];
-
-  statusEl.classList.remove('error');
-  statusEl.textContent = '';
-
-  if (!file) { statusEl.textContent = 'Choose a file first.'; statusEl.classList.add('error'); return; }
-  if (!isAllowedDocumentFile(file)) { statusEl.textContent = 'PDF, Word, or image files only.'; statusEl.classList.add('error'); return; }
-  if (file.size > MAX_DOCUMENT_BYTES) { statusEl.textContent = 'File is too large (max 20 MB).'; statusEl.classList.add('error'); return; }
-
-  statusEl.textContent = 'Uploading…';
-  const safeFileName = file.name.replace(/[^\w.\- ]+/g, '_').slice(-120);
-  const storagePath = `${prospectId}/${Date.now()}-${safeFileName}`;
-
-  const { error: uploadError } = await db.storage.from('proposals')
-    .upload(storagePath, file, { contentType: file.type || 'application/octet-stream' });
-  if (uploadError) { statusEl.textContent = `Upload failed: ${uploadError.message || 'try again'}`; statusEl.classList.add('error'); return; }
-
-  const { error: insertError } = await db.from('lead_documents').insert({
-    prospect_id: prospectId,
-    quote_option_id: optionId,
-    file_name: file.name,
-    storage_path: storagePath,
-    file_size_bytes: file.size,
-    uploaded_by: currentUser ? getUserName(currentUser) : 'Unknown',
-    uploaded_by_email: currentUser ? currentUser.email : null,
+  await uploadDocuments({
+    prospectId: currentLead.id,
+    quoteOptionId: optionId,
+    fileInput: document.getElementById(`qo-doc-file-${optionId}`),
+    statusEl: document.getElementById(`qo-doc-status-${optionId}`),
+    btn: document.getElementById(`qo-doc-btn-${optionId}`),
+    reload: () => loadOptionDocuments(optionId),
   });
-  if (insertError) { statusEl.textContent = `Saved file but failed to record it: ${insertError.message || 'try again'}`; statusEl.classList.add('error'); return; }
-
-  statusEl.textContent = 'Uploaded.';
-  fileInput.value = '';
-  loadOptionDocuments(optionId);
 }
 
 /* ── Documents (lead_documents table, 'proposals' Storage bucket —
@@ -2572,6 +2546,58 @@ const ALLOWED_DOCUMENT_TYPES = new Set([
 const ALLOWED_DOCUMENT_EXTENSIONS = /\.(pdf|jpe?g|png|heic|docx?)$/i;
 function isAllowedDocumentFile(file) {
   return ALLOWED_DOCUMENT_TYPES.has(file.type) || ALLOWED_DOCUMENT_EXTENSIONS.test(file.name);
+}
+
+// Uploads every file chosen in fileInput (the inputs allow several), one
+// after another so each gets its own Date.now() storage path. A file that
+// fails the type/size check or the upload is skipped and named in the
+// status line; the rest still go up. quoteOptionId null = lead-level.
+async function uploadDocuments({ prospectId, quoteOptionId = null, fileInput, statusEl, btn, reload }) {
+  const files = [...fileInput.files];
+  statusEl.classList.remove('error');
+  statusEl.textContent = '';
+  if (!files.length) { statusEl.textContent = 'Choose a file first.'; statusEl.classList.add('error'); return; }
+
+  const skipped = [];
+  let done = 0;
+  if (btn) btn.disabled = true;
+  try {
+    for (const [i, file] of files.entries()) {
+      if (!isAllowedDocumentFile(file)) { skipped.push(`${file.name} (PDF, Word or image files only)`); continue; }
+      if (file.size > MAX_DOCUMENT_BYTES) { skipped.push(`${file.name} (over 20 MB)`); continue; }
+      statusEl.textContent = files.length > 1 ? `Uploading ${i + 1} of ${files.length}: ${file.name}…` : 'Uploading…';
+
+      const safeFileName = file.name.replace(/[^\w.\- ]+/g, '_').slice(-120);
+      const storagePath = `${prospectId}/${Date.now()}-${safeFileName}`;
+      const { error: uploadError } = await db.storage.from('proposals')
+        .upload(storagePath, file, { contentType: file.type || 'application/octet-stream' });
+      if (uploadError) { skipped.push(`${file.name} (upload failed: ${uploadError.message || 'try again'})`); continue; }
+
+      const row = {
+        prospect_id: prospectId,
+        file_name: file.name,
+        storage_path: storagePath,
+        file_size_bytes: file.size,
+        uploaded_by: currentUser ? getUserName(currentUser) : 'Unknown',
+        uploaded_by_email: currentUser ? currentUser.email : null,
+      };
+      if (quoteOptionId) row.quote_option_id = quoteOptionId;
+      const { error: insertError } = await db.from('lead_documents').insert(row);
+      if (insertError) { skipped.push(`${file.name} (saved but not recorded: ${insertError.message || 'try again'})`); continue; }
+      done++;
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+
+  fileInput.value = '';
+  if (done) reload();
+  if (!skipped.length) {
+    statusEl.textContent = done === 1 ? 'Uploaded.' : `Uploaded ${done} files.`;
+  } else {
+    statusEl.textContent = `Uploaded ${done} of ${files.length}. Not uploaded: ${skipped.join('; ')}`;
+    statusEl.classList.add('error');
+  }
 }
 
 // reloadContext identifies which list to refresh after a successful
@@ -2694,44 +2720,13 @@ function toggleDeletedLeadDocs() {
 document.getElementById('doc-upload-btn').addEventListener('click', async () => {
   if (!currentLead) return;
   const prospectId = currentLead.id;
-  const fileInput = document.getElementById('doc-file-input');
-  const statusEl = document.getElementById('doc-upload-status');
-  const file = fileInput.files[0];
-
-  statusEl.classList.remove('error');
-  statusEl.textContent = '';
-
-  if (!file) { statusEl.textContent = 'Choose a file first.'; statusEl.classList.add('error'); return; }
-  if (!isAllowedDocumentFile(file)) { statusEl.textContent = 'PDF, Word, or image files only.'; statusEl.classList.add('error'); return; }
-  if (file.size > MAX_DOCUMENT_BYTES) { statusEl.textContent = 'File is too large (max 20 MB).'; statusEl.classList.add('error'); return; }
-
-  statusEl.textContent = 'Uploading…';
-  const safeFileName = file.name.replace(/[^\w.\- ]+/g, '_').slice(-120);
-  const storagePath = `${prospectId}/${Date.now()}-${safeFileName}`;
-
-  const btn = document.getElementById('doc-upload-btn');
-  btn.disabled = true;
-  try {
-    const { error: uploadError } = await db.storage.from('proposals')
-      .upload(storagePath, file, { contentType: file.type || 'application/octet-stream' });
-    if (uploadError) { statusEl.textContent = `Upload failed: ${uploadError.message || 'try again'}`; statusEl.classList.add('error'); return; }
-
-    const { error: insertError } = await db.from('lead_documents').insert({
-      prospect_id: prospectId,
-      file_name: file.name,
-      storage_path: storagePath,
-      file_size_bytes: file.size,
-      uploaded_by: currentUser ? getUserName(currentUser) : 'Unknown',
-      uploaded_by_email: currentUser ? currentUser.email : null,
-    });
-    if (insertError) { statusEl.textContent = `Saved file but failed to record it: ${insertError.message || 'try again'}`; statusEl.classList.add('error'); return; }
-
-    statusEl.textContent = 'Uploaded.';
-    fileInput.value = '';
-    loadLeadDocuments(prospectId);
-  } finally {
-    btn.disabled = false;
-  }
+  await uploadDocuments({
+    prospectId,
+    fileInput: document.getElementById('doc-file-input'),
+    statusEl: document.getElementById('doc-upload-status'),
+    btn: document.getElementById('doc-upload-btn'),
+    reload: () => loadLeadDocuments(prospectId),
+  });
 });
 
 async function openLeadDocument(linkEl) {
