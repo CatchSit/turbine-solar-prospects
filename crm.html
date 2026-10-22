@@ -382,6 +382,7 @@ tbody tr:hover { background: var(--surface2); }
               <button type="button" data-view="board" aria-pressed="false">Stages</button>
             </div>
             <input type="text" id="leads-search" placeholder="Search by name, address, phone, email…"/>
+            <button class="btn-secondary" type="button" id="refresh-leads-btn" title="Reload the leads list">↻ Refresh</button>
             <button class="btn-secondary" type="button" id="show-deleted-leads-btn" style="display:none">Recently deleted</button>
             <button class="btn-secondary" type="button" id="lead-suppliers-btn" style="display:none">Lead suppliers</button>
             <button class="btn-primary" id="add-lead-btn">+ Add lead</button>
@@ -3162,6 +3163,21 @@ async function refreshLeadsList() {
   renderSidebarFilters();
   renderLeadsTable();
 }
+
+// Manual reload for the list page - Realtime covers new leads and contact
+// logs, but not edits, assignments or quote changes made by other people.
+// Filters and search are kept: refreshLeadsList() only re-renders with them.
+document.getElementById('refresh-leads-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('refresh-leads-btn');
+  btn.disabled = true;
+  btn.textContent = 'Refreshing…';
+  try {
+    await refreshLeadsList();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '↻ Refresh';
+  }
+});
 
 async function boot(user) {
   currentUser = user;
