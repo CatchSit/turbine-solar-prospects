@@ -79,6 +79,36 @@ tbody tr:hover { background: var(--surface2); }
 .bc-due.overdue { color: var(--alert); }
 .bc-due.today { color: var(--warn); }
 
+/* ── Calendar view (2026-10-22): installs over last / this / next week,
+   with each job's outstanding checklist items, plus won jobs that still
+   need an install date. ── */
+.cal-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 14px; padding: 14px; align-items: start; }
+.cal-nav { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.cal-nav .cal-range { font-size: 13px; font-weight: 600; margin-right: auto; }
+.cal-nav button { padding: 5px 12px; font-size: 12.5px; }
+.cal-nav button:disabled { opacity: .45; cursor: default; }
+.cal-scroll { overflow-x: auto; }
+.cal-week { display: grid; grid-template-columns: 92px repeat(5, minmax(120px, 1fr)) repeat(2, minmax(84px, .6fr)); gap: 6px; margin-bottom: 10px; min-width: 820px; }
+.cal-week-label { font-size: 12px; font-weight: 600; color: var(--text2); padding-top: 6px; }
+.cal-week-label small { display: block; font-size: 10.5px; font-weight: 500; color: var(--text3); margin-top: 2px; }
+.cal-day { background: var(--surface2); border-radius: 8px; min-height: 92px; padding: 6px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.cal-day.weekend { opacity: .8; }
+.cal-day.today { box-shadow: inset 0 0 0 2px var(--accent); }
+.cal-day-h { font-size: 11px; font-weight: 600; color: var(--text3); }
+.cal-day.today .cal-day-h { color: var(--accentDk); }
+.cal-card { padding: 7px 8px; }
+.cal-tasks { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; }
+.cal-task { font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 100px; white-space: nowrap; }
+.cal-task.todo { background: var(--alertSoft); color: var(--alert); }
+.cal-task.done { background: var(--accentDim); color: var(--accentDk); }
+.cal-task.na { background: var(--surface2); color: var(--text3); }
+.cal-flag { margin-top: 5px; font-size: 11px; font-weight: 600; }
+.cal-flag.ok { color: var(--accentDk); }
+.cal-flag.late { color: var(--alert); }
+.cal-side { background: var(--surface2); border-radius: 10px; border-top: 3px solid var(--warn); }
+.cal-side .board-col-b { max-height: calc(100vh - 220px); }
+@media (max-width: 900px) { .cal-wrap { grid-template-columns: minmax(0, 1fr); } }
+
 /* ── Lead detail view (redesign 2026-10-12): sticky header + stage bar +
    next step, then three fixed zones, each section with its own colour. ── */
 #back-btn { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; color: var(--text2); }
@@ -380,6 +410,7 @@ tbody tr:hover { background: var(--surface2); }
             <div class="view-toggle" role="group" aria-label="Show leads as">
               <button type="button" data-view="list" aria-pressed="true" class="active">List</button>
               <button type="button" data-view="board" aria-pressed="false">Stages</button>
+              <button type="button" data-view="calendar" aria-pressed="false">Calendar</button>
             </div>
             <input type="text" id="leads-search" placeholder="Search by name, address, phone, email…"/>
             <button class="btn-secondary" type="button" id="refresh-leads-btn" title="Reload the leads list">↻ Refresh</button>
@@ -389,6 +420,7 @@ tbody tr:hover { background: var(--surface2); }
           </div>
         </div>
         <div class="board" id="leads-board" style="display:none"></div>
+        <div id="leads-calendar" style="display:none"></div>
         <div class="table-scroll" id="leads-table-scroll">
           <table>
             <thead><tr>
@@ -813,7 +845,7 @@ function originOptionsHtml(currentId) {
 }
 
 /* ── Leads table ─────────────────────────────────────────── */
-const LEAD_COLUMNS = 'id, customer_name, lead_type, contact_phone, contact_email, address, postcode, created_at, install_hub_job_id, sent_to_install_hub_at, sent_to_install_hub_by_email, assigned_to_email, lead_channel, lead_origin_id, lead_cost, deleted_at';
+const LEAD_COLUMNS = 'id, customer_name, lead_type, contact_phone, contact_email, address, postcode, created_at, install_hub_job_id, sent_to_install_hub_at, sent_to_install_hub_by_email, assigned_to_email, lead_channel, lead_origin_id, lead_cost, deleted_at, install_scheduled_date';
 
 /* ── Several people on one lead (2026-10-12): no locking. A save only goes
    through if the fields being saved still hold the values this page
@@ -953,9 +985,12 @@ function renderLeadsTable() {
   });
   document.getElementById('empty-state').style.display = leads.length ? 'none' : 'block';
   const board = leadsView === 'board';
+  const calendar = leadsView === 'calendar';
   document.getElementById('leads-board').style.display = board ? '' : 'none';
-  document.getElementById('leads-table-scroll').style.display = board ? 'none' : '';
-  document.getElementById('wrap').classList.toggle('board-mode', board);
+  document.getElementById('leads-calendar').style.display = calendar ? '' : 'none';
+  document.getElementById('leads-table-scroll').style.display = board || calendar ? 'none' : '';
+  document.getElementById('wrap').classList.toggle('board-mode', board || calendar);
+  if (calendar) { document.getElementById('empty-state').style.display = 'none'; renderLeadsCalendar(leads); return; }
   if (board) { renderLeadsBoard(leads); return; }
   visibleLeadIds = leads.map(d => d.id);
   if (currentLead) updatePrevNextButtons();
@@ -1004,7 +1039,7 @@ document.getElementById('leads-search').addEventListener('input', renderLeadsTab
    in the sidebar hides whole columns. The choice is remembered per
    browser. ── */
 let leadsView = 'list';
-try { if (localStorage.getItem('crm-leads-view') === 'board') leadsView = 'board'; } catch (e) { /* storage blocked: default to list */ }
+try { const v = localStorage.getItem('crm-leads-view'); if (v === 'board' || v === 'calendar') leadsView = v; } catch (e) { /* storage blocked: default to list */ }
 const BOARD_COLUMNS = [
   { keys: [NOT_CONTACTED_KEY], label: 'Not contacted', color: NOT_CONTACTED_STATUS.color },
   ...LEAD_STAGES.map((label, i) => ({ keys: [String(i)], num: i + 1, label, color: STAGE_FILTERS.find(f => f.key === String(i)).color })),
@@ -1080,6 +1115,178 @@ function renderLeadsBoard(leads) {
     </section>`).join('');
 }
 document.getElementById('leads-board').addEventListener('click', e => {
+  const card = e.target.closest('.board-card');
+  const lead = card && allLeads.find(l => l.id === card.dataset.id);
+  if (lead) openLeadDetail(lead);
+});
+
+/* ── Calendar view (2026-10-22). Greg's choices: three week rows (last,
+   this, next week; arrows move the window), a "Needs an install date"
+   side list, and the install date taken from the lead's latest
+   "Scheduled for Install" contact log (rescheduling = log it again with
+   the new date). Falls back to the date given when the job was sent to
+   install-hub. Each card shows the install checklist: red = still to
+   book/order, green = done, grey = N/A. Uses the same sidebar filters and
+   search as the other views. Read-only: nothing here writes. ── */
+const CAL_WON_UNSCHEDULED = ['Converted', 'Contract Signed', 'DNO Submitted', 'DNO Approved'];
+const CAL_INSTALLED = ['Completed', 'Job Closed'];
+const CAL_TASK_NAMES = { scaffold: 'Scaffold', electrician: 'Electrician', roofer: 'Roofer', kit: 'Kit' };
+const CAL_CACHE_MS = 30000;
+let calWeekOffset = 0;            // 0 = last / this / next week around today
+let calData = null;               // { at, dates: {id: 'YYYY-MM-DD'}, checklists: {id: row} }
+let calLoading = false;
+
+function calDayKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function calMonday(d) {
+  const m = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  m.setDate(m.getDate() - ((m.getDay() + 6) % 7));
+  return m;
+}
+
+async function fetchCalendarData() {
+  const ids = allLeads.map(l => l.id);
+  const dates = {}, checklists = {};
+  if (ids.length) {
+    const [logs, lists] = await Promise.all([
+      db.from('prospect_contacts').select('prospect_id, follow_up_date, contacted_at')
+        .eq('outcome', 'Scheduled for Install').in('prospect_id', ids)
+        .order('contacted_at', { ascending: false }),
+      db.from('install_checklists').select('*').in('prospect_id', ids),
+    ]);
+    if (logs.error) console.error('Failed to load install dates:', logs.error);
+    if (lists.error) console.error('Failed to load install checklists:', lists.error);
+    (logs.data || []).forEach(r => { if (r.follow_up_date && !(r.prospect_id in dates)) dates[r.prospect_id] = r.follow_up_date; });
+    (lists.data || []).forEach(r => { checklists[r.prospect_id] = r; });
+  }
+  allLeads.forEach(l => { if (!dates[l.id] && l.install_scheduled_date) dates[l.id] = l.install_scheduled_date; });
+  return { at: Date.now(), dates, checklists };
+}
+
+function calTasksHtml(checklist) {
+  return `<div class="cal-tasks">${INSTALL_TASKS.map(t => {
+    const name = CAL_TASK_NAMES[t.key] || t.label;
+    if (checklist?.[`${t.key}_na`]) return `<span class="cal-task na">${escapeHtml(name)} N/A</span>`;
+    if (checklist?.[`${t.key}_done`]) {
+      const who = checklist[`${t.key}_name`];
+      return `<span class="cal-task done" title="${escapeHtml(who || '')}">✔ ${escapeHtml(name)}</span>`;
+    }
+    return `<span class="cal-task todo">✗ ${escapeHtml(name)}</span>`;
+  }).join('')}</div>`;
+}
+function calOutstandingCount(checklist) {
+  return INSTALL_TASKS.filter(t => !checklist?.[`${t.key}_na`] && !checklist?.[`${t.key}_done`]).length;
+}
+
+function calCardHtml(d, dateKey, todayKey) {
+  const checklist = calData.checklists[d.id];
+  const installed = CAL_INSTALLED.includes(d.latest_outcome);
+  const outstanding = calOutstandingCount(checklist);
+  let flag = '';
+  if (installed) flag = '<div class="cal-flag ok">✔ Installed</div>';
+  else if (dateKey < todayKey) flag = '<div class="cal-flag late">Date passed, not marked installed</div>';
+  else if (!outstanding) flag = '<div class="cal-flag ok">Everything booked</div>';
+  const typeCfg = LEAD_TYPE[d.lead_type];
+  const meta = [d.postcode ? escapeHtml(d.postcode) : '', typeCfg ? escapeHtml(typeCfg.label) : '',
+    d.assigned_to_email ? escapeHtml(repName(d.assigned_to_email)) : ''].filter(Boolean).map(m => `<span>${m}</span>`).join('');
+  const color = !installed && outstanding ? 'var(--alert)' : 'var(--accent)';
+  return `<button type="button" class="board-card cal-card" data-id="${escapeHtml(d.id)}" style="--card-color:${color}">
+    <div class="bc-name">${escapeHtml(d.customer_name || 'Unnamed lead')}</div>
+    <div class="bc-meta">${meta}</div>
+    ${installed ? '' : calTasksHtml(checklist)}
+    ${flag}
+  </button>`;
+}
+
+function calUnscheduledCardHtml(d) {
+  const cfg = CONTACT_OUTCOME[d.latest_outcome];
+  const color = cfg?.color || 'var(--warn)';
+  const meta = [d.postcode ? escapeHtml(d.postcode) : '', d.assigned_to_email ? escapeHtml(repName(d.assigned_to_email)) : 'Unassigned']
+    .filter(Boolean).map(m => `<span>${m}</span>`).join('');
+  return `<button type="button" class="board-card" data-id="${escapeHtml(d.id)}" style="--card-color:${color}">
+    <div class="bc-name">${escapeHtml(d.customer_name || 'Unnamed lead')}</div>
+    <div class="bc-outcome"><span class="tag-dot" style="background:${color}"></span>${escapeHtml(cfg?.label || d.latest_outcome || '')}</div>
+    <div class="bc-meta">${meta}</div>
+    ${calTasksHtml(calData.checklists[d.id])}
+  </button>`;
+}
+
+async function renderLeadsCalendar(leads) {
+  const el = document.getElementById('leads-calendar');
+  if (!calData || Date.now() - calData.at > CAL_CACHE_MS) {
+    if (calLoading) return;
+    calLoading = true;
+    if (!calData) el.innerHTML = '<div class="board-empty" style="padding:30px">Loading installs…</div>';
+    try { calData = await fetchCalendarData(); } finally { calLoading = false; }
+    if (leadsView === 'calendar') renderLeadsTable();   // re-run with the current filters
+    return;
+  }
+
+  const today = new Date();
+  const todayKey = calDayKey(today);
+  const start = calMonday(today);
+  start.setDate(start.getDate() + (calWeekOffset - 1) * 7);
+  const weeks = [0, 1, 2].map(w => [...Array(7)].map((_, i) => {
+    const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + w * 7 + i);
+    return { day, key: calDayKey(day) };
+  }));
+  const firstKey = weeks[0][0].key, lastKey = weeks[2][6].key;
+
+  const byDay = {};
+  leads.forEach(d => {
+    const key = calData.dates[d.id];
+    const closed = typeof CONTACT_OUTCOME[d.latest_outcome]?.stage === 'string';   // cancelled / lost / not now
+    if (!key || closed || key < firstKey || key > lastKey) return;
+    (byDay[key] = byDay[key] || []).push(d);
+  });
+  const shown = [];
+  const weekNames = calWeekOffset === 0 ? ['Last week', 'This week', 'Next week'] : null;
+  const fmt = (d, opts) => d.toLocaleDateString('en-GB', opts);
+
+  const weeksHtml = weeks.map((days, w) => `
+    <div class="cal-week">
+      <div class="cal-week-label">${weekNames ? weekNames[w] : 'Week of'}<small>${fmt(days[0].day, { day: 'numeric', month: 'short' })}</small></div>
+      ${days.map(({ day, key }, i) => {
+        const items = byDay[key] || [];
+        items.forEach(d => shown.push(d.id));
+        return `<div class="cal-day${i >= 5 ? ' weekend' : ''}${key === todayKey ? ' today' : ''}">
+          <div class="cal-day-h">${fmt(day, { weekday: 'short', day: 'numeric' })}${key === todayKey ? ' · Today' : ''}</div>
+          ${items.map(d => calCardHtml(d, key, todayKey)).join('')}
+        </div>`;
+      }).join('')}
+    </div>`).join('');
+
+  const unscheduled = leads.filter(d => CAL_WON_UNSCHEDULED.includes(d.latest_outcome) && !calData.dates[d.id]);
+  visibleLeadIds = [...shown, ...unscheduled.map(d => d.id)];
+  if (currentLead) updatePrevNextButtons();
+
+  const rangeText = `${fmt(weeks[0][0].day, { day: 'numeric', month: 'short' })} – ${fmt(weeks[2][6].day, { day: 'numeric', month: 'short', year: 'numeric' })}`;
+  el.innerHTML = `<div class="cal-wrap">
+    <div>
+      <div class="cal-nav">
+        <span class="cal-range">Installs · ${escapeHtml(rangeText)}</span>
+        <button class="btn-secondary" type="button" data-cal-move="-1">‹ Earlier</button>
+        <button class="btn-secondary" type="button" data-cal-move="0" ${calWeekOffset === 0 ? 'disabled' : ''}>Today</button>
+        <button class="btn-secondary" type="button" data-cal-move="1">Later ›</button>
+      </div>
+      <div class="cal-scroll">${weeksHtml}</div>
+      ${shown.length ? '' : '<div class="board-empty">No installs booked in these three weeks.</div>'}
+    </div>
+    <section class="cal-side">
+      <div class="board-col-h">Needs an install date<span class="board-col-count">${unscheduled.length}</span></div>
+      <div class="board-col-b">${unscheduled.length ? unscheduled.map(calUnscheduledCardHtml).join('') : '<div class="board-empty">Every won job has a date.</div>'}</div>
+    </section>
+  </div>`;
+}
+document.getElementById('leads-calendar').addEventListener('click', e => {
+  const move = e.target.closest('[data-cal-move]');
+  if (move) {
+    const m = Number(move.dataset.calMove);
+    calWeekOffset = m === 0 ? 0 : calWeekOffset + m;
+    renderLeadsTable();
+    return;
+  }
   const card = e.target.closest('.board-card');
   const lead = card && allLeads.find(l => l.id === card.dataset.id);
   if (lead) openLeadDetail(lead);
@@ -2056,6 +2263,8 @@ document.getElementById('back-btn').addEventListener('click', () => {
   currentLead = null;
   document.getElementById('detail-view').style.display = 'none';
   document.getElementById('leads-view').style.display = 'block';
+  // The lead page may have changed an install date or checklist tick.
+  if (leadsView === 'calendar') { calData = null; renderLeadsTable(); }
 });
 
 // Soft delete (deleted_at set, migration 048) — manager-only, enforced by
@@ -3151,6 +3360,7 @@ document.addEventListener('keydown', e => {
 // correct for a lead that just reappeared via restore (rather than trying
 // to patch those two derived fields back onto it by hand).
 async function refreshLeadsList() {
+  calData = null;   // the calendar refetches install dates/checklists too
   allLeads = await fetchLeads();
   const ids = allLeads.map(l => l.id);
   const [outcomes, quotePrices, suggestionIds] = await Promise.all([fetchLatestOutcomes(ids), fetchSelectedQuotePrices(ids), fetchOpenEmailSuggestionLeadIds()]);
