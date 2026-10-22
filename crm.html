@@ -79,7 +79,7 @@ tbody tr:hover { background: var(--surface2); }
 .bc-due.overdue { color: var(--alert); }
 .bc-due.today { color: var(--warn); }
 
-/* ── Calendar view (2026-10-22): installs over last / this / next week,
+/* ── Calendar view (2026-10-22): installs over last / this / next week / week after,
    with each job's outstanding checklist items, plus won jobs that still
    need an install date. ── */
 .cal-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 14px; padding: 14px; align-items: start; }
@@ -1120,8 +1120,8 @@ document.getElementById('leads-board').addEventListener('click', e => {
   if (lead) openLeadDetail(lead);
 });
 
-/* ── Calendar view (2026-10-22). Greg's choices: three week rows (last,
-   this, next week; arrows move the window), a "Needs an install date"
+/* ── Calendar view (2026-10-22). Greg's choices: four week rows (last,
+   this, next week and the week after - added 2026-10-22; arrows move the window), a "Needs an install date"
    side list, and the install date taken from the lead's latest
    "Scheduled for Install" contact log (rescheduling = log it again with
    the new date). Falls back to the date given when the job was sent to
@@ -1132,7 +1132,7 @@ const CAL_WON_UNSCHEDULED = ['Converted', 'Contract Signed', 'DNO Submitted', 'D
 const CAL_INSTALLED = ['Completed', 'Job Closed'];
 const CAL_TASK_NAMES = { scaffold: 'Scaffold', electrician: 'Electrician', roofer: 'Roofer', kit: 'Kit' };
 const CAL_CACHE_MS = 30000;
-let calWeekOffset = 0;            // 0 = last / this / next week around today
+let calWeekOffset = 0;            // 0 = last week to the week after next
 let calData = null;               // { at, dates: {id: 'YYYY-MM-DD'}, checklists: {id: row} }
 let calLoading = false;
 
@@ -1227,11 +1227,11 @@ async function renderLeadsCalendar(leads) {
   const todayKey = calDayKey(today);
   const start = calMonday(today);
   start.setDate(start.getDate() + (calWeekOffset - 1) * 7);
-  const weeks = [0, 1, 2].map(w => [...Array(7)].map((_, i) => {
+  const weeks = [0, 1, 2, 3].map(w => [...Array(7)].map((_, i) => {
     const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + w * 7 + i);
     return { day, key: calDayKey(day) };
   }));
-  const firstKey = weeks[0][0].key, lastKey = weeks[2][6].key;
+  const firstKey = weeks[0][0].key, lastKey = weeks[3][6].key;
 
   const byDay = {};
   leads.forEach(d => {
@@ -1241,7 +1241,7 @@ async function renderLeadsCalendar(leads) {
     (byDay[key] = byDay[key] || []).push(d);
   });
   const shown = [];
-  const weekNames = calWeekOffset === 0 ? ['Last week', 'This week', 'Next week'] : null;
+  const weekNames = calWeekOffset === 0 ? ['Last week', 'This week', 'Next week', 'Week after'] : null;
   const fmt = (d, opts) => d.toLocaleDateString('en-GB', opts);
 
   const weeksHtml = weeks.map((days, w) => `
@@ -1261,7 +1261,7 @@ async function renderLeadsCalendar(leads) {
   visibleLeadIds = [...shown, ...unscheduled.map(d => d.id)];
   if (currentLead) updatePrevNextButtons();
 
-  const rangeText = `${fmt(weeks[0][0].day, { day: 'numeric', month: 'short' })} – ${fmt(weeks[2][6].day, { day: 'numeric', month: 'short', year: 'numeric' })}`;
+  const rangeText = `${fmt(weeks[0][0].day, { day: 'numeric', month: 'short' })} – ${fmt(weeks[3][6].day, { day: 'numeric', month: 'short', year: 'numeric' })}`;
   el.innerHTML = `<div class="cal-wrap">
     <div>
       <div class="cal-nav">
@@ -1271,7 +1271,7 @@ async function renderLeadsCalendar(leads) {
         <button class="btn-secondary" type="button" data-cal-move="1">Later ›</button>
       </div>
       <div class="cal-scroll">${weeksHtml}</div>
-      ${shown.length ? '' : '<div class="board-empty">No installs booked in these three weeks.</div>'}
+      ${shown.length ? '' : '<div class="board-empty">No installs booked in these four weeks.</div>'}
     </div>
     <section class="cal-side">
       <div class="board-col-h">Needs an install date<span class="board-col-count">${unscheduled.length}</span></div>
