@@ -99,7 +99,9 @@ async function loadCcod(path, relevantPostcodes) {
     csvStream = createReadStream(path);
   }
 
-  const parser = csvStream.pipe(parse({ columns: true }));
+  // relax_column_count: HMLR ends the file with a 2-field "Row Count:" line,
+  // which strict parsing rejects after reading every real row (2026-10-26).
+  const parser = csvStream.pipe(parse({ columns: true, relax_column_count: true }));
   let seen = 0;
   for await (const record of parser) {
     seen++;
