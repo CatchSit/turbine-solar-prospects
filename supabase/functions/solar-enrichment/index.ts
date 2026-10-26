@@ -6,7 +6,7 @@ const SUPABASE_ANON_KEY         = Deno.env.get('SUPABASE_ANON_KEY')!
 const GOOGLE_SOLAR_API_KEY      = Deno.env.get('GOOGLE_SOLAR_API_KEY')!
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !SUPABASE_ANON_KEY || !GOOGLE_SOLAR_API_KEY) {
-  throw new Error('Missing required secrets — check SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY, GOOGLE_SOLAR_API_KEY')
+  throw new Error('Missing required secrets - check SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY, GOOGLE_SOLAR_API_KEY')
 }
 
 const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
@@ -14,7 +14,7 @@ const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 // This function was originally only ever invoked via the CLI/curl, so it
 // never needed CORS headers. dashboard.html now calls it directly from the
 // browser (db.functions.invoke) to drive the "Solar enrichment" panel
-// (2026-09-10) — without these, the browser blocks the response before
+// (2026-09-10) - without these, the browser blocks the response before
 // supabase-js can read it, surfacing as the generic "Failed to send a
 // request to the Edge Function". Same origin-echo pattern as
 // company-lookup, the only other function called from the browser.
@@ -38,11 +38,11 @@ function corsHeadersFor(origin: string | null): Record<string, string> {
 
 // Bounded per-invocation batch. Invoke this function repeatedly (manually
 // for the pilot, or looped by dashboard.html's "Solar enrichment" panel)
-// until no 'pending' rows remain — same "run until done" operational
+// until no 'pending' rows remain - same "run until done" operational
 // pattern as re-invoking mcs-scraper.
 //
 // Originally 300, sized only against the Edge Function's wall-clock
-// timeout — never actually run at that scale in production, since Google
+// timeout - never actually run at that scale in production, since Google
 // Cloud billing was off until 2026-09-09. The first real run (Doncaster/
 // Sheffield, 2026-09-10) died with WORKER_RESOURCE_LIMIT ("not enough
 // compute resources") partway through batch 1: Google's buildingInsights
@@ -52,10 +52,20 @@ function corsHeadersFor(origin: string | null): Record<string, string> {
 // timing alone didn't account for. Cut down substantially; if
 // WORKER_RESOURCE_LIMIT recurs even at this size, cut it further.
 const BATCH_SIZE = 40
+
+// Supabase cuts a request off with 504 IDLE_TIMEOUT after 150s with no
+// response. 40 sequential Google calls usually take 60-130s, so a slow spell
+// from Google ran batch 5 of a 2026-10-21 run past the limit (30 of 40 rows
+// were saved, the client just never got the counts). Stop starting new
+// checks once this much time has gone and return what's done - unchecked
+// rows stay pending for the next batch. Each Google call is also capped so
+// one hung request can't eat the whole window.
+const TIME_BUDGET_MS = 100_000
+const GOOGLE_TIMEOUT_MS = 20_000
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 // Self-imposed budget, independent of whatever quota is configured in the
-// Google Cloud console — the app must never rely solely on external config
+// Google Cloud console - the app must never rely solely on external config
 // to stay inside the Solar API's 10,000/month free tier. Tracked in the
 // api_usage table (migration 005) and enforced here regardless of what the
 // console quota is set to.
@@ -74,7 +84,7 @@ type Prospect = { id: string; lat: number; lng: number }
 // buildingInsights.findClosest with additionalInsights=DETECTED_ARRAYS returns
 // both roof solar potential AND (per Google's docs) a detection layer for
 // existing rooftop arrays. The exact JSON path for the detection field is
-// NOT independently verified against a live response as of writing — this
+// NOT independently verified against a live response as of writing - this
 // function checks several plausible locations and always stores the full
 // raw response in solar_raw, so misclassifications can be corrected later by
 // reprocessing solar_raw without a second paid API call. Verify against a
@@ -102,7 +112,7 @@ function classifyDetection(json: any): { detected: boolean | null; detectionStat
   if (/NO_ARRAYS|NONE|ZERO/i.test(detectionStatus)) return { detected: false, detectionStatus }
   if (/DETECTED/i.test(detectionStatus)) return { detected: true, detectionStatus }
 
-  // Unrecognized status (e.g. an UNSPECIFIED enum default) — don't guess,
+  // Unrecognized status (e.g. an UNSPECIFIED enum default) - don't guess,
   // fall through to 'error' so it gets flagged for review instead of
   // silently becoming a lead.
   return { detected: null, detectionStatus }
@@ -127,7 +137,7 @@ async function checkBuilding(lat: number, lng: number): Promise<SolarResult> {
   url.searchParams.set('additionalInsights', 'DETECTED_ARRAYS')
   url.searchParams.set('key', GOOGLE_SOLAR_API_KEY)
 
-  const resp = await fetch(url)
+  const resp = await fetch(url, { signal: AbortSignal.timeout(GOOGLE_TIMEOUT_MS) })
 
   if (resp.status === 404) {
     return { status: 'no_coverage', detectionStatus: null, maxPanels: null, yearlyEnergyKwh: null, raw: null }
@@ -173,10 +183,10 @@ Deno.serve(async (req) => {
   console.log('=== Solar Enrichment ===')
 
   // This function's own verify_jwt=true only checks that *some* valid
-  // Supabase JWT was presented — the public anon key (embedded client-side
+  // Supabase JWT was presented - the public anon key (embedded client-side
   // in index.html) satisfies that trivially. Re-verify the caller is an
   // actual signed-in Turbine Energy rep, same pattern as company-lookup,
-  // so this isn't callable by anyone who's viewed the page source — it can
+  // so this isn't callable by anyone who's viewed the page source - it can
   // burn real Google Solar API budget and (via diagnostic modes) read
   // prospect data. Added 2026-09-09 after noticing the gap while adding
   // the test/areaCounts diagnostic modes.
@@ -208,12 +218,12 @@ Deno.serve(async (req) => {
 
   const remainingBudget = MONTHLY_CAP - usedThisPeriod
   if (remainingBudget <= 0) {
-    console.warn(`Monthly Solar API budget (${MONTHLY_CAP}) exhausted for ${period} — used=${usedThisPeriod}`)
+    console.warn(`Monthly Solar API budget (${MONTHLY_CAP}) exhausted for ${period} - used=${usedThisPeriod}`)
     return jsonResponse({ processed: 0, budgetExhausted: true, period, usedThisPeriod }, 200)
   }
 
   // Billing-check mode: POST {"test": true} to make exactly one real Solar
-  // API call against a fixed known UK building (Leeds Town Hall — always
+  // API call against a fixed known UK building (Leeds Town Hall - always
   // has coverage) instead of a full batch. Touches no prospects rows, only
   // the same api_usage counter a real call would. Added 2026-09-09 so
   // whether Google Cloud billing is actually enabled can be confirmed
@@ -222,12 +232,13 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => null)
 
   // Read-only diagnostic mode: POST {"areaCounts": true} to see how many
-  // 'pending' rows (eligible for enrichment — solar_status='pending', has
-  // lat/lng) sit in each of the four named grant areas, so a batch can be
+  // 'pending' rows (eligible for enrichment - solar_status='pending', has
+  // lat/lng) sit in each named area (South Yorkshire + West Midlands), so a batch can be
   // sized/targeted by area before spending real API budget on it. No
-  // Google API calls, no writes — just counts. Added 2026-09-09.
+  // Google API calls, no writes - just counts. Added 2026-09-09.
   if (body?.areaCounts === true) {
-    const AREAS = ['Barnsley', 'Doncaster', 'Rotherham', 'Sheffield']
+    const AREAS = ['Barnsley', 'Doncaster', 'Rotherham', 'Sheffield',
+      'Birmingham', 'Coventry', 'Dudley', 'Sandwell', 'Solihull', 'Walsall', 'Wolverhampton']
     const counts: Record<string, number> = {}
     for (const area of AREAS) {
       const { count, error } = await db.from('prospects')
@@ -289,7 +300,12 @@ Deno.serve(async (req) => {
   if (Array.isArray(body?.areas) && body.areas.length) {
     batchQuery = batchQuery.in('local_authority', body.areas)
   }
+  // Most promising first (migration 057, 2026-10-26): roof_check_priority
+  // scores EPC solar recommendation, freehold and size. Rows with no score
+  // (manual leads, anything imported since the last refresh) go last.
   const { data: batch, error: fetchErr } = await batchQuery
+    .order('roof_check_priority', { ascending: false, nullsFirst: false })
+    .order('id', { ascending: true })
     .limit(Math.min(BATCH_SIZE, remainingBudget))
 
   if (fetchErr) {
@@ -302,7 +318,10 @@ Deno.serve(async (req) => {
 
   const counts = { prospect: 0, has_solar: 0, no_coverage: 0, error: 0, rateLimited: 0 }
 
+  const startedAt = Date.now()
+  let stoppedEarly = false
   for (const row of rows) {
+    if (Date.now() - startedAt > TIME_BUDGET_MS) { stoppedEarly = true; break }
     let result: SolarResult
     try {
       result = await checkBuilding(row.lat, row.lng)
@@ -315,8 +334,14 @@ Deno.serve(async (req) => {
       }).eq('api_name', API_NAME).eq('period', period)
 
       if (e instanceof Error && e.message === 'RATE_LIMITED') {
-        console.warn(`Rate limited at id=${row.id} — stopping run, remaining rows stay pending`)
+        console.warn(`Rate limited at id=${row.id} - stopping run, remaining rows stay pending`)
         counts.rateLimited++
+        break
+      }
+      if (e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError')) {
+        // Google didn't answer in time - leave the row pending, end the batch.
+        console.warn(`Google timed out at id=${row.id}, ending batch early`)
+        stoppedEarly = true
         break
       }
       console.warn(`Error checking id=${row.id}:`, e)
@@ -348,5 +373,8 @@ Deno.serve(async (req) => {
   }
 
   console.log(`Done. prospect=${counts.prospect} has_solar=${counts.has_solar} no_coverage=${counts.no_coverage} error=${counts.error} rateLimited=${counts.rateLimited} usedThisPeriod=${usedThisPeriod}/${MONTHLY_CAP}`)
-  return jsonResponse({ processed: rows.length, ...counts, period, usedThisPeriod, monthlyCap: MONTHLY_CAP }, 200)
+  // processed = rows actually checked this call (not rows fetched), so the
+  // client's "left" estimate stays right when a batch stops early.
+  const processed = counts.prospect + counts.has_solar + counts.no_coverage + counts.error
+  return jsonResponse({ processed, fetched: rows.length, stoppedEarly, ...counts, period, usedThisPeriod, monthlyCap: MONTHLY_CAP }, 200)
 })

@@ -383,7 +383,7 @@ tfoot td { border-top: 1px solid var(--borderH); border-bottom: 0; }
       <div class="card">
         <div class="card-head"><h2>Solar roof checks (map)</h2><span class="hint">Google Solar API, capped per month</span></div>
         <div class="card-body">
-          <div class="tool-desc">Checks map buildings in the chosen areas for existing panels and roof potential, in batches, until the area is done or this month's allowance runs out. Keep this tab open while it runs.</div>
+          <div class="tool-desc">Checks map buildings in the chosen areas for existing panels and roof potential, in batches, until the area is done or this month's allowance runs out. The most promising buildings go first: solar recommended on the EPC, owner-occupied, then the biggest. Keep this tab open while it runs.</div>
           <div class="area-checks" id="enrich-area-list"></div>
           <div class="tool-row">
             <button class="tool-btn" id="enrich-run-btn" type="button">Run roof checks</button>
@@ -2055,8 +2055,11 @@ function initEnrichPanel() {
   if (enrichPanelReady) return;
   enrichPanelReady = true;
   const preselected = ['Doncaster', 'Sheffield']; // the areas with funding currently available
-  document.getElementById('enrich-area-list').innerHTML = GRANT_AREA_NAMED.map(area =>
-    `<label><input type="checkbox" value="${escapeHtml(area)}" class="enrich-area-cb" ${preselected.includes(area) ? 'checked' : ''}> ${escapeHtml(area)}</label>`).join('');
+  const areaBox = area =>
+    `<label><input type="checkbox" value="${escapeHtml(area)}" class="enrich-area-cb" ${preselected.includes(area) ? 'checked' : ''}> ${escapeHtml(area)}</label>`;
+  document.getElementById('enrich-area-list').innerHTML =
+    `<div style="width:100%;font-size:12px;color:var(--muted, #64748b)">South Yorkshire</div>` + GRANT_AREA_NAMED.map(areaBox).join('') +
+    `<div style="width:100%;font-size:12px;color:var(--muted, #64748b);margin-top:6px">West Midlands</div>` + WEST_MIDLANDS_AREAS.map(areaBox).join('');
 }
 
 document.getElementById('enrich-run-btn').addEventListener('click', async () => {
@@ -2083,14 +2086,27 @@ document.getElementById('enrich-run-btn').addEventListener('click', async () => 
   const totals = { prospect: 0, has_solar: 0, no_coverage: 0, error: 0 };
   let processedSoFar = 0;
   let batchNum = 0;
+  let timeoutsInARow = 0;
   const MAX_BATCHES = 250; // runaway guard, above a full month's budget at BATCH_SIZE=40
 
   while (enrichRunning && batchNum < MAX_BATCHES) {
     batchNum++;
     statusEl.textContent = `Running batch ${batchNum}…`;
     const { data, error } = await db.functions.invoke('solar-enrichment', { body: { areas } });
-    if (error) { logEl.textContent += `Batch ${batchNum}: error: ${await functionErrorDetail(error)}\n`; break; }
-    if (data.error) { logEl.textContent += `Batch ${batchNum}: error: ${JSON.stringify(data.error)}\n`; break; }
+    if (error) {
+      const detail = await functionErrorDetail(error);
+      // A 504 means the batch overran Supabase's 150s limit. The checks it
+      // finished are already saved and the rest stay pending, so carry on.
+      if (/IDLE_TIMEOUT|HTTP 504/.test(detail) && ++timeoutsInARow < 3) {
+        logEl.textContent += `Batch ${batchNum}: timed out (Google was slow). Checks already done are saved, carrying on.\n`;
+        continue;
+      }
+      logEl.textContent += `Batch ${batchNum}: error: ${detail}\n`; break;
+    }
+    timeoutsInARow = 0;
+    // data.error is a count of buildings Google errored on in a normal
+    // response; only a non-number means the call itself failed.
+    if (data.error && typeof data.error !== 'number') { logEl.textContent += `Batch ${batchNum}: error: ${JSON.stringify(data.error)}\n`; break; }
     if (data.budgetExhausted) { logEl.textContent += `Batch ${batchNum}: this month's Solar API allowance is used up (${data.usedThisPeriod}/${data.monthlyCap}). Stopping.\n`; break; }
 
     totals.prospect += data.prospect || 0;
@@ -2107,7 +2123,7 @@ document.getElementById('enrich-run-btn').addEventListener('click', async () => 
     }
     logEl.textContent += `Batch ${batchNum}: checked ${data.processed} (prospect ${data.prospect}, has solar ${data.has_solar}, no coverage ${data.no_coverage}, error ${data.error}). Allowance used ${data.usedThisPeriod}/${data.monthlyCap}${left}\n`;
     logEl.scrollTop = logEl.scrollHeight;
-    if (!data.processed) { logEl.textContent += 'Done: nothing left to check in the chosen area(s).\n'; break; }
+    if (!data.processed && !data.stoppedEarly) { logEl.textContent += 'Done: nothing left to check in the chosen area(s).\n'; break; }
   }
 
   enrichRunning = false;
