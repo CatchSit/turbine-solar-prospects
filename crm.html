@@ -1462,6 +1462,7 @@ function populateLeadFields(lead) {
   document.querySelectorAll('#ld-assigned-chips .outcome-chip').forEach(c => {
     const color = ASSIGNED_CHIP_COLOR[c.dataset.value];
     const on = c.dataset.value === selectedEditAssignedTo;
+    c.style.display = isAssignable(c.dataset.value) || on ? '' : 'none';
     c.classList.toggle('on', on);
     c.style.background = on ? color : '';
     c.style.borderColor = on ? color : '';

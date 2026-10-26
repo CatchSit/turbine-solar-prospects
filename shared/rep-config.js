@@ -4,7 +4,10 @@
 // predictable and independent of who has actually logged in yet).
 const REP = {
   "greg@turbineenergyuk.co.uk":  { name: "Greg",  color: "#2563eb" },
-  "matty@turbineenergyuk.co.uk": { name: "Matty", color: "#059669" },
+  // left: no longer offered when assigning (2026-10-26). Kept here so leads
+  // still assigned to him keep their name/colour and stay in the CRM filter
+  // until a manager reassigns them.
+  "matty@turbineenergyuk.co.uk": { name: "Matty", color: "#059669", left: true },
   "tim@turbineenergyuk.co.uk":   { name: "Tim",   color: "#d97706" },
   "chris@turbineenergyuk.co.uk": { name: "Chris", color: "#7c3aed" },
   "jackie@turbineenergyuk.co.uk": { name: "Jackie", color: "#0891b2" },
@@ -16,4 +19,5 @@ const REP = {
   "vickyturbinemarketingltd@aol.com": { name: "Vic", color: "#db2777" },
 };
 const REP_ORDER = ["greg@turbineenergyuk.co.uk", "matty@turbineenergyuk.co.uk", "tim@turbineenergyuk.co.uk", "chris@turbineenergyuk.co.uk", "jackie@turbineenergyuk.co.uk", "vickyturbinemarketingltd@aol.com"];
+function isAssignable(email) { return !email || !REP[email]?.left; }
 function repName(email) { return email ? (REP[email]?.name || email.split('@')[0]) : 'Unassigned'; }

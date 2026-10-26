@@ -1124,8 +1124,8 @@ function canEditProspect(d) {
   return isAdmin(currentUser) || (!!d.assigned_to_email && d.assigned_to_email.toLowerCase() === (currentUser?.email || '').toLowerCase());
 }
 function assignSelectHtml(d) {
-  const options = ['', ...REP_ORDER].map(email => {
-    const label = email ? REP[email].name : 'Unassigned';
+  const options = ['', ...REP_ORDER].filter(email => isAssignable(email) || email === (d.assigned_to_email || '')).map(email => {
+    const label = email ? REP[email].name + (REP[email].left ? ' (left)' : '') : 'Unassigned';
     const selected = (d.assigned_to_email || '') === email ? 'selected' : '';
     return `<option value="${escapeHtml(email)}" ${selected}>${escapeHtml(label)}</option>`;
   }).join('');
