@@ -501,7 +501,8 @@
        the full EPC/VOA/oil-LPG prospect pipeline (tens of thousands of
        rows) only loads once you ask for it. -->
   <div class="section" id="load-pipeline-section" style="display:none">
-    <button class="btn-primary" id="load-pipeline-btn" style="width:100%">Load prospect data</button>
+    <button class="btn-primary load-pipeline-btn" data-region="yorkshire-humber" style="width:100%">Load Yorkshire prospects</button>
+    <button class="btn-primary load-pipeline-btn" data-region="west-midlands" style="width:100%;margin-top:6px">Load West Midlands prospects</button>
   </div>
 
   <div class="section">
@@ -1985,29 +1986,40 @@ function initMap(manualLeads, grantAreaStatus) {
   rebuildSidebarChips();
 }
 
-let pipelineLoaded = false;
-async function loadPipelineData() {
-  if (pipelineLoaded) return;
-  const btn = document.getElementById('load-pipeline-btn');
+// One button per region (2026-10-26, West Midlands added): loading both
+// at once is ~50k rows, so each loads on its own. No argument = every
+// region not yet loaded (the ?lead= deep link, region unknown up front).
+const pipelineLoaded = new Set();
+async function loadPipelineData(region) {
+  if (!region) {
+    for (const r of PIPELINE_REGIONS) await loadPipelineData(r.key);
+    return;
+  }
+  if (pipelineLoaded.has(region)) return;
+  const cfg = PIPELINE_REGIONS.find(r => r.key === region);
+  const btn = document.querySelector(`.load-pipeline-btn[data-region="${region}"]`);
   btn.disabled = true;
   try {
-    const pipelineRows = await fetchPipelineProspects((fetched, total) => {
-      btn.textContent = `Loading… (${fetched.toLocaleString()} / ${total.toLocaleString()})`;
+    const pipelineRows = await fetchPipelineProspects(region, (fetched, total) => {
+      btn.textContent = `Loading ${cfg.label}… (${fetched.toLocaleString()} / ${total.toLocaleString()})`;
     });
     allProspects = allProspects.concat(pipelineRows);
     recomputeRecDateRange();
     addMarkersFor(pipelineRows);
     rebuildSidebarChips();
     applyFilters();
-    pipelineLoaded = true;
-    document.getElementById('load-pipeline-section').style.display = 'none';
+    pipelineLoaded.add(region);
+    btn.style.display = 'none';
+    if (PIPELINE_REGIONS.every(r => pipelineLoaded.has(r.key))) document.getElementById('load-pipeline-section').style.display = 'none';
+    if (!new URLSearchParams(location.search).get('lead')) map.fitBounds(cfg.bounds);
   } catch (e) {
     console.error('Failed to load prospect data:', e);
     btn.disabled = false;
-    btn.textContent = 'Load prospect data (failed — retry?)';
+    btn.textContent = `Load ${cfg.label} prospects (failed - retry?)`;
   }
 }
-document.getElementById('load-pipeline-btn').addEventListener('click', loadPipelineData);
+document.querySelectorAll('.load-pipeline-btn').forEach(btn =>
+  btn.addEventListener('click', () => loadPipelineData(btn.dataset.region)));
 
 // Sidebar's "EPC recommendations" chips are static markup (unlike the other
 // three chip groups, which are built entirely from data) — source their
@@ -2051,7 +2063,7 @@ function initGrantAreaLayer(geojson, statusByArea) {
 function buildGrantAreaChips(data, statusByArea) {
   const counts = {};
   data.forEach(d => {
-    const area = GRANT_AREA_NAMED.includes(d.local_authority) ? d.local_authority : 'Other';
+    const area = areaBucket(d.local_authority);
     counts[area] = (counts[area] || 0) + 1;
   });
   const el = document.getElementById("grant-area-list");
@@ -2061,7 +2073,9 @@ function buildGrantAreaChips(data, statusByArea) {
     const cfg = status && GRANT_STATUS[status];
     const row = document.createElement("label");
     row.className = "chip on";
-    row.title = area === 'Other' ? 'Every local authority outside the four tracked grant areas' : (cfg ? cfg.label : 'Funding status not set');
+    row.title = area === 'Other' ? 'Every other council area'
+      : WEST_MIDLANDS_AREAS.includes(area) ? 'West Midlands (no grant tracked)'
+      : (cfg ? cfg.label : 'Funding status not set');
     row.innerHTML = `<input type="checkbox" checked data-area="${area}"/>
       <span class="dot" style="background:${cfg ? cfg.color : '#999'}"></span>
       ${area}<span class="chip-n">${(counts[area] || 0).toLocaleString()}</span>`;
@@ -2310,8 +2324,7 @@ function applyFilters() {
     // everything through" rule, this is a real exhaustive partition (every
     // prospect maps to a real chip), so the strict has()-membership check
     // is correct even at the default all-five-checked state.
-    const areaBucket = GRANT_AREA_NAMED.includes(d.local_authority) ? d.local_authority : 'Other';
-    const areaOk = activeGrantAreas.has(areaBucket);
+    const areaOk = activeGrantAreas.has(areaBucket(d.local_authority));
     const typeOk   = activeBuildingTypes.has(d._bucket);
     // Full selection (untouched default) passes everything through,
     // including prospects with no rating. Deselecting even one chip goes
@@ -2506,7 +2519,7 @@ async function fetchManualLeads() {
 // that. Slower but reliable beats fast but occasionally broken; revisit
 // concurrency only with a safer mechanism (e.g. a server-side view) if the
 // load time becomes a real problem again even behind its own button.
-async function fetchPipelineProspects(onProgress) {
+async function fetchPipelineProspects(region, onProgress) {
   const PAGE = 1000; // PostgREST's default max-rows cap — must page past it explicitly
   const notManual = 'source.is.null,source.neq.manual';
 
@@ -2516,6 +2529,7 @@ async function fetchPipelineProspects(onProgress) {
   const { count: total, error: countError } = await db
     .from('prospects')
     .select('id', { count: 'exact', head: true })
+    .eq('region', region)
     .not('lat', 'is', null)
     .is('deleted_at', null)
     .or(notManual);
@@ -2527,6 +2541,7 @@ async function fetchPipelineProspects(onProgress) {
     let query = db
       .from('prospects')
       .select(PROSPECT_COLUMNS_PIPELINE)
+      .eq('region', region)
       .not('lat', 'is', null)
       .is('deleted_at', null)
       .or(notManual)

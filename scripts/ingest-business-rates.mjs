@@ -11,12 +11,17 @@
 //
 // Usage:
 //   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/ingest-business-rates.mjs
+// REGION=west-midlands picks another area (scripts/regions.mjs; default
+// yorkshire-humber). Only prospects whose `region` is that area get their
+// business_rates_matches rewritten, so running one region never wipes
+// another's matches.
 
 import { createWriteStream, existsSync, mkdirSync } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import { parse } from 'csv-parse';
 import unzipper from 'unzipper';
 import { createClient } from '@supabase/supabase-js';
+import { getRegion, postcodeOutcodeArea } from './regions.mjs';
 
 const SUPABASE_URL              = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -34,10 +39,13 @@ const LIST_YEAR = '2026';
 const DATA_DIR = 'data/business-rates';
 const ZIP_PATH = `${DATA_DIR}/baseline.zip`;
 
-const YORKSHIRE_HUMBER_OUTCODES = new Set(['BD', 'DN', 'HD', 'HG', 'HU', 'HX', 'LS', 'S', 'WF', 'YO']);
-function postcodeOutcodeArea(postcode) {
-  const m = String(postcode || '').trim().toUpperCase().match(/^([A-Z]{1,2})\d/);
-  return m ? m[1] : '';
+const REGION = getRegion();
+
+// VOA rows carry a billing-authority code, so a region that lists its
+// councils' codes filters on those; otherwise by postcode area.
+function inRegion(row, postcode) {
+  if (REGION.voaBaCodes) return REGION.voaBaCodes.has(String(row[FIELD.BILLING_AUTHORITY_CODE] || '').trim());
+  return REGION.outcodes.has(postcodeOutcodeArea(postcode));
 }
 
 // Field positions (0-indexed) — confirmed against VOA's own published spec
@@ -114,18 +122,23 @@ async function openCurrentEntriesStream() {
 
 // ─── Step 4: fetch existing prospect postcodes (prefilter before matching) ─
 
+// Prospect ids whose `region` is the one being run - the only rows
+// upsertMatches() may rewrite. Filled by fetchExistingPostcodes().
+const inRegionIds = new Set();
+
 async function fetchExistingPostcodes() {
   const postcodes = new Map(); // normalized postcode -> Set<prospect id>
   const PAGE = 1000;
   let from = 0;
   while (true) {
-    const { data, error } = await db.from('prospects').select('id, postcode').range(from, from + PAGE - 1);
+    const { data, error } = await db.from('prospects').select('id, postcode, region').range(from, from + PAGE - 1);
     if (error) throw new Error(JSON.stringify(error));
     for (const row of data) {
       if (!row.postcode) continue;
       const norm = row.postcode.trim().toUpperCase().replace(/\s+/g, '');
       if (!postcodes.has(norm)) postcodes.set(norm, new Set());
       postcodes.get(norm).add(row.id);
+      if (row.region === REGION.name) inRegionIds.add(row.id);
     }
     if (data.length < PAGE) break;
     from += PAGE;
@@ -143,16 +156,15 @@ async function fetchExistingPostcodes() {
 // two different purposes: enriching existing prospects AND seeding new ones.
 async function collectHereditamentsByPostcode(stream) {
   const byPostcode = new Map(); // normalized postcode -> hereditament[]
-  let rawCount = 0, yhCount = 0;
+  let rawCount = 0, regionCount = 0;
 
   const parser = stream.pipe(parse({ delimiter: '*', relax_column_count: true, bom: true }));
   for await (const row of parser) {
     rawCount++;
     const postcode = String(row[FIELD.POSTCODE] || '').trim();
     if (!postcode) continue;
-    const outcode = postcodeOutcodeArea(postcode);
-    if (!YORKSHIRE_HUMBER_OUTCODES.has(outcode)) continue;
-    yhCount++;
+    if (!inRegion(row, postcode)) continue;
+    regionCount++;
 
     const rateableValue = parseInt(row[FIELD.RATEABLE_VALUE], 10);
     if (!Number.isFinite(rateableValue)) continue;
@@ -171,8 +183,8 @@ async function collectHereditamentsByPostcode(stream) {
   }
 
   console.log(`Raw rows: ${rawCount}`);
-  console.log(`Yorkshire & Humber rows (by postcode outcode): ${yhCount}`);
-  console.log(`Distinct Yorkshire & Humber postcodes: ${byPostcode.size}`);
+  console.log(`${REGION.name} rows: ${regionCount}`);
+  console.log(`Distinct ${REGION.name} postcodes: ${byPostcode.size}`);
   return byPostcode;
 }
 
@@ -194,7 +206,7 @@ function selectNewProspectCandidates(byPostcode, existingPostcodes) {
       postcode: top.postcode,
       property_type: top.description,
       source: 'voa',
-      region: 'yorkshire-humber',
+      region: REGION.name,
     });
   }
   console.log(`New-prospect candidate postcodes (no existing prospect, top hereditament >= £${MIN_VOA_RATEABLE_VALUE.toLocaleString()}): ${candidates.length}`);
@@ -213,6 +225,7 @@ async function insertNewProspects(candidates) {
       .select('id, postcode');
     if (error) throw new Error(`New-prospect insert failed at row ${i}: ${JSON.stringify(error)}`);
     for (const row of data) {
+      inRegionIds.add(row.id);
       const norm = row.postcode.toUpperCase().replace(/\s+/g, '');
       if (!inserted.has(norm)) inserted.set(norm, new Set());
       inserted.get(norm).add(row.id);
@@ -229,6 +242,7 @@ async function upsertMatches(byPostcode, existingPostcodes) {
   for (const [norm, prospectIds] of existingPostcodes) {
     const hereditaments = byPostcode.get(norm) || [];
     for (const prospectId of prospectIds) {
+      if (!inRegionIds.has(prospectId)) continue;
       rows.push({
         prospect_id: prospectId,
         hereditaments,

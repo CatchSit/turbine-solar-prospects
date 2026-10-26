@@ -26,4 +26,21 @@ const GRANT_AREA_NAMED = ["Barnsley", "Doncaster", "Rotherham", "Sheffield"];
 // contiguous area) and no manager-editable status in dashboard.html — it's
 // a sidebar filter convenience only, always rendered with a neutral grey
 // dot.
-const GRANT_AREA_ORDER = [...GRANT_AREA_NAMED, "Other"];
+//
+// West Midlands councils (metropolitan county), added 2026-10-26 when its
+// EPC/VOA leads were imported (region 'west-midlands'). Their own chips in
+// the area filter, but no grant status or boundary shading - the tracked
+// grant is South Yorkshire's.
+const WEST_MIDLANDS_AREAS = ["Birmingham", "Coventry", "Dudley", "Sandwell", "Solihull", "Walsall", "Wolverhampton"];
+const GRANT_AREA_ORDER = [...GRANT_AREA_NAMED, ...WEST_MIDLANDS_AREAS, "Other"];
+function areaBucket(localAuthority) {
+  return GRANT_AREA_NAMED.includes(localAuthority) || WEST_MIDLANDS_AREAS.includes(localAuthority) ? localAuthority : 'Other';
+}
+
+// Pipeline regions (prospects.region) the map loads one at a time - the
+// full set is too slow to load in one go. `bounds` is where the map moves
+// when that region is loaded.
+const PIPELINE_REGIONS = [
+  { key: 'yorkshire-humber', label: 'Yorkshire', bounds: [[53.25, -2.2], [54.4, -0.1]] },
+  { key: 'west-midlands', label: 'West Midlands', bounds: [[52.34, -2.22], [52.68, -1.42]] },
+];

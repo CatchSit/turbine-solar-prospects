@@ -7,6 +7,8 @@
 // Usage:
 //   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/ingest-epc.mjs [csv-files...]
 // If no files are given, every *.csv under data/ is used.
+// REGION=west-midlands picks another area (scripts/regions.mjs; default
+// yorkshire-humber). DRY_RUN=1 reports the counts without writing anything.
 //
 // IMPORTANT: the column-name mapping below is our best guess at the bulk
 // CSV schema (matching the historical opendatacommunities format). This
@@ -17,6 +19,7 @@
 import { createReadStream, readdirSync } from 'node:fs';
 import { parse } from 'csv-parse';
 import { createClient } from '@supabase/supabase-js';
+import { getRegion, postcodeOutcodeArea } from './regions.mjs';
 
 const SUPABASE_URL              = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -28,24 +31,8 @@ const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 // ─── Tunables ──────────────────────────────────────────────────────────────
 
 const MIN_FLOOR_AREA_M2 = 500;
-const REGION = 'yorkshire-humber';
-
-// Matched case-insensitively against LOCAL_AUTHORITY_LABEL.
-const YORKSHIRE_HUMBER_LAS = new Set([
-  'leeds', 'sheffield', 'bradford', 'kirklees', 'wakefield', 'calderdale',
-  'kingston upon hull, city of', 'kingston upon hull', 'hull',
-  'east riding of yorkshire', 'york', 'north yorkshire',
-  'doncaster', 'rotherham', 'barnsley',
-  'north lincolnshire', 'north east lincolnshire',
-].map(s => s.toLowerCase()));
-
-// Secondary sanity check — postcode outcode prefix.
-const YORKSHIRE_HUMBER_OUTCODES = new Set(['BD', 'DN', 'HD', 'HG', 'HU', 'HX', 'LS', 'S', 'WF', 'YO']);
-
-function postcodeOutcodeArea(postcode) {
-  const m = String(postcode || '').trim().toUpperCase().match(/^([A-Z]{1,2})\d/);
-  return m ? m[1] : '';
-}
+const REGION = getRegion();
+const DRY_RUN = process.env.DRY_RUN === '1';
 
 // ─── Column mapping (defensive — see header note above) ──────────────────
 
@@ -106,7 +93,7 @@ function toProspectRow(row, col) {
     address:                   buildAddress(row, col),
     postcode:                  String(row[col.postcode] ?? '').trim(),
     local_authority:           String(row[col.local_authority_label] ?? '').trim(),
-    region:                    REGION,
+    region:                    REGION.name,
     property_type:             String(row[col.property_type] ?? '').trim(),
     total_floor_area:          Number.isFinite(floorArea) ? floorArea : null,
     current_energy_rating:     String(row[col.current_energy_rating] ?? '').trim().toUpperCase() || null,
@@ -118,8 +105,8 @@ function toProspectRow(row, col) {
 function passesFilter(rec) {
   if (!rec.epc_lmk_key) return false;
   if (!(rec.total_floor_area >= MIN_FLOOR_AREA_M2)) return false;
-  const laOk  = YORKSHIRE_HUMBER_LAS.has(rec.local_authority.toLowerCase());
-  const pcOk  = YORKSHIRE_HUMBER_OUTCODES.has(postcodeOutcodeArea(rec.postcode));
+  const laOk  = REGION.las.has(rec.local_authority.toLowerCase());
+  const pcOk  = !!REGION.outcodes && REGION.outcodes.has(postcodeOutcodeArea(rec.postcode));
   return laOk || pcOk;
 }
 
@@ -189,6 +176,22 @@ async function main() {
   console.log(`Raw rows: ${rawCount}`);
   console.log(`After region + floor-area filter: ${afterFilterCount}`);
   console.log(`After dedupe by building: ${finalRows.length}`);
+
+  if (DRY_RUN) {
+    const byLa = {};
+    for (const r of finalRows) byLa[r.local_authority || '(blank)'] = (byLa[r.local_authority || '(blank)'] || 0) + 1;
+    console.log(`Region ${REGION.name}, by council:`, byLa);
+    const keys = finalRows.map(r => r.epc_lmk_key);
+    let existing = 0;
+    for (let i = 0; i < keys.length; i += 200) {
+      const { count, error } = await db.from('prospects').select('id', { count: 'exact', head: true }).in('epc_lmk_key', keys.slice(i, i + 200));
+      if (error) throw new Error(JSON.stringify(error));
+      existing += count ?? 0;
+    }
+    console.log(`Already in the CRM (would be updated, not added): ${existing}; new: ${finalRows.length - existing}`);
+    console.log('DRY_RUN=1 set - no writes made. Re-run without it to apply.');
+    return;
+  }
 
   await upsertBatch(finalRows);
   console.log('Done.');
