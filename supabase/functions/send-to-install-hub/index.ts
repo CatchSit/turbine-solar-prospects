@@ -95,6 +95,17 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'prospect_id and scheduled_date are required' }, 400)
   }
 
+  // Migration 056: only a manager or the lead's assigned rep may change a
+  // lead. This function writes with the service role, so check as the caller.
+  const { data: canEdit, error: canEditErr } = await authClient.rpc('can_edit_lead', { p_prospect_id: prospect_id })
+  if (canEditErr) {
+    console.error('can_edit_lead failed:', JSON.stringify(canEditErr))
+    return jsonResponse({ error: 'Permission check failed' }, 500)
+  }
+  if (!canEdit) {
+    return jsonResponse({ error: 'Only a manager or the assigned rep can send this lead to the installs team' }, 403)
+  }
+
   // Lead details are looked up server-side, never taken from the request
   // body — same reasoning as company-lookup's postcode lookup: otherwise
   // this is an authenticated-but-undomain-checked proxy for writing

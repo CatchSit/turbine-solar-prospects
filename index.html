@@ -1017,7 +1017,7 @@ function createMarker(d) {
   const isHeatingGrant = d.source === 'oil-lpg-bus';
   const marker = L.marker([d.lat, d.lng], {
     icon: isManual ? makeManualLeadIcon(d) : isHeatingGrant ? makeHeatingGrantIcon() : makeMarkerIcon(d),
-    draggable: isManual,
+    draggable: isManual && canEditProspect(d),
   });
   marker.bindTooltip(d.customer_name || d.address || d.postcode || 'Unnamed building', { direction: "top", offset: [0, -10], className: 'day-tooltip', opacity: 0.96 });
   marker._d = d;
@@ -1117,6 +1117,12 @@ function formatShortDate(dateStr) {
    plain <select> here since the popup card has no separate edit mode:
    picking a rep saves immediately, same "instant action" feel as the
    enrichment buttons and the draggable-pin save above. ─────────────── */
+// Migration 056 (2026-10-26): managers can change any lead; everyone else only
+// leads assigned to them (unassigned = manager-only). RLS enforces it; an
+// update RLS filters out "succeeds" with 0 rows, so the page must not offer it.
+function canEditProspect(d) {
+  return isAdmin(currentUser) || (!!d.assigned_to_email && d.assigned_to_email.toLowerCase() === (currentUser?.email || '').toLowerCase());
+}
 function assignSelectHtml(d) {
   const options = ['', ...REP_ORDER].map(email => {
     const label = email ? REP[email].name : 'Unassigned';
@@ -1125,7 +1131,7 @@ function assignSelectHtml(d) {
   }).join('');
   return `<div class="popup-assign">
     <label for="assign-select-${escapeHtml(d.id)}">Assigned to</label>
-    <select id="assign-select-${escapeHtml(d.id)}" onchange="assignLead(${escapeHtml(JSON.stringify(d.id))}, this.value)">${options}</select>
+    <select id="assign-select-${escapeHtml(d.id)}" onchange="assignLead(${escapeHtml(JSON.stringify(d.id))}, this.value)" ${isAdmin(currentUser) ? '' : 'disabled title="Only managers can reassign leads"'}>${options}</select>
   </div>`;
 }
 
@@ -1241,14 +1247,16 @@ function buildPopup(d) {
       </div>
       <div class="proposals-panel popup-tab-panel" data-panel="proposals" id="proposals-panel-${escapeHtml(d.id)}">
         <div class="proposals-list">Loading…</div>
-        <div class="proposals-upload">
+        <div class="proposals-upload" ${canEditProspect(d) ? '' : 'style="display:none"'}>
           <input type="file" accept="${DOCUMENT_ACCEPT}" class="proposals-file-input" id="proposals-file-${escapeHtml(d.id)}">
           <button type="button" class="proposals-upload-btn" onclick="uploadDocument(${escapeHtml(JSON.stringify(d.id))})">Upload</button>
         </div>
         <div class="proposals-upload-status"></div>
       </div>
       <div class="contact-log-list popup-tab-panel" data-panel="contact-log" id="contact-log-${escapeHtml(d.id)}">Loading…</div>
-      <button class="log-contact-btn" onclick="openContactModal('${escapeHtml(d.id)}', ${escapeHtml(JSON.stringify((isManual && d.customer_name) || d.address || d.postcode || 'Unnamed building'))})">Log contact</button>
+      ${canEditProspect(d)
+        ? `<button class="log-contact-btn" onclick="openContactModal('${escapeHtml(d.id)}', ${escapeHtml(JSON.stringify((isManual && d.customer_name) || d.address || d.postcode || 'Unnamed building'))})">Log contact</button>`
+        : `<div class="popup-readonly" style="margin-top:8px;font-size:12px;color:#92400e">View only. ${d.assigned_to_email ? `Assigned to ${escapeHtml(repName(d.assigned_to_email))}.` : 'Ask a manager to assign this to you.'}</div>`}
     </div>`;
 }
 
@@ -1897,6 +1905,7 @@ document.getElementById('lm-submit').addEventListener('click', async () => {
     lng: geo.longitude,
     geocode_source: 'postcodes.io',
     created_by_email: currentUser?.email || null,
+    assigned_to_email: isAdmin(currentUser) ? null : (currentUser?.email || '').toLowerCase() || null,
   }]).select().single();
 
   btn.disabled = false; btn.textContent = 'Add lead';

@@ -372,6 +372,14 @@ tbody tr:hover { background: var(--surface2); }
 .modal-footer { display: flex; align-items: center; justify-content: space-between; padding: 14px 22px; border-top: 1px solid var(--border); }
 .modal-shortcuts { font-size: 11px; color: var(--text3); font-family: monospace; }
 .modal-btns { display: flex; gap: 8px; }
+/* View-only lead (migration 056): managers edit any lead, everyone else only
+   the leads assigned to them. The database enforces it; this just hides the
+   controls that would fail. */
+.readonly-banner { margin: 10px 0 0; padding: 8px 12px; border-radius: 8px; background: #fef3c7; color: #92400e; font-size: 13px; font-weight: 500; }
+#detail-view.lead-readonly :is(#log-contact-btn, .composer, #details-edit-btn, #add-quote-option-btn,
+  #doc-file-input, #doc-upload-btn, #ih-send-btn, .doc-file-input, .doc-upload-btn, .doc-remove-link,
+  .row-action-link, .email-due-actions, [id^="qo-save-"], [id^="qo-cancel-"], .qo-detail-row .btn-secondary) { display: none !important; }
+#detail-view.lead-readonly :is(#install-unlocked, .qo-detail-row) :is(input, select, textarea) { pointer-events: none; opacity: .7; }
 </style>
 </head>
 <body>
@@ -462,6 +470,7 @@ tbody tr:hover { background: var(--surface2); }
         <button class="ns-email" type="button" id="ns-email" style="display:none"></button>
         <span class="ns-status" id="lead-status-sub"></span>
       </div>
+      <div class="readonly-banner" id="readonly-banner" style="display:none"></div>
     </div>
 
     <div class="zones">
@@ -859,6 +868,29 @@ function whereUnchanged(query, original, cols) {
   return query;
 }
 function isMe(email) { return !!email && email.toLowerCase() === (currentUser?.email || '').toLowerCase(); }
+
+// Migration 056 (2026-10-26): managers can change any lead; everyone else only
+// the leads assigned to them. Unassigned leads are manager-only until assigned.
+// RLS is the real gate; this keeps the page from offering actions that would fail.
+function canEditLead(lead) { return !!lead && (isAdmin(currentUser) || isMe(lead.assigned_to_email)); }
+function applyLeadEditAccess() {
+  const editable = canEditLead(currentLead);
+  document.getElementById('detail-view').classList.toggle('lead-readonly', !editable);
+  const banner = document.getElementById('readonly-banner');
+  banner.style.display = editable ? 'none' : '';
+  if (!editable && currentLead) {
+    banner.textContent = currentLead.assigned_to_email
+      ? `View only. This lead is assigned to ${repName(currentLead.assigned_to_email)}, so only they or a manager can change it.`
+      : 'View only. This lead is unassigned. Ask a manager to assign it to you.';
+  }
+  // Only managers reassign leads.
+  document.getElementById('ld-assigned-chips').closest('.quote-field').style.display = isAdmin(currentUser) ? '' : 'none';
+}
+function blockedReadOnly() {
+  if (canEditLead(currentLead)) return false;
+  showToast('View only. Ask a manager to assign this lead to you.');
+  return true;
+}
 
 let toastTimer = null;
 function showToast(text) {
@@ -1456,6 +1488,7 @@ function openLeadDetail(lead) {
   window.scrollTo(0, 0);
 
   populateLeadFields(lead);
+  applyLeadEditAccess();
   document.getElementById('lead-map-link').href = `index.html?lead=${encodeURIComponent(lead.id)}`;
   document.getElementById('details-delete-btn').style.display = isAdmin(currentUser) ? '' : 'none';
   updatePrevNextButtons();
@@ -1808,6 +1841,7 @@ document.getElementById('emails-due').addEventListener('click', async e => {
   const item = currentEmails.due.find(i => emailItemKey(i) === key);
   if (!item) return;
   const action = btn.dataset.emailAction;
+  if (action !== 'open' && blockedReadOnly()) return;
   if (action === 'open') {
     e.preventDefault();
     window.location.href = emailItemMailto(item);
@@ -1858,6 +1892,7 @@ function applyLeadRow(row) {
   const listRow = allLeads.find(l => l.id === row.id);
   if (listRow) Object.assign(listRow, fields);
   if (document.getElementById('ld-form').style.display === 'none') populateLeadFields(currentLead);
+  applyLeadEditAccess();
   renderInstallHubStatus();
   renderSidebarFilters();
   renderLeadsTable();
@@ -2036,7 +2071,7 @@ function setDetailsEditing(editing) {
   document.getElementById('details-copy-btn').style.display = editing || !document.getElementById('details-copy-btn').dataset.copy ? 'none' : '';
 }
 
-document.getElementById('details-edit-btn').addEventListener('click', () => setDetailsEditing(true));
+document.getElementById('details-edit-btn').addEventListener('click', () => { if (!blockedReadOnly()) setDetailsEditing(true); });
 document.getElementById('details-cancel-btn').addEventListener('click', () => {
   populateLeadFields(currentLead); // discard any unsaved typing
   setDetailsEditing(false);
@@ -2187,7 +2222,7 @@ function renderInstallChecklist() {
 }
 
 async function saveInstallTask(key) {
-  if (!currentLead) return;
+  if (!currentLead || blockedReadOnly()) return;
   const prospectId = currentLead.id;
   const statusEl = document.getElementById('ic-status');
   // N/A and Done are mutually exclusive — the Done checkbox is disabled
@@ -2227,6 +2262,7 @@ function renderInstallHubStatus() {
 }
 
 document.getElementById('ih-send-btn').addEventListener('click', async () => {
+  if (blockedReadOnly()) return;
   if (!currentLead) return;
   const scheduledDate = document.getElementById('ih-scheduled-date').value;
   const statusEl = document.getElementById('ih-status');
@@ -2474,6 +2510,7 @@ function cancelQuoteOptionEdit(optionId) {
 }
 
 async function saveQuoteOption(optionId) {
+  if (blockedReadOnly()) return;
   const values = readOptionCardValues(optionId);
   const updates = { label: values.label.trim() || null };
   QUOTE_COST_FIELDS.forEach(f => { updates[f.key] = values[f.key] === '' ? null : Number(values[f.key]); });
@@ -2524,6 +2561,7 @@ function syncLeadSelectedQuotePrice() {
 }
 
 async function selectQuoteOption(optionId) {
+  if (blockedReadOnly()) return;
   lastOwnQuoteActionAt = Date.now();
   const { error } = await db.rpc('select_quote_option', { p_option_id: optionId });
   if (error) { alert('Failed to mark as selected: ' + error.message); return; }
@@ -2600,6 +2638,7 @@ async function restoreQuoteOption(optionId) {
 }
 
 document.getElementById('add-quote-option-btn').addEventListener('click', async () => {
+  if (blockedReadOnly()) return;
   if (!currentLead) return;
   const position = currentQuoteOptions.length;
   lastOwnQuoteActionAt = Date.now();
@@ -2763,6 +2802,7 @@ function isAllowedDocumentFile(file) {
 // fails the type/size check or the upload is skipped and named in the
 // status line; the rest still go up. quoteOptionId null = lead-level.
 async function uploadDocuments({ prospectId, quoteOptionId = null, fileInput, statusEl, btn, reload }) {
+  if (blockedReadOnly()) return;
   const files = [...fileInput.files];
   statusEl.classList.remove('error');
   statusEl.textContent = '';
@@ -3051,6 +3091,7 @@ document.getElementById('cm-outcome').addEventListener('change', e => {
 });
 
 function openContactModal(prospectId, prospectName) {
+  if (blockedReadOnly()) return;
   document.getElementById('cm-prospect-id').value = prospectId;
   document.getElementById('cm-prospect-name').textContent = prospectName;
   document.getElementById('cm-employee').value = currentUser ? getUserName(currentUser) : '';
@@ -3256,6 +3297,7 @@ document.getElementById('lm-submit').addEventListener('click', async () => {
     lng: geo.longitude,
     geocode_source: 'postcodes.io',
     created_by_email: currentUser?.email || null,
+    assigned_to_email: isAdmin(currentUser) ? null : (currentUser?.email || '').toLowerCase() || null,
     lead_origin_id: originId,
   }]).select('id, customer_name, lead_type, contact_phone, contact_email, address, postcode, created_at, install_hub_job_id, sent_to_install_hub_at, sent_to_install_hub_by_email, assigned_to_email, lead_channel, lead_origin_id, lead_cost').single();
 
