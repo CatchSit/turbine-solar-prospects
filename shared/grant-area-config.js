@@ -32,6 +32,11 @@ const GRANT_AREA_NAMED = ["Barnsley", "Doncaster", "Rotherham", "Sheffield"];
 // the area filter, but no grant status or boundary shading - the tracked
 // grant is South Yorkshire's.
 const WEST_MIDLANDS_AREAS = ["Birmingham", "Coventry", "Dudley", "Sandwell", "Solihull", "Walsall", "Wolverhampton"];
+
+// Every area with a manager-set grant status (a grant_areas row) and a
+// boundary shape in shared/south-yorkshire-boundaries.geojson (the file name
+// predates Birmingham). Birmingham added 2026-10-27 (migration 059).
+const GRANT_AREAS_TRACKED = [...GRANT_AREA_NAMED, "Birmingham"];
 const GRANT_AREA_ORDER = [...GRANT_AREA_NAMED, ...WEST_MIDLANDS_AREAS, "Other"];
 function areaBucket(localAuthority) {
   return GRANT_AREA_NAMED.includes(localAuthority) || WEST_MIDLANDS_AREAS.includes(localAuthority) ? localAuthority : 'Other';

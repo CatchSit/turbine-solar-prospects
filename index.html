@@ -2074,7 +2074,7 @@ function buildGrantAreaChips(data, statusByArea) {
     const row = document.createElement("label");
     row.className = "chip on";
     row.title = area === 'Other' ? 'Every other council area'
-      : WEST_MIDLANDS_AREAS.includes(area) ? 'West Midlands (no grant tracked)'
+      : WEST_MIDLANDS_AREAS.includes(area) && !GRANT_AREAS_TRACKED.includes(area) ? 'West Midlands (no grant tracked)'
       : (cfg ? cfg.label : 'Funding status not set');
     row.innerHTML = `<input type="checkbox" checked data-area="${area}"/>
       <span class="dot" style="background:${cfg ? cfg.color : '#999'}"></span>

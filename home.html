@@ -2141,7 +2141,7 @@ async function renderGrantAreas() {
   if (error) { el.innerHTML = errorHtml("Couldn't load grant areas: " + error.message); return; }
   const statusByArea = Object.fromEntries((data || []).map(r => [r.local_authority, r.status]));
   el.innerHTML = '';
-  GRANT_AREA_NAMED.forEach(area => {
+  GRANT_AREAS_TRACKED.forEach(area => {
     const row = document.createElement('div');
     row.innerHTML = `<span style="font-weight:500">${escapeHtml(area)}</span>`;
     const select = document.createElement('select');
