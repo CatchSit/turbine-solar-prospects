@@ -33,7 +33,7 @@ const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY')
 const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
 const OWN_DOMAIN = '@turbineenergyuk.co.uk'
-const BACKFILL_DAYS = 60                 // "last 2 months" (Greg, 2026-10-20)
+const BACKFILL_DAYS = 0                  // no backdating: a mailbox starts from the moment it is first synced (Greg, 2026-10-28)
 const AI_WITHIN_DAYS = 14                // older (backfilled) emails are listed without Claude: no summary, no suggestion, no cost
 const PAGE_SIZE = 50
 const MAX_MESSAGES_PER_MAILBOX = 400     // per run; the rest is picked up next run
@@ -218,8 +218,10 @@ async function readEmail(ctx: {
     }
   } catch (e) {
     if (e instanceof Anthropic.RateLimitError) throw e   // stop this run; the email is retried next run
-    console.error('mail-sync: Claude call failed', e instanceof Error ? e.message : e)
-    return { summary: '', outcome: null, followUp: null, reason: null, status: 'failed' }
+    const msg = e instanceof Error ? e.message : String(e)
+    console.error('mail-sync: Claude call failed', msg)
+    // Kept on the row (ai_reason) so a failure can be diagnosed without function logs.
+    return { summary: '', outcome: null, followUp: null, reason: `Claude call failed: ${msg}`.slice(0, 300), status: 'failed' }
   }
 }
 
