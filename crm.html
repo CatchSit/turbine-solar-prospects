@@ -928,7 +928,10 @@ function leadStageKey(d) {
   const stage = CONTACT_OUTCOME[d.latest_outcome]?.stage;
   return stage === undefined ? '0' : String(stage);
 }
-let activeStatusFilters = new Set(STAGE_FILTERS.map(f => f.key));
+// "Closed: not proceeding" is hidden by default; tick its chip to show them (Greg, 2026-10-29).
+const DEFAULT_HIDDEN_STAGES = ['lost'];
+const defaultStatusKeys = () => STAGE_FILTERS.map(f => f.key).filter(k => !DEFAULT_HIDDEN_STAGES.includes(k));
+let activeStatusFilters = new Set(defaultStatusKeys());
 let activeInstallHubFilters = new Set(['sent', 'not_sent']);
 let activeAssignedFilters = new Set([...REP_ORDER, UNASSIGNED_KEY]);
 // Origin filter — replaces the old Website/Manual "Source" filter. Keys
@@ -995,7 +998,7 @@ bindSidebarFilterGroup('sidebar-source-list', activeSourceFilters);
 
 document.getElementById('sidebar-reset-btn').addEventListener('click', () => {
   activeTypeFilters.clear(); LEAD_TYPE_ORDER.forEach(t => activeTypeFilters.add(t));
-  activeStatusFilters.clear(); STAGE_FILTERS.forEach(f => activeStatusFilters.add(f.key));
+  activeStatusFilters.clear(); defaultStatusKeys().forEach(k => activeStatusFilters.add(k));
   activeAssignedFilters.clear(); [...REP_ORDER, UNASSIGNED_KEY].forEach(k => activeAssignedFilters.add(k));
   activeInstallHubFilters.clear(); ['sent', 'not_sent'].forEach(k => activeInstallHubFilters.add(k));
   activeSourceFilters.clear(); originFilterKeys().forEach(k => activeSourceFilters.add(k));
@@ -1075,7 +1078,8 @@ try { const v = localStorage.getItem('crm-leads-view'); if (v === 'board' || v =
 const BOARD_COLUMNS = [
   { keys: [NOT_CONTACTED_KEY], label: 'Not contacted', color: NOT_CONTACTED_STATUS.color },
   ...LEAD_STAGES.map((label, i) => ({ keys: [String(i)], num: i + 1, label, color: STAGE_FILTERS.find(f => f.key === String(i)).color })),
-  { keys: Object.keys(OUTCOME_EXIT_GROUPS), label: 'Closed / not now', color: OUTCOME_EXIT_GROUPS.lost.color },
+  // Hidden by default (Greg, 2026-10-29): only shown once "Closed: not proceeding" is ticked in the Stage filter.
+  { keys: Object.keys(OUTCOME_EXIT_GROUPS), showWhen: 'lost', label: 'Closed / not now', color: OUTCOME_EXIT_GROUPS.lost.color },
 ];
 
 function syncViewToggle() {
@@ -1128,7 +1132,7 @@ function boardCardHtml(d) {
 
 function renderLeadsBoard(leads) {
   const columns = BOARD_COLUMNS
-    .filter(col => col.keys.some(k => activeStatusFilters.has(k)))
+    .filter(col => col.showWhen ? activeStatusFilters.has(col.showWhen) : col.keys.some(k => activeStatusFilters.has(k)))
     .map(col => {
       const items = leads.filter(d => col.keys.includes(leadStageKey(d))).map(d => ({ d, due: boardDueInfo(d)?.dueDate || null }));
       items.sort((a, b) => {
