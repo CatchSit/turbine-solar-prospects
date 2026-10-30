@@ -34,14 +34,14 @@ const CONTACT_OUTCOME = {
   "Survey Booked":     { stage: 3, color: "#2a9d9d", soft: "#d9f0ef", label: "Survey booked", requiresDate: true, dateLabel: "Survey date", next: "Carry out the site survey" },
   "Survey Completed":  { stage: 3, color: "#1f8282", soft: "#d3eaea", label: "Survey completed", requiresDate: false, nextDays: 2, next: "Update the quote if the survey changed anything, then get the customer's go-ahead" },
   // 5 Won
-  "Converted":         { stage: 4, color: "#2ba45e", soft: "#e6f4ec", label: "Quote accepted", requiresDate: false, nextDays: 0, next: "Send the order contract to sign" },
-  "Contract Signed":   { stage: 4, color: "#23914f", soft: "#dcefe3", label: "Contract signed", requiresDate: false, nextDays: 5, next: "Apply to the DNO for grid connection approval" },
+  "Converted":         { stage: 4, color: "#2ba45e", soft: "#e6f4ec", label: "Quote accepted", requiresDate: false, nextDays: 0, next: "Send the order contract to sign and invoice the £200 deposit" },
+  "Contract Signed":   { stage: 4, color: "#23914f", soft: "#dcefe3", label: "Contract signed, deposit paid", requiresDate: false, nextDays: 5, next: "Apply to the DNO for grid connection approval" },
   // 6 Install — DNO approval comes back before the install can be booked
   // (added at the user's request 2026-10-12).
   "DNO Submitted":     { stage: 5, color: "#5b8fc9", soft: "#e0eaf6", label: "DNO application submitted", requiresDate: true, dateDays: 14, dateLabel: "Chase the DNO on", next: "Wait for the DNO decision. Chase them if there's no answer by the date" },
   "DNO Approved":      { stage: 5, color: "#3f7fc0", soft: "#dbe6f3", label: "DNO approved", requiresDate: false, nextDays: 3, next: "Book the install date and send the job to the installs team" },
   "Scheduled for Install": { stage: 5, color: "#2f6fb3", soft: "#dbe6f2", label: "Scheduled for install", requiresDate: true, dateLabel: "Install date", next: "Finish the install checklist: scaffold, electrician, roofer, kit" },
-  "Completed":         { stage: 5, color: "#1f8a52", soft: "#dcf0e4", label: "Installed", requiresDate: false, nextDays: 3, next: "Send the handover pack, MCS certificate and the invoice for the full amount (payable within 7 days)" },
+  "Completed":         { stage: 5, color: "#1f8a52", soft: "#dcf0e4", label: "Installed", requiresDate: false, nextDays: 3, next: "Send the handover pack, MCS certificate and the balance invoice (payable within 7 days)" },
   // 7 Complete
   "Job Closed":        { stage: 6, color: "#16703f", soft: "#d6ebde", label: "Paid, job closed", requiresDate: false, next: "Ask for a Google review and a referral. Nothing else to do." },
   // Closed: not proceeding
@@ -51,7 +51,7 @@ const CONTACT_OUTCOME = {
   "Not Suitable":      { stage: "lost", color: "#9a8478", soft: "#eee6e1", label: "Not suitable", requiresDate: false, next: "Closed. Note why in the log (roof, shading, property or grant eligibility)." },
   "Lost On Price":     { stage: "lost", color: "#b85544", soft: "#f0d3ce", label: "Lost on price", requiresDate: false, next: "Closed. Note the price they were comparing against, if known." },
   "Lost To Competitor":{ stage: "lost", color: "#a0473a", soft: "#ecd0cb", label: "Went with competitor", requiresDate: false, next: "Closed. Note which company, if known." },
-  "Cancelled":         { stage: "lost", color: "#8c3a2f", soft: "#e8cdc8", label: "Cancelled after signing", requiresDate: false, next: "Closed. Tell the installs team and check whether any costs incurred (goods ordered, work done) need invoicing." },
+  "Cancelled":         { stage: "lost", color: "#8c3a2f", soft: "#e8cdc8", label: "Cancelled after signing", requiresDate: false, next: "Closed. Tell the installs team. Inside the 14-day cooling-off the £200 deposit is refunded (less any DNO admin they asked us to start); after it, the deposit is kept and other costs incurred may be invoiced." },
   // Bad lead — counts against the lead supplier
   "Invalid Details":   { stage: "bad", color: "#7d5ba6", soft: "#e7def2", label: "Wrong number / invalid details", requiresDate: false, next: "Closed. Counts against the lead supplier." },
   "Duplicate":         { stage: "bad", color: "#8f72b3", soft: "#ebe4f4", label: "Duplicate", requiresDate: false, next: "Closed. Note which lead it duplicates." },

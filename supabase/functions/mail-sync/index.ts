@@ -55,7 +55,7 @@ const OUTCOMES: [string, string, string][] = [
   ['Survey Booked', 'Survey booked', '4 Survey'],
   ['Survey Completed', 'Survey completed', '4 Survey'],
   ['Converted', 'Quote accepted', '5 Won'],
-  ['Contract Signed', 'Contract signed', '5 Won'],
+  ['Contract Signed', 'Contract signed, deposit paid', '5 Won'],
   ['DNO Submitted', 'DNO application submitted', '6 Install'],
   ['DNO Approved', 'DNO approved', '6 Install'],
   ['Scheduled for Install', 'Scheduled for install', '6 Install'],
