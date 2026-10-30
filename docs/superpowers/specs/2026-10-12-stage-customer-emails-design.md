@@ -137,7 +137,7 @@ Every email ends with:
 > Hi {{first_name}}, just checking you've had a chance to look over your quote for a {{system}}. If anything's unclear, or you'd like to talk through options, reply here or call {{office_phone}}.
 
 **E7 Welcome.** Subject: *Welcome to Turbine Energy: what happens next*
-> Hi {{first_name}}, thank you for choosing Turbine Energy, and we've received your deposit. Here's what happens next: (1) we handle any network operator paperwork, (2) we book your installation date with you, (3) we fit and commission your {{system}} and hand over all the paperwork. We'll keep you updated at each step.
+> Hi {{first_name}}, thank you for choosing Turbine Energy and we've received your signed contract. Here's what happens next: (1) we handle any network operator paperwork, (2) we book your installation date with you, (3) we fit and commission your {{system}} and hand over all the paperwork. We'll keep you updated at each step.
 
 **E8 Install booked.** Subject: *Your installation is booked for {{date}}*
 > Hi {{first_name}}, your {{system}} installation at {{site_address}} is booked for {{date}}. Our team will confirm arrival times nearer the day. Please make sure we can get to the roof area and your fuse board.

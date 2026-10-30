@@ -45,7 +45,7 @@ const CUSTOMER_EMAIL_TEMPLATES = {
     subject: () => 'Welcome to Turbine Energy: what happens next',
     body: c => [
       `Hi ${c.firstName},`,
-      `Thank you for choosing Turbine Energy. We've received your signed contract and deposit.`,
+      `Thank you for choosing Turbine Energy. We've received your signed contract.`,
       `Here's what happens next:\n1. We apply to your local network operator for permission to connect your new system to the grid.\n2. Once they approve, we agree an installation date with you.\n3. We install and commission your system, then hand over all the paperwork.`,
       `We'll keep you updated at each step. If you have any questions in the meantime, just reply to this email.`,
     ],

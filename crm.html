@@ -2204,7 +2204,7 @@ function renderInstallChecklist() {
     lockedEl.innerHTML = closed
       ? '<span>This lead is closed, so there is no install to plan.</span>'
       : `<span>Unlocks when the quote is accepted. Then you will:</span>
-         <ul><li>Send the order contract and take the deposit</li><li>Apply to the DNO and wait for approval</li><li>Book the install date and send it to the installs team</li>${INSTALL_TASKS.map(t => `<li>${escapeHtml(t.label)}</li>`).join('')}</ul>`;
+         <ul><li>Send the order contract to sign</li><li>Apply to the DNO and wait for approval</li><li>Book the install date and send it to the installs team</li>${INSTALL_TASKS.map(t => `<li>${escapeHtml(t.label)}</li>`).join('')}</ul>`;
     return;
   }
   document.getElementById('ic-status').textContent = '';
