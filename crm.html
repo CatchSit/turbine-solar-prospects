@@ -28,7 +28,7 @@ button { font-family: inherit; cursor: pointer; }
 #sign-out-btn { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; color: var(--text2); }
 #wrap { margin: 0 auto; padding: 24px; max-width: 1600px; }
 .leads-layout { display: flex; align-items: flex-start; gap: 20px; }
-.leads-sidebar { width: 230px; flex-shrink: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; position: sticky; top: 80px; }
+.leads-sidebar { width: 230px; flex-shrink: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; position: sticky; top: 80px; max-height: calc(100vh - 104px); overflow-y: auto; overscroll-behavior: contain; }
 .leads-sidebar h4 { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text3); margin: 18px 0 8px; }
 .leads-sidebar h4:first-child { margin-top: 0; }
 .sidebar-chip { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 12.5px; color: var(--text2); cursor: pointer; user-select: none; }
