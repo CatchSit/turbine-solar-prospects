@@ -47,6 +47,7 @@ const CUSTOMER_EMAIL_TEMPLATES = {
       `Hi ${c.firstName},`,
       `Thank you for choosing Turbine Energy. We've received your signed contract and £200 deposit.`,
       `Here's what happens next:\n1. We apply to your local network operator for permission to connect your new system to the grid.\n2. Once they approve, we agree an installation date with you.\n3. We install and commission your system, then hand over all the paperwork.`,
+      `When the installation is complete we'll invoice the balance. Please pay it by bank transfer using the details on the invoice, as we don't accept card payments.`,
       `We'll keep you updated at each step. If you have any questions in the meantime, just reply to this email.`,
     ],
   },
@@ -92,7 +93,8 @@ const CUSTOMER_EMAIL_TEMPLATES = {
     body: c => [
       `Hi ${c.firstName},`,
       `Thank you for having us. Your new system is now installed.`,
-      `Your certificates and warranty documents will follow by email shortly. If you notice anything at all, just reply and we'll sort it.`,
+      `Your certificates and warranty documents will follow by email shortly, along with your final invoice. Please pay it by bank transfer using the details on the invoice, as we don't accept card payments.`,
+      `If you notice anything at all, just reply and we'll sort it.`,
     ],
   },
 };
