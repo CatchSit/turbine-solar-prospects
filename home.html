@@ -665,13 +665,17 @@ const QUOTE_COST_FIELDS = ['kit_price', 'scaffold_price', 'electrical_cost', 'ro
   'fuel_cost', 'commission_cost', 'heat_loss_epc_cost', 'plumbing_cost'];
 
 async function loadPipelineData() {
-  const [manual, contacts, options, checklists, enquiries] = await Promise.all([
+  const [manual, contacts, options, checklists, enquiries, commissions] = await Promise.all([
     fetchAll(() => db.from('prospects').select(LEAD_COLUMNS).eq('source', 'manual').is('deleted_at', null).order('id')),
     fetchAll(() => db.from('prospect_contacts').select('prospect_id, outcome, contacted_at, follow_up_date').is('deleted_at', null).order('contacted_at', { ascending: false })),
-    fetchAll(() => db.from('quote_options').select(`prospect_id, label, quote_price, is_selected, ${QUOTE_COST_FIELDS.join(', ')}`).is('deleted_at', null).order('id')),
+    fetchAll(() => db.from('quote_options').select(`id, prospect_id, label, quote_price, is_selected, ${QUOTE_COST_FIELDS.join(', ')}`).is('deleted_at', null).order('id')),
     fetchAll(() => db.from('install_checklists').select('*').order('prospect_id')),
     fetchAll(() => db.from('website_enquiries').select('prospect_id, received_at, form, channel, is_new_lead, utm_campaign, gclid').order('received_at', { ascending: false })),
+    // Who earns each option's commission (migration 061). Losing this shouldn't take the whole pipeline down.
+    fetchAll(() => db.from('quote_option_commission').select('quote_option_id, assigned_to_email').order('quote_option_id'))
+      .catch(e => { console.error('Failed to load commission people:', e); return []; }),
   ]);
+  const commissionToByOption = Object.fromEntries(commissions.map(c => [c.quote_option_id, c.assigned_to_email]));
   const enquiriesByLead = {};
   enquiries.forEach(e => { if (e.prospect_id) (enquiriesByLead[e.prospect_id] ||= []).push(e); });  // newest first
   const checklistByLead = Object.fromEntries(checklists.map(c => [c.prospect_id, c]));
@@ -712,12 +716,16 @@ async function loadPipelineData() {
     const scheduledContact = cs.find(c => c.outcome === 'Scheduled for Install' && c.follow_up_date);
     const installDate = scheduledContact?.follow_up_date || p.install_scheduled_date || null;
     const completedAt = (cs.find(c => c.outcome === 'Completed') || cs.find(c => c.outcome === 'Job Closed'))?.contacted_at || null;
+    // "Paid, job closed": the job is complete and the invoice paid, which is when commission is paid.
+    const closedAt = cs.find(c => c.outcome === 'Job Closed')?.contacted_at || null;
+    const commission = Number(valueOption?.commission_cost) || 0;
+    const commissionTo = (valueOption && commissionToByOption[valueOption.id]) || null;
     const checklist = checklistByLead[p.id] || null;
     // N/A tasks (migration 047) count as resolved, same as done — a job
     // with no scaffold needed shouldn't sit in "Needs attention" forever.
     const outstanding = INSTALL_TASKS.filter(t => !checklist?.[`${t.key}_done`] && !checklist?.[`${t.key}_na`]);
     const webEnquiries = enquiriesByLead[p.id] || [];
-    return { ...p, contacts: cs, latest, stage, value, valueOption, installDate, completedAt, checklist, outstanding, webEnquiries, wonAt: wonContact?.contacted_at || null };
+    return { ...p, contacts: cs, latest, stage, value, valueOption, installDate, completedAt, closedAt, commission, commissionTo, checklist, outstanding, webEnquiries, wonAt: wonContact?.contacted_at || null };
   });
 }
 
@@ -946,6 +954,37 @@ function installCell(l) {
   return lines.join('');
 }
 
+/* Commission and profit (Greg, 2026-11-05). Commission is paid once the job is
+   complete and the invoice paid, which is the "Paid, job closed" outcome.
+   Payment isn't recorded: it's assumed to go out on time, so a closed job's
+   commission counts as paid on that date. Profit = quote price - all costs,
+   including commission; jobs with no costs entered are left out. */
+function isClosedJob(l) { return l.stage === 'completed' && !!l.closedAt; }
+
+function wonMoneySummary(jobs) {
+  const closed = jobs.filter(j => isClosedJob(j.l));
+  const open = jobs.filter(j => !isClosedJob(j.l));
+  const profit = list => list.reduce((t, j) => t + (j.costs != null && j.l.value != null ? j.l.value - j.costs : 0), 0);
+  const commission = list => list.reduce((t, j) => t + j.l.commission, 0);
+  const people = {};
+  jobs.forEach(j => {
+    if (!j.l.commission) return;
+    const p = (people[j.l.commissionTo || ''] ||= { paidJobs: 0, paid: 0, toComeJobs: 0, toCome: 0 });
+    if (isClosedJob(j.l)) { p.paidJobs++; p.paid += j.l.commission; } else { p.toComeJobs++; p.toCome += j.l.commission; }
+  });
+  return { closed, open, people,
+    profitMade: profit(closed), profitToCome: profit(open),
+    commissionPaid: commission(closed), commissionToCome: commission(open),
+    unassigned: jobs.filter(j => j.l.commission && !j.l.commissionTo).length };
+}
+
+function commissionCell(l) {
+  if (!l.commission) return '<span class="muted">—</span>';
+  const who = l.commissionTo ? escapeHtml(repName(l.commissionTo)) : '<span class="neg">Nobody assigned</span>';
+  const when = isClosedJob(l) ? `Paid ${fmtDate(l.closedAt)}` : l.stage === 'completed' ? 'Due when the invoice is paid' : 'Due once installed and invoice paid';
+  return `${money(l.commission)} · ${who}<div class="muted">${when}</div>`;
+}
+
 function renderWon() {
   const el = document.getElementById('won-card');
   if (!el) return;
@@ -960,6 +999,8 @@ function renderWon() {
   const costedValue = costed.reduce((t, j) => t + j.l.value, 0);
   const costedMargin = costed.reduce((t, j) => t + (j.l.value - j.costs), 0);
 
+  const ms = wonMoneySummary(jobs);
+
   const chips = Object.entries(WON_PERIODS).map(([k, label]) =>
     `<button class="chip ${k === wonPeriod ? 'active' : ''}" data-won-period="${k}">${label}</button>`).join('');
 
@@ -967,8 +1008,12 @@ function renderWon() {
     <div><div class="tile-label">Jobs won</div><div class="mini-value">${num(jobs.length)}</div></div>
     <div><div class="tile-label">Total value</div><div class="mini-value">${money(total)}</div></div>
     <div><div class="tile-label">Average job</div><div class="mini-value">${jobs.length ? money(total / jobs.length) : '—'}</div></div>
-    <div><div class="tile-label">Margin</div><div class="mini-value">${costed.length ? money(costedMargin) : '—'}</div>
+    <div><div class="tile-label">Total profit</div><div class="mini-value">${costed.length ? money(costedMargin) : '—'}</div>
       <div class="tile-sub">${costed.length ? `${pct(costedMargin, costedValue)} · from ${costed.length} of ${jobs.length} job${jobs.length === 1 ? '' : 's'} with costs entered` : 'No costs entered yet'}</div></div>
+    <div><div class="tile-label">Profit made</div><div class="mini-value">${money(ms.profitMade)}</div><div class="tile-sub">${num(ms.closed.length)} job${ms.closed.length === 1 ? '' : 's'} paid and closed</div></div>
+    <div><div class="tile-label">Profit to come</div><div class="mini-value">${money(ms.profitToCome)}</div><div class="tile-sub">${num(ms.open.length)} job${ms.open.length === 1 ? '' : 's'} not yet paid</div></div>
+    <div><div class="tile-label">Commission paid</div><div class="mini-value">${money(ms.commissionPaid)}</div><div class="tile-sub">On closed jobs, assumed paid on time</div></div>
+    <div><div class="tile-label">Commission to come</div><div class="mini-value">${money(ms.commissionToCome)}</div><div class="tile-sub">Due as each invoice is paid</div></div>
   </div>`;
 
   // By job type
@@ -982,7 +1027,7 @@ function renderWon() {
     <tr><td>${k}</td><td class="num">${t.n}</td><td class="num">${money(t.value)}</td><td class="num">${money(t.value / t.n)}</td>
     <td class="num">${t.costed ? `${money(t.cm)} <span class="muted">${pct(t.cm, t.cv)}</span>` : '<span class="muted">—</span>'}</td></tr>`; }).join('');
   const typeCard = `<div class="sub-card"><h3>By job type</h3>
-    <table><thead><tr><th>Type</th><th class="num">Jobs</th><th class="num">Value</th><th class="num">Average</th><th class="num">Margin</th></tr></thead>
+    <table><thead><tr><th>Type</th><th class="num">Jobs</th><th class="num">Value</th><th class="num">Average</th><th class="num">Profit</th></tr></thead>
     <tbody>${typeRows || '<tr><td colspan="5" class="empty">No jobs won in this period.</td></tr>'}</tbody></table></div>`;
 
   // By month won — bar = value won, label = jobs · value
@@ -1011,22 +1056,34 @@ function renderWon() {
   const monthCard = `<div class="sub-card"><h3>By month won</h3>${monthRows || '<div class="empty">No won dates in this period.</div>'}
     ${undated ? `<div class="meter-note">${undated} job${undated === 1 ? ' has' : 's have'} no "Quote accepted" contact logged, so no won date.</div>` : ''}</div>`;
 
+  const personKeys = [...REP_ORDER, ...Object.keys(ms.people).filter(k => k && !REP_ORDER.includes(k)), ''].filter(k => ms.people[k]);
+  const personRows = personKeys.map(k => { const p = ms.people[k]; return `
+    <tr><td>${k ? escapeHtml(repName(k)) : '<span class="neg">Nobody assigned</span>'}</td>
+    <td class="num">${money(p.paid)} <span class="muted">${p.paidJobs} job${p.paidJobs === 1 ? '' : 's'}</span></td>
+    <td class="num">${money(p.toCome)} <span class="muted">${p.toComeJobs} job${p.toComeJobs === 1 ? '' : 's'}</span></td>
+    <td class="num">${money(p.paid + p.toCome)}</td></tr>`; }).join('');
+  const personCard = `<div class="sub-card" style="margin-top:18px"><h3>Commission by person</h3>
+    <table><thead><tr><th>Person</th><th class="num">Paid</th><th class="num">To come</th><th class="num">Total</th></tr></thead>
+    <tbody>${personRows || '<tr><td colspan="4" class="empty">No commission on these jobs.</td></tr>'}</tbody></table>
+    ${ms.unassigned ? `<div class="meter-note">${ms.unassigned} job${ms.unassigned === 1 ? ' has' : 's have'} a commission figure but nobody assigned. Pick the person on the CRM quote option.</div>` : ''}</div>`;
+
   const jobRows = jobs.map(({ l, costs }) => `
     <tr><td><a href="${leadLink(l)}">${escapeHtml(leadName(l))}</a>${l.valueOption?.label ? `<div class="muted">${escapeHtml(l.valueOption.label)}</div>` : ''}</td>
     <td>${jobTypeLabel(l)}</td><td>${stageTag(l.stage)}</td>
     <td style="white-space:nowrap">${l.wonAt ? fmtDate(l.wonAt) : '<span class="muted">—</span>'}</td>
     <td style="white-space:nowrap">${installCell(l)}</td>
     <td>${l.assigned_to_email ? escapeHtml(repName(l.assigned_to_email)) : '<span class="muted">Unassigned</span>'}</td>
+    <td style="white-space:nowrap">${commissionCell(l)}</td>
     <td class="num">${l.value != null ? money(l.value) : '<span class="muted">No quote</span>'}</td>
     <td class="num">${costs != null ? money(costs) : '<span class="muted">—</span>'}</td>
     <td class="num" style="white-space:nowrap">${marginCell(l.value, costs)}</td></tr>`).join('');
 
   el.innerHTML = `<div class="card">
     <div class="card-head"><h2>Jobs won</h2><div class="chips">${chips}</div></div>
-    <div class="card-body">${stats}<div class="grid-2 inner">${typeCard}${monthCard}</div></div>
-    <table><thead><tr><th>Customer</th><th>Type</th><th>Status</th><th>Won on</th><th>Install date</th><th>Owner</th><th class="num">Value</th><th class="num">Costs</th><th class="num">Margin</th></tr></thead>
-    <tbody>${jobRows || '<tr><td colspan="9" class="empty">No jobs won in this period.</td></tr>'}</tbody>
-    ${jobs.length ? `<tfoot><tr><td colspan="6"><strong>Total</strong></td><td class="num"><strong>${money(total)}</strong></td><td></td>
+    <div class="card-body">${stats}<div class="grid-2 inner">${typeCard}${monthCard}</div>${personCard}</div>
+    <table><thead><tr><th>Customer</th><th>Type</th><th>Status</th><th>Won on</th><th>Install date</th><th>Owner</th><th>Commission</th><th class="num">Value</th><th class="num">Costs</th><th class="num">Profit</th></tr></thead>
+    <tbody>${jobRows || '<tr><td colspan="10" class="empty">No jobs won in this period.</td></tr>'}</tbody>
+    ${jobs.length ? `<tfoot><tr><td colspan="6"><strong>Total</strong></td><td><strong>${money(ms.commissionPaid + ms.commissionToCome)}</strong></td><td class="num"><strong>${money(total)}</strong></td><td></td>
       <td class="num">${costed.length ? `<strong>${money(costedMargin)}</strong>` : ''}</td></tr></tfoot>` : ''}</table>
   </div>`;
   el.querySelectorAll('[data-won-period]').forEach(b => b.addEventListener('click', () => { wonPeriod = b.dataset.wonPeriod; renderWon(); }));

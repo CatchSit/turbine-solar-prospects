@@ -286,6 +286,8 @@ tbody tr:hover { background: var(--surface2); }
 .quote-option-label-input:not(:disabled) { border-color: var(--border); background: var(--surface2); }
 .quote-option-label-input:disabled { opacity: 1; }
 .selected-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 100px; font-size: 11.5px; font-weight: 500; background: var(--accentDim); color: var(--accentDk); white-space: nowrap; margin-left: 8px; vertical-align: middle; }
+.quote-field select.commission-to { width: 100%; margin-top: 6px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; font: inherit; font-size: 12.5px; background: var(--surface2); color: var(--text); }
+.quote-fixed { padding: 7px 0; font-size: 13px; color: var(--text2); }
 .margin-positive { color: var(--accent); }
 .margin-negative { color: var(--alert); }
 
@@ -2395,7 +2397,13 @@ function quoteOptionTotals(values) {
 // total/margin display and to build the payload on Save.
 function readOptionCardValues(optionId) {
   const values = { label: qoInput(optionId, 'label')?.value ?? '' };
-  QUOTE_COST_FIELDS.forEach(f => { values[f.key] = qoInput(optionId, f.key)?.value ?? ''; });
+  // A rep has no Commission input (managers only, migration 061), so the
+  // option's saved figure keeps counting towards their total and margin.
+  const saved = currentQuoteOptions.find(o => o.id === optionId);
+  QUOTE_COST_FIELDS.forEach(f => {
+    const input = qoInput(optionId, f.key);
+    values[f.key] = input ? input.value : (saved?.[f.key] ?? '');
+  });
   values.quote_price = qoInput(optionId, 'quote_price')?.value ?? '';
   return values;
 }
@@ -2434,10 +2442,33 @@ function quoteOptionSummaryRowHtml(opt) {
     </tr>`;
 }
 
+// Commission (Greg, 2026-11-05): one person and one figure per option. Managers
+// set both; a rep sees the figure only if it's theirs (migration 061).
+function commissionFieldHtml(opt) {
+  const id = opt.id;
+  if (!isAdmin(currentUser)) {
+    const mine = isMe(opt.commission_to_email);
+    return `
+    <div class="quote-field"><label>${mine ? 'Your commission (£)' : 'Commission (£)'}</label>
+      <div class="quote-fixed">${mine ? `£${(Number(opt.commission_cost) || 0).toLocaleString()}` : 'Set by a manager'}</div>
+    </div>`;
+  }
+  const people = REP_ORDER.filter(email => isAssignable(email) || email === opt.commission_to_email);
+  if (opt.commission_to_email && !people.includes(opt.commission_to_email)) people.push(opt.commission_to_email);
+  return `
+    <div class="quote-field"><label>Commission (£)</label>
+      <input type="number" min="0" step="1" id="${qoFieldId(id, 'commission_cost')}" value="${opt.commission_cost ?? ''}" oninput="updateOptionTotals('${id}')" disabled/>
+      <select class="commission-to" id="${qoFieldId(id, 'commission_to')}" aria-label="Who earns this commission" disabled>
+        <option value="">Nobody assigned</option>
+        ${people.map(email => `<option value="${escapeHtml(email)}"${email === opt.commission_to_email ? ' selected' : ''}>${escapeHtml(repName(email))}</option>`).join('')}
+      </select>
+    </div>`;
+}
+
 function quoteOptionDetailRowHtml(opt) {
   const { total, margin, marginPct } = quoteOptionTotals(opt);
   const id = opt.id;
-  const costFieldsHtml = QUOTE_COST_FIELDS.map(f => `
+  const costFieldsHtml = QUOTE_COST_FIELDS.map(f => f.key === 'commission_cost' ? commissionFieldHtml(opt) : `
     <div class="quote-field"><label>${escapeHtml(f.label)}</label>
       <input type="number" min="0" step="1" id="${qoFieldId(id, f.key)}" value="${opt[f.key] ?? ''}" oninput="updateOptionTotals('${id}')" disabled/>
     </div>`).join('');
@@ -2521,7 +2552,7 @@ function setOptionEditing(optionId, editing) {
   const detailRow = document.getElementById(`qo-detail-${optionId}`);
   if (summaryRow) summaryRow.style.display = editing ? 'none' : '';
   if (detailRow) detailRow.style.display = editing ? '' : 'none';
-  [...QUOTE_COST_FIELDS.map(f => f.key), 'quote_price', 'label'].forEach(field => {
+  [...QUOTE_COST_FIELDS.map(f => f.key), 'commission_to', 'quote_price', 'label'].forEach(field => {
     const el = qoInput(optionId, field);
     if (el) el.disabled = !editing;
   });
@@ -2533,7 +2564,9 @@ function cancelQuoteOptionEdit(optionId) {
   const opt = currentQuoteOptions.find(o => o.id === optionId);
   if (!opt) return;
   qoInput(optionId, 'label').value = opt.label || '';
-  QUOTE_COST_FIELDS.forEach(f => { qoInput(optionId, f.key).value = opt[f.key] ?? ''; });
+  QUOTE_COST_FIELDS.forEach(f => { const input = qoInput(optionId, f.key); if (input) input.value = opt[f.key] ?? ''; });
+  const commissionTo = qoInput(optionId, 'commission_to');
+  if (commissionTo) commissionTo.value = opt.commission_to_email || '';
   qoInput(optionId, 'quote_price').value = opt.quote_price ?? '';
   updateOptionTotals(optionId);
   setOptionEditing(optionId, false);
@@ -2543,7 +2576,7 @@ async function saveQuoteOption(optionId) {
   if (blockedReadOnly()) return;
   const values = readOptionCardValues(optionId);
   const updates = { label: values.label.trim() || null };
-  QUOTE_COST_FIELDS.forEach(f => { updates[f.key] = values[f.key] === '' ? null : Number(values[f.key]); });
+  QUOTE_COST_FIELDS.forEach(f => { if (qoInput(optionId, f.key)) updates[f.key] = values[f.key] === '' ? null : Number(values[f.key]); });
   updates.quote_price = values.quote_price === '' ? null : Number(values.quote_price);
   updates.updated_at = new Date().toISOString();
   updates.updated_by_email = currentUser?.email || null;
@@ -2566,6 +2599,8 @@ async function saveQuoteOption(optionId) {
 
   const opt = currentQuoteOptions.find(o => o.id === optionId);
   if (opt) Object.assign(opt, updates);
+  const commissionError = await saveCommissionTo(optionId, opt);
+  if (commissionError) alert('The figures saved, but the commission person did not: ' + commissionError.message);
   document.getElementById(`qo-status-${optionId}`).textContent = 'Last saved just now';
   setOptionEditing(optionId, false);
   if (opt) refreshSummaryRow(opt);
@@ -2575,6 +2610,22 @@ async function saveQuoteOption(optionId) {
   if (historyList.style.display !== 'none') loadOptionHistory(optionId);
   else historyList.dataset.loaded = 'false';
   if (opt?.is_selected) syncLeadSelectedQuotePrice();
+}
+
+// Who earns the commission (quote_option_commission, migration 061). Only a
+// manager has the picker, so this does nothing for anyone else.
+async function saveCommissionTo(optionId, opt) {
+  const picker = qoInput(optionId, 'commission_to');
+  const to = picker?.value || null;
+  if (!picker || to === (opt?.commission_to_email || null)) return null;
+  const { error } = to
+    ? await db.from('quote_option_commission').upsert({
+        quote_option_id: optionId, assigned_to_email: to,
+        updated_at: new Date().toISOString(), updated_by_email: currentUser?.email || null,
+      }, { onConflict: 'quote_option_id' })
+    : await db.from('quote_option_commission').delete().eq('quote_option_id', optionId);
+  if (!error && opt) opt.commission_to_email = to;
+  return error;
 }
 
 // Keeps the leads table's "Quote" column in sync with whichever option is
@@ -2707,7 +2758,18 @@ async function loadQuoteOptions(prospectId) {
     console.error('loadQuoteOptions: dropped option(s) with mismatched prospect_id', { expected: prospectId, mismatched });
   }
 
-  currentQuoteOptions = (data || []).filter(o => o.prospect_id === prospectId);
+  const options = (data || []).filter(o => o.prospect_id === prospectId);
+  // RLS returns every row to a manager, and only a rep's own rows to a rep.
+  if (options.length) {
+    const { data: commissions, error: commissionError } = await db.from('quote_option_commission')
+      .select('quote_option_id, assigned_to_email')
+      .in('quote_option_id', options.map(o => o.id));
+    if (!currentLead || currentLead.id !== prospectId) return;
+    if (commissionError) console.error('Failed to load commission people:', commissionError);
+    const to = Object.fromEntries((commissions || []).map(c => [c.quote_option_id, c.assigned_to_email]));
+    options.forEach(o => { o.commission_to_email = to[o.id] || null; });
+  }
+  currentQuoteOptions = options;
   const listEl = document.getElementById('quote-options-list');
   listEl.innerHTML = currentQuoteOptions.map(quoteOptionRowsHtml).join('');
   document.getElementById('quote-options-empty').style.display = currentQuoteOptions.length ? 'none' : 'block';

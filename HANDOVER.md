@@ -1,5 +1,7 @@
 # Turbine Energy — Solar Prospect Map — Handover
 
+> **2026-11-05, commission and profit (migration 061 + crm.html + home.html).** One person per quote option: `quote_option_commission` holds who, `quote_options.commission_cost` still holds the amount, so cost, margin and history are unchanged. Managers edit; reps read only rows naming them, and trigger `guard_quote_option_commission_cost` stops reps changing the figure. Manager Home > Pipeline > Jobs won now shows profit made / to come, commission paid / to come, and commission by person. Commission counts as paid on the date of the "Paid, job closed" log (Job Closed); payment is deliberately not recorded (Greg assumes it is paid on time). Reps can still work out the figure from total cost and margin, which stay visible (2026-10-26 decision).
+
 ## 1. Project Overview
 
 A prospecting tool for **Turbine Energy**, a UK commercial solar installer. It visualises commercial/industrial buildings in a pilot region (Yorkshire & Humber) that plausibly have moderate-to-high electricity usage and do **not** already have rooftop solar, so the sales team has a warm lead list instead of cold-calling blind.
