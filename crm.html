@@ -47,6 +47,7 @@ button { font-family: inherit; cursor: pointer; }
 table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 th { text-align: left; padding: 10px 16px; color: var(--text3); font-weight: 500; border-bottom: 1px solid var(--border); white-space: nowrap; }
 td { padding: 10px 16px; border-bottom: 1px solid var(--border); vertical-align: top; }
+td.date-col { white-space: nowrap; }
 tbody tr { cursor: pointer; }
 tbody tr:hover { background: var(--surface2); }
 #empty-state { text-align: center; padding: 60px 20px; color: var(--text3); }
@@ -432,7 +433,7 @@ tbody tr:hover { background: var(--surface2); }
         <div class="table-scroll" id="leads-table-scroll">
           <table>
             <thead><tr>
-              <th>Customer</th><th>Type</th><th>Origin</th><th>Status</th><th>Quote</th><th>Contact</th><th>Address</th><th>Postcode</th><th>Install-hub</th><th>Assigned to</th><th>Added</th>
+              <th>Customer</th><th>Type</th><th>Origin</th><th>Status</th><th>Meeting booked</th><th>Installation date</th><th>Quote</th><th>Contact</th><th>Address</th><th>Postcode</th><th>Install-hub</th><th>Assigned to</th><th>Added</th>
             </tr></thead>
             <tbody id="leads-body"></tbody>
           </table>
@@ -779,6 +780,14 @@ function statusBadgeHtml(outcome) {
 // fetchAllProspects's own joins. Ties (identical contacted_at) keep
 // whichever row PostgREST returns first for that prospect_id, which is
 // good enough for a status label — not used for anything order-sensitive.
+// The List view's date columns (Greg, 2026-11-05): the date on the lead's most
+// recent log of each outcome, so rebooking = log it again with the new date.
+const LIST_DATE_OUTCOMES = { 'Meeting Booked': 'meeting_date', 'Scheduled for Install': 'install_date' };
+function applyListDate(row, contact) {
+  const field = LIST_DATE_OUTCOMES[contact?.outcome];
+  if (field && contact.follow_up_date) row[field] = contact.follow_up_date;
+}
+
 async function fetchLatestOutcomes(prospectIds) {
   if (!prospectIds.length) return {};
   const { data, error } = await db.from('prospect_contacts')
@@ -790,7 +799,9 @@ async function fetchLatestOutcomes(prospectIds) {
   // the follow-up due date from it.
   const latest = {};
   (data || []).forEach(row => {
-    if (!(row.prospect_id in latest)) latest[row.prospect_id] = row;
+    if (!(row.prospect_id in latest)) latest[row.prospect_id] = { ...row };
+    const field = LIST_DATE_OUTCOMES[row.outcome];
+    if (field && row.follow_up_date && !latest[row.prospect_id][field]) latest[row.prospect_id][field] = row.follow_up_date;
   });
   return latest;
 }
@@ -1053,6 +1064,8 @@ function renderLeadsTable() {
       <td>${typeTag}</td>
       <td><span class="tag"><span class="tag-dot" style="background:${originColor(leadOriginKey(d))}"></span>${escapeHtml(originLabel(leadOriginKey(d)))}</span></td>
       <td>${statusBadgeHtml(d.latest_outcome)}${openSuggestionLeadIds.has(d.id) ? '<br><span class="status-email">✉ Email suggests a change</span>' : ''}</td>
+      <td class="date-col">${formatShortDate(d.meeting_date) || '—'}</td>
+      <td class="date-col">${formatShortDate(d.install_date || d.install_scheduled_date) || '—'}</td>
       <td>${quoteCell}</td>
       <td>${contact}</td>
       <td>${escapeHtml(d.address || '') || '—'}</td>
@@ -1940,7 +1953,7 @@ function subscribeToLead(leadId) {
       if (currentLead?.id !== leadId) return;
       currentLead.latest_outcome = c.outcome;
       const listRow = allLeads.find(l => l.id === leadId);
-      if (listRow) { listRow.latest_outcome = c.outcome; listRow.latest_contact = c; }
+      if (listRow) { listRow.latest_outcome = c.outcome; listRow.latest_contact = c; applyListDate(listRow, c); }
       document.getElementById('lead-status-sub').innerHTML = statusBadgeHtml(c.outcome);
       renderInstallChecklist();
       renderSidebarFilters();
@@ -1998,6 +2011,7 @@ function subscribeToLeadsList() {
       if (!row) return;
       row.latest_outcome = c.outcome;
       row.latest_contact = c;
+      applyListDate(row, c);
       renderSidebarFilters();
       renderLeadsTable();
     })
@@ -3196,7 +3210,7 @@ document.getElementById('cm-submit').addEventListener('click', async () => {
   // with contacted_at defaulting to now()), so its outcome becomes the new
   // status without waiting on a re-fetch.
   const row = allLeads.find(l => l.id === prospectId);
-  if (row) { row.latest_outcome = outcome; row.latest_contact = insertedContact || { outcome, contacted_at: new Date().toISOString(), follow_up_date: null }; }
+  if (row) { row.latest_outcome = outcome; row.latest_contact = insertedContact || { outcome, contacted_at: new Date().toISOString(), follow_up_date: null }; applyListDate(row, row.latest_contact); }
   renderSidebarFilters();
   renderLeadsTable();
   if (currentLead && currentLead.id === prospectId) {
@@ -3415,6 +3429,8 @@ async function refreshLeadsList() {
   allLeads.forEach(l => {
     l.latest_outcome = outcomes[l.id]?.outcome || null;
     l.latest_contact = outcomes[l.id] || null;
+    l.meeting_date = outcomes[l.id]?.meeting_date || null;
+    l.install_date = outcomes[l.id]?.install_date || null;
     l.selected_quote_price = quotePrices[l.id] ?? null;
   });
   renderSidebarFilters();
