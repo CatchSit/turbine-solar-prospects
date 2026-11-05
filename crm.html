@@ -47,7 +47,13 @@ button { font-family: inherit; cursor: pointer; }
 table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 th { text-align: left; padding: 10px 16px; color: var(--text3); font-weight: 500; border-bottom: 1px solid var(--border); white-space: nowrap; }
 td { padding: 10px 16px; border-bottom: 1px solid var(--border); vertical-align: top; }
-td.date-col { white-space: nowrap; }
+.tag.has-dates { align-items: flex-start; border-radius: 12px; }
+.tag.has-dates .tag-dot { margin-top: 5px; }
+.status-date { display: block; font-size: 11px; font-weight: 400; color: var(--text2); white-space: nowrap; }
+#leads-table-scroll th, #leads-table-scroll td { padding-left: 9px; padding-right: 9px; }
+#leads-table-scroll th:first-child, #leads-table-scroll td:first-child { padding-left: 16px; }
+td.status-cell { min-width: 150px; }
+td.contact-cell { min-width: 130px; overflow-wrap: anywhere; }
 tbody tr { cursor: pointer; }
 tbody tr:hover { background: var(--surface2); }
 #empty-state { text-align: center; padding: 60px 20px; color: var(--text3); }
@@ -433,7 +439,7 @@ tbody tr:hover { background: var(--surface2); }
         <div class="table-scroll" id="leads-table-scroll">
           <table>
             <thead><tr>
-              <th>Customer</th><th>Type</th><th>Origin</th><th>Status</th><th>Meeting booked</th><th>Installation date</th><th>Quote</th><th>Contact</th><th>Address</th><th>Postcode</th><th>Install-hub</th><th>Assigned to</th><th>Added</th>
+              <th>Customer</th><th>Type</th><th>Origin</th><th>Status</th><th>Quote</th><th>Contact</th><th>Address</th><th>Postcode</th><th>Install-hub</th><th>Assigned to</th><th>Added</th>
             </tr></thead>
             <tbody id="leads-body"></tbody>
           </table>
@@ -770,9 +776,16 @@ function formatShortDate(dateStr) {
 // blank. A lead's "status" is simply its most recent contact log outcome
 // (fetchLatestOutcomes below), there's no separate status field in the DB.
 const NOT_CONTACTED_STATUS = { color: '#9ca3af', soft: '#e5e7eb', label: 'Not yet contacted' };
-function statusBadgeHtml(outcome) {
+function statusBadgeHtml(outcome, dateLines = []) {
   const cfg = outcome ? (CONTACT_OUTCOME[outcome] || { color: '#999', soft: '#eee', label: outcome }) : NOT_CONTACTED_STATUS;
-  return `<span class="tag"><span class="tag-dot" style="background:${cfg.color}"></span>${escapeHtml(cfg.label)}</span>`;
+  const dates = dateLines.map(line => `<small class="status-date">${escapeHtml(line)}</small>`).join('');
+  return `<span class="tag${dates ? ' has-dates' : ''}"><span class="tag-dot" style="background:${cfg.color}"></span><span>${escapeHtml(cfg.label)}${dates}</span></span>`;
+}
+// The dates shown inside the List view's status bubble (Greg, 2026-11-05).
+function leadStatusDates(d) {
+  const meeting = formatShortDate(d.meeting_date);
+  const install = formatShortDate(d.install_date || d.install_scheduled_date);
+  return [meeting && `Meeting: ${meeting}`, install && `Install: ${install}`].filter(Boolean);
 }
 
 // One bulk query for every visible lead's latest outcome, rather than a
@@ -780,7 +793,7 @@ function statusBadgeHtml(outcome) {
 // fetchAllProspects's own joins. Ties (identical contacted_at) keep
 // whichever row PostgREST returns first for that prospect_id, which is
 // good enough for a status label — not used for anything order-sensitive.
-// The List view's date columns (Greg, 2026-11-05): the date on the lead's most
+// The List view's status dates (Greg, 2026-11-05): the date on the lead's most
 // recent log of each outcome, so rebooking = log it again with the new date.
 const LIST_DATE_OUTCOMES = { 'Meeting Booked': 'meeting_date', 'Scheduled for Install': 'install_date' };
 function applyListDate(row, contact) {
@@ -1063,11 +1076,9 @@ function renderLeadsTable() {
       <td>${escapeHtml(d.customer_name || 'Unnamed lead')}</td>
       <td>${typeTag}</td>
       <td><span class="tag"><span class="tag-dot" style="background:${originColor(leadOriginKey(d))}"></span>${escapeHtml(originLabel(leadOriginKey(d)))}</span></td>
-      <td>${statusBadgeHtml(d.latest_outcome)}${openSuggestionLeadIds.has(d.id) ? '<br><span class="status-email">✉ Email suggests a change</span>' : ''}</td>
-      <td class="date-col">${formatShortDate(d.meeting_date) || '—'}</td>
-      <td class="date-col">${formatShortDate(d.install_date || d.install_scheduled_date) || '—'}</td>
+      <td class="status-cell">${statusBadgeHtml(d.latest_outcome, leadStatusDates(d))}${openSuggestionLeadIds.has(d.id) ? '<br><span class="status-email">✉ Email suggests a change</span>' : ''}</td>
       <td>${quoteCell}</td>
-      <td>${contact}</td>
+      <td class="contact-cell">${contact}</td>
       <td>${escapeHtml(d.address || '') || '—'}</td>
       <td>${escapeHtml(d.postcode || '') || '—'}</td>
       <td>${installHubCell}</td>
