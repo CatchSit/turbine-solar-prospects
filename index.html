@@ -505,6 +505,15 @@
     <button class="btn-primary load-pipeline-btn" data-region="west-midlands" style="width:100%;margin-top:6px">Load West Midlands prospects</button>
   </div>
 
+  <!-- Managers only (migration 062). A separate layer: these homes aren't in
+       the filters below, the building count or the CRM. -->
+  <div class="section" id="domestic-solar-section" style="display:none">
+    <button class="btn-primary" id="load-domestic-solar-btn" style="width:100%">Load domestic EPC recommends solar</button>
+    <label id="domestic-solar-toggle" style="display:none;margin-top:8px;font-size:12.5px;cursor:pointer">
+      <input type="checkbox" id="domestic-solar-show" checked/> Show <span id="domestic-solar-count"></span> homes
+    </label>
+  </div>
+
   <div class="section">
     <h3>Search</h3>
     <input id="search" type="text" placeholder="Address or postcode…"/>
@@ -775,6 +784,7 @@ function onAuthenticated(user) {
   document.getElementById('nav-user-name').textContent = name;
   document.getElementById('nav-avatar').textContent = getInitials(name);
   document.getElementById('nav-home-link').style.display = isAdmin(user) ? '' : 'none';
+  document.getElementById('domestic-solar-section').style.display = isAdmin(user) ? '' : 'none';
   return true;
 }
 
@@ -2020,6 +2030,75 @@ async function loadPipelineData(region) {
 }
 document.querySelectorAll('.load-pipeline-btn').forEach(btn =>
   btn.addEventListener('click', () => loadPipelineData(btn.dataset.region)));
+
+/* ── Domestic EPC recommends solar (migration 062, Greg 2026-11-06) ───
+   Its own cluster layer, so these homes stay out of allProspects, the
+   sidebar filters and the building count. Read-only. */
+const DOMESTIC_SOLAR_COLOR = '#0891b2';
+const DOMESTIC_SOLAR_COLUMNS = 'certificate_number, address, postcode, council, property_type, built_form, tenure, transaction_type, energy_rating, main_fuel, lodgement_date, lat, lng';
+const domesticSolarCluster = L.markerClusterGroup({
+  chunkedLoading: true,
+  maxClusterRadius: 50,
+  iconCreateFunction: c => L.divIcon({
+    html: `<div class="day-cluster" style="background:${DOMESTIC_SOLAR_COLOR}">${c.getChildCount()}</div>`,
+    className: '', iconSize: [36, 36],
+  }),
+});
+const domesticSolarIcon = L.divIcon({
+  html: `<div class="day-marker" style="width:12px;height:12px;border-radius:3px;background:${DOMESTIC_SOLAR_COLOR};border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35);"></div>`,
+  className: '', iconSize: [12, 12], iconAnchor: [6, 6],
+});
+
+function domesticSolarPopup(h) {
+  const when = h.lodgement_date ? new Date(h.lodgement_date).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : '';
+  const rows = [
+    ['Home', [h.built_form, h.property_type].filter(Boolean).join(' ')],
+    ['Tenure', h.tenure],
+    ['Energy rating', h.energy_rating],
+    ['Heating fuel', h.main_fuel],
+    ['Certificate', [when, h.transaction_type].filter(Boolean).join(', ')],
+  ].filter(r => r[1]);
+  return `<div style="min-width:220px">
+    <strong>${escapeHtml(h.address)}</strong><div>${escapeHtml(h.postcode || '')}${h.council ? ` · ${escapeHtml(h.council)}` : ''}</div>
+    <div style="margin:6px 0;color:${DOMESTIC_SOLAR_COLOR};font-weight:600">EPC recommends solar</div>
+    ${rows.map(([k, v]) => `<div style="font-size:12px"><span style="color:#6b7280">${k}:</span> ${escapeHtml(v)}</div>`).join('')}
+  </div>`;
+}
+
+async function loadDomesticSolar() {
+  const btn = document.getElementById('load-domestic-solar-btn');
+  btn.disabled = true;
+  try {
+    const markers = [];
+    let after = '';
+    for (;;) {
+      const { data, error } = await window.db.from('domestic_solar_epc').select(DOMESTIC_SOLAR_COLUMNS)
+        .gt('certificate_number', after).order('certificate_number').limit(1000);
+      if (error) throw error;
+      data.forEach(h => {
+        const m = L.marker([h.lat, h.lng], { icon: domesticSolarIcon });
+        m.bindPopup(() => domesticSolarPopup(h));
+        markers.push(m);
+      });
+      btn.textContent = `Loading homes… (${markers.length.toLocaleString()})`;
+      if (data.length < 1000) break;
+      after = data[data.length - 1].certificate_number;
+    }
+    domesticSolarCluster.addLayers(markers);
+    map.addLayer(domesticSolarCluster);
+    btn.style.display = 'none';
+    document.getElementById('domestic-solar-count').textContent = markers.length.toLocaleString();
+    document.getElementById('domestic-solar-toggle').style.display = 'block';
+  } catch (e) {
+    console.error('Failed to load domestic solar homes:', e);
+    btn.disabled = false;
+    btn.textContent = 'Load domestic EPC recommends solar (failed - retry?)';
+  }
+}
+document.getElementById('load-domestic-solar-btn').addEventListener('click', loadDomesticSolar);
+document.getElementById('domestic-solar-show').addEventListener('change', e => {
+  if (e.target.checked) map.addLayer(domesticSolarCluster); else map.removeLayer(domesticSolarCluster);
+});
 
 // Sidebar's "EPC recommendations" chips are static markup (unlike the other
 // three chip groups, which are built entirely from data) — source their
