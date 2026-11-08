@@ -206,6 +206,22 @@
       font-family: 'Inter', sans-serif !important; font-size: 12px !important; line-height: 1.4 !important; font-weight: 500;
     }
     .day-tooltip.leaflet-tooltip::before { display: none !important; }
+    .dh-popup-open .day-tooltip.leaflet-tooltip { display: none; }
+    .dh-card { font-size: 12.5px; line-height: 1.4; color: #1f2937; }
+    .dh-address { font-size: 15px; font-weight: 600; padding-right: 14px; }
+    .dh-place { color: #6b7280; margin-top: 1px; }
+    .dh-badges { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+    .dh-badge { background: #f3f4f6; color: #374151; font-size: 11px; font-weight: 500; padding: 3px 8px; border-radius: 100px; }
+    .dh-badge.solar { background: #e0f2f7; color: #0e7490; }
+    .dh-stats { display: grid; grid-template-columns: 1.2fr .8fr 1fr; gap: 8px; margin-top: 11px; padding: 10px 0; border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb; }
+    .dh-stat { display: flex; align-items: center; gap: 4px; min-height: 22px; font-size: 13px; font-weight: 600; }
+    .dh-to { color: #9ca3af; font-size: 11px; font-weight: 400; }
+    .dh-rating { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 5px; color: #fff; font-size: 12.5px; font-weight: 700; }
+    .dh-label { color: #6b7280; font-size: 11px; margin-top: 2px; }
+    .dh-type { font-weight: 600; margin-top: 10px; }
+    .dh-details { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 5px 0 0; }
+    .dh-details dt { color: #6b7280; font-weight: 400; }
+    .dh-details dd { margin: 0; }
 
     /* ── Popup ────────────────────────────────────────────── */
     .leaflet-popup-content-wrapper {
@@ -443,6 +459,7 @@
     <span class="nav-user-name" id="nav-user-name"></span>
     <div class="nav-avatar" id="nav-avatar"></div>
     <a class="nav-dashboard-link" href="crm.html">CRM</a>
+    <a class="nav-dashboard-link" href="prices.html">Prices</a>
     <button class="nav-add-lead-btn" id="add-lead-btn">+ Add lead</button>
     <a class="nav-dashboard-link" id="nav-home-link" href="home.html" style="display:none">Home</a>
     <button class="nav-signout-btn" id="sign-out-btn">Sign out</button>
@@ -2035,7 +2052,7 @@ document.querySelectorAll('.load-pipeline-btn').forEach(btn =>
    Its own cluster layer, so these homes stay out of allProspects, the
    sidebar filters and the building count. Read-only. */
 const DOMESTIC_SOLAR_COLOR = '#0891b2';
-const DOMESTIC_SOLAR_COLUMNS = 'certificate_number, address, postcode, council, property_type, built_form, tenure, transaction_type, energy_rating, main_fuel, lodgement_date, lat, lng';
+const DOMESTIC_SOLAR_COLUMNS = 'certificate_number, address, postcode, council, property_type, built_form, tenure, transaction_type, energy_rating, main_fuel, lodgement_date, roof_description, floor_area, age_band, potential_rating, energy_score, potential_score, energy_cost_yearly, lat, lng';
 const domesticSolarCluster = L.markerClusterGroup({
   chunkedLoading: true,
   maxClusterRadius: 50,
@@ -2049,19 +2066,51 @@ const domesticSolarIcon = L.divIcon({
   className: '', iconSize: [12, 12], iconAnchor: [6, 6],
 });
 
+function domesticHomeType(h) {
+  const form = (h.built_form || '').toLowerCase();
+  const type = (h.property_type || '').toLowerCase();
+  const text = [form, type].filter(Boolean).join(' ');
+  return text ? text[0].toUpperCase() + text.slice(1) : '';
+}
+function domesticFuel(fuel) {
+  const f = (fuel || '').toLowerCase();
+  if (f.includes('mains gas')) return 'Mains gas';
+  if (f.includes('electric')) return 'Electricity';
+  if (f.includes('lpg')) return 'LPG';
+  if (/\boil\b/.test(f)) return 'Oil';
+  if (f.includes('coal')) return 'Coal';
+  if (f.includes('biomass') || f.includes('wood')) return 'Wood or biomass';
+  if (f.startsWith('to be used only')) return 'Not recorded';
+  return fuel ? fuel[0].toUpperCase() + fuel.slice(1) : '';
+}
+function domesticRatingBadge(letter) {
+  return letter ? `<span class="dh-rating" style="background:${EPC_RATING[letter]?.color || '#6b7280'}">${escapeHtml(letter)}</span>` : '';
+}
+
 function domesticSolarPopup(h) {
   const when = h.lodgement_date ? new Date(h.lodgement_date).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : '';
-  const rows = [
-    ['Home', [h.built_form, h.property_type].filter(Boolean).join(' ')],
-    ['Tenure', h.tenure],
-    ['Energy rating', h.energy_rating],
-    ['Heating fuel', h.main_fuel],
-    ['Certificate', [when, h.transaction_type].filter(Boolean).join(', ')],
+  const sale = (h.transaction_type || '').toLowerCase();
+  const saleBadge = sale.startsWith('marketed') ? `Marketed for sale ${when}` : sale.includes('sale') ? `Sale certificate ${when}` : '';
+  const built = (h.age_band || '').replace(/^England and Wales:\s*/i, '');
+  const scores = h.energy_score != null && h.potential_score != null ? `Score ${h.energy_score} to ${h.potential_score}` : 'Energy rating';
+  const details = [
+    ['Roof', h.roof_description],
+    ['Heating', domesticFuel(h.main_fuel)],
+    ['Tenure', h.tenure ? h.tenure[0].toUpperCase() + h.tenure.slice(1) : ''],
+    ['Energy costs', h.energy_cost_yearly != null ? `£${Number(h.energy_cost_yearly).toLocaleString()} a year (estimate)` : ''],
+    ['Certificate', when],
   ].filter(r => r[1]);
-  return `<div style="min-width:220px">
-    <strong>${escapeHtml(h.address)}</strong><div>${escapeHtml(h.postcode || '')}${h.council ? ` · ${escapeHtml(h.council)}` : ''}</div>
-    <div style="margin:6px 0;color:${DOMESTIC_SOLAR_COLOR};font-weight:600">EPC recommends solar</div>
-    ${rows.map(([k, v]) => `<div style="font-size:12px"><span style="color:#6b7280">${k}:</span> ${escapeHtml(v)}</div>`).join('')}
+  return `<div class="dh-card">
+    <div class="dh-address">${escapeHtml(h.address)}</div>
+    <div class="dh-place">${[h.postcode, h.council].filter(Boolean).map(escapeHtml).join(' · ')}</div>
+    <div class="dh-badges"><span class="dh-badge solar">EPC recommends solar</span>${saleBadge ? `<span class="dh-badge">${escapeHtml(saleBadge)}</span>` : ''}</div>
+    <div class="dh-stats">
+      <div><div class="dh-stat">${domesticRatingBadge(h.energy_rating)}${h.potential_rating ? `<span class="dh-to">to</span>${domesticRatingBadge(h.potential_rating)}` : ''}</div><div class="dh-label">${escapeHtml(scores)}</div></div>
+      <div><div class="dh-stat">${h.floor_area != null ? `${Math.round(h.floor_area)} m²` : '—'}</div><div class="dh-label">Floor area</div></div>
+      <div><div class="dh-stat">${escapeHtml(built) || '—'}</div><div class="dh-label">Built</div></div>
+    </div>
+    <div class="dh-type">${escapeHtml(domesticHomeType(h))}</div>
+    <dl class="dh-details">${details.map(([k, v]) => `<dt>${k}</dt><dd>${escapeHtml(v)}</dd>`).join('')}</dl>
   </div>`;
 }
 
@@ -2077,7 +2126,8 @@ async function loadDomesticSolar() {
       if (error) throw error;
       data.forEach(h => {
         const m = L.marker([h.lat, h.lng], { icon: domesticSolarIcon });
-        m.bindPopup(() => domesticSolarPopup(h));
+        m.bindPopup(() => domesticSolarPopup(h), { minWidth: 290 });
+        m._domesticHome = true;
         markers.push(m);
       });
       btn.textContent = `Loading homes… (${markers.length.toLocaleString()})`;
@@ -2096,6 +2146,9 @@ async function loadDomesticSolar() {
   }
 }
 document.getElementById('load-domestic-solar-btn').addEventListener('click', loadDomesticSolar);
+// Hover labels like "Doncaster — Funding available" sit on top of the card, so hide them while one is open.
+map.on('popupopen', e => { if (e.popup._source?._domesticHome) map.getContainer().classList.add('dh-popup-open'); });
+map.on('popupclose', e => { if (e.popup._source?._domesticHome) map.getContainer().classList.remove('dh-popup-open'); });
 document.getElementById('domestic-solar-show').addEventListener('change', e => {
   if (e.target.checked) map.addLayer(domesticSolarCluster); else map.removeLayer(domesticSolarCluster);
 });

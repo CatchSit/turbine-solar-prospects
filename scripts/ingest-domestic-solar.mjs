@@ -19,6 +19,7 @@ const csvFile = process.argv[2];
 if (!csvFile) throw new Error('Usage: node scripts/ingest-domestic-solar.mjs <csv-file>');
 const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+const num = v => (v === '' || v == null || Number.isNaN(Number(v)) ? null : Number(v));
 const CHUNK = 500;
 let batch = [];
 let total = 0;
@@ -46,6 +47,13 @@ for await (const r of createReadStream(csvFile).pipe(parse({ columns: true, bom:
     main_fuel: r.main_fuel || null,
     lodgement_date: r.lodgement_date || null,
     uprn: r.uprn || null,
+    roof_description: r.roof_description || null,
+    floor_area: num(r.total_floor_area),
+    age_band: r.construction_age_band || null,
+    potential_rating: r.potential_energy_rating || null,
+    energy_score: num(r.current_energy_efficiency),
+    potential_score: num(r.potential_energy_efficiency),
+    energy_cost_yearly: (num(r.lighting_cost_current) ?? 0) + (num(r.heating_cost_current) ?? 0) + (num(r.hot_water_cost_current) ?? 0) || null,
     lat: Number(r.lat),
     lng: Number(r.lng),
   });

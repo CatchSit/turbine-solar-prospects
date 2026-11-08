@@ -15,6 +15,15 @@ verify_jwt = false
 [functions.manager-health]
 verify_jwt = true
 
+[functions.extract-price-lines]
+verify_jwt = true
+
+[functions.supplier-mail-prices]
+# Run by pg_cron every 10 minutes (migration 066), which has no user
+# session. Authenticity comes from the x-sync-secret header instead
+# (same MAIL_SYNC_SECRET as mail-sync).
+verify_jwt = false
+
 [functions.marketing-analytics]
 verify_jwt = true
 

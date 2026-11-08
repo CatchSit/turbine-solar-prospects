@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Turbine Energy — Prices</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg: #f8f9fa; --surface: #ffffff; --surface2: #eef1ec;
+  --border: rgba(17,24,39,0.12); --borderH: rgba(17,24,39,0.18);
+  --text: #111827; --text2: #6b7280; --text3: rgba(17,24,39,0.38);
+  --accent: #2ba45e; --accentDim: rgba(43,164,94,0.12); --accentDk: #1f8a52;
+  --warn: #c08438; --warnSoft: #f3e3cb; --alert: #b85544; --alertSoft: #f0d3ce;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.45; }
+a { color: var(--accent); text-decoration: none; }
+button { font-family: inherit; cursor: pointer; }
+#top-nav { z-index: 60; background: var(--surface); border-bottom: 1px solid var(--border); height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; position: sticky; top: 0; }
+.nav-brand { font-weight: 600; font-size: 15px; }
+.nav-brand-sub { font-size: 11.5px; color: var(--text3); margin-left: 6px; }
+.nav-right { display: flex; align-items: center; gap: 10px; }
+.nav-link { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; color: var(--text2); text-decoration: none; }
+.nav-link:hover { background: var(--surface2); color: var(--text); }
+#sign-out-btn { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; color: var(--text2); }
+#wrap { margin: 0 auto; padding: 24px; max-width: 1400px; display: none; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.card-head h2 { font-size: 15px; font-weight: 600; }
+.tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+#search { padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; font: inherit; font-size: 13.5px; background: var(--surface2); width: 420px; max-width: 70vw; }
+#search:focus { outline: none; border-color: var(--accent); }
+.btn-primary { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: 13px; font-weight: 500; }
+.btn-primary:disabled { opacity: .5; cursor: default; }
+.btn-secondary { background: var(--surface2); color: var(--text2); border: none; border-radius: 8px; padding: 8px 16px; font-size: 13px; font-weight: 500; }
+.btn-danger { background: none; color: var(--alert); border: 1px solid var(--alertSoft); border-radius: 8px; padding: 8px 14px; font-size: 13px; }
+.table-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+th { text-align: left; padding: 10px 14px; color: var(--text3); font-weight: 500; border-bottom: 1px solid var(--border); white-space: nowrap; }
+td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.nowrap { white-space: nowrap; }
+tbody tr.editable { cursor: pointer; }
+tbody tr.editable:hover { background: var(--surface2); }
+.code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; }
+.type-tag { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 100px; background: var(--surface2); color: var(--text2); white-space: nowrap; }
+.type-tag.invoice { background: var(--accentDim); color: var(--accentDk); }
+.type-tag.quote { background: #e0ecfa; color: #2c5d9a; }
+.from-email { display: block; font-size: 11px; color: var(--text3); margin-top: 2px; }
+.doc-status { font-size: 12px; white-space: nowrap; }
+.doc-status.saved { color: var(--accentDk); }
+.doc-status.failed { color: var(--alert); }
+.link-btn { background: none; border: none; color: var(--accent); font-size: 12.5px; padding: 0; }
+.muted { color: var(--text3); }
+.status { padding: 10px 16px; font-size: 12.5px; color: var(--text2); }
+.empty { padding: 30px 16px; text-align: center; color: var(--text2); }
+mark { background: #fdefb2; color: inherit; border-radius: 2px; }
+.modal-backdrop { position: fixed; inset: 0; background: rgba(17,24,39,.4); display: none; align-items: flex-start; justify-content: center; padding: 6vh 16px; z-index: 100; overflow-y: auto; }
+.modal-backdrop.open { display: flex; }
+.modal { background: var(--surface); border-radius: 14px; width: min(560px, 100%); box-shadow: 0 20px 50px rgba(0,0,0,.25); }
+.modal.wide { width: min(980px, 100%); }
+.modal-header { display: flex; justify-content: space-between; align-items: center; padding: 18px 22px 12px; border-bottom: 1px solid var(--border); }
+.modal-header h3 { font-size: 16px; font-weight: 600; }
+.modal-close { background: none; border: none; font-size: 22px; color: var(--text2); line-height: 1; }
+.modal-body { padding: 16px 22px; }
+.modal-footer { display: flex; justify-content: space-between; gap: 8px; padding: 14px 22px 18px; border-top: 1px solid var(--border); }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+.grid .full { grid-column: 1 / -1; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px 14px; }
+label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 4px; }
+input, select, textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font: inherit; font-size: 13px; background: var(--surface2); color: var(--text); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+.form-error { color: var(--alert); font-size: 12.5px; margin-top: 10px; min-height: 1em; }
+.section-title { font-size: 12.5px; font-weight: 600; margin: 16px 0 8px; }
+.preview { max-height: 300px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.preview td, .preview th { padding: 6px 10px; }
+.preview tr.skip td { color: var(--text3); text-decoration: line-through; }
+.hint { font-size: 12px; color: var(--text3); margin-top: 6px; }
+.status.busy::before { content: ''; display: inline-block; width: 11px; height: 11px; margin-right: 8px; border: 2px solid var(--accentDim); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -1px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.review { table-layout: fixed; }
+.review td { padding: 4px 6px; }
+.review input { padding: 5px 7px; font-size: 12.5px; }
+.review td.keep { width: 34px; text-align: center; }
+.review input[type=checkbox] { width: auto; }
+.review tr.off input:not([type=checkbox]) { opacity: .4; }
+@media (max-width: 760px) { .grid, .grid-4 { grid-template-columns: 1fr; } #search { width: 100%; max-width: none; } }
+</style>
+</head>
+<body>
+
+<div id="top-nav">
+  <div><span class="nav-brand">Turbine Energy</span><span class="nav-brand-sub">Prices</span></div>
+  <div class="nav-right">
+    <a class="nav-link" href="crm.html">CRM</a>
+    <a class="nav-link" href="index.html">Map</a>
+    <a class="nav-link" id="nav-home-link" href="home.html" style="display:none">Home</a>
+    <button id="sign-out-btn">Sign out</button>
+  </div>
+</div>
+
+<div id="wrap">
+  <div class="card">
+    <div class="card-head">
+      <h2>Wholesaler prices</h2>
+      <div class="tools">
+        <input id="search" type="search" placeholder="Search code, description or wholesaler…" autocomplete="off"/>
+        <button class="btn-secondary manager-only" id="pdf-btn" style="display:none">Upload PDF</button>
+        <input type="file" id="pdf-file" accept="application/pdf,.pdf" hidden/>
+        <button class="btn-secondary manager-only" id="import-btn" style="display:none">Import Excel</button>
+        <button class="btn-primary manager-only" id="add-btn" style="display:none">+ Add price</button>
+      </div>
+    </div>
+    <div class="status" id="status"></div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Date</th><th>Wholesaler</th><th>Code</th><th>Description</th><th class="num">Price ex VAT</th><th class="num">Qty</th><th>From</th><th>Reference</th></tr></thead>
+        <tbody id="results"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card manager-only" id="docs-card" style="display:none;margin-top:18px">
+    <div class="card-head"><h2>Read from email</h2><span class="muted" id="docs-hint" style="font-size:12.5px"></span></div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Received</th><th>Wholesaler</th><th>Document</th><th class="num">Lines</th><th>Mailbox</th><th>Status</th><th></th></tr></thead>
+        <tbody id="docs"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<datalist id="supplier-list"></datalist>
+
+<!-- Add / edit one price (managers) -->
+<div class="modal-backdrop" id="line-modal">
+  <div class="modal">
+    <div class="modal-header"><h3 id="line-title">Add price</h3><button class="modal-close" data-close>&times;</button></div>
+    <div class="modal-body">
+      <div class="grid">
+        <div class="full"><label for="f-description">Description</label><input id="f-description"/></div>
+        <div><label for="f-code">Product code</label><input id="f-code"/></div>
+        <div><label for="f-supplier">Wholesaler</label><input id="f-supplier" list="supplier-list"/></div>
+        <div><label for="f-price">Price each, ex VAT (£)</label><input id="f-price" type="number" min="0" step="0.01"/></div>
+        <div><label for="f-qty">Quantity (optional)</label><input id="f-qty" type="number" min="0" step="any"/></div>
+        <div><label for="f-date">Date quoted or invoiced</label><input id="f-date" type="date"/></div>
+        <div><label for="f-type">From</label><select id="f-type"><option value="quote">Quote</option><option value="invoice">Invoice</option><option value="price list">Price list</option></select></div>
+        <div class="full"><label for="f-ref">Reference (quote or invoice number)</label><input id="f-ref"/></div>
+      </div>
+      <div class="form-error" id="line-error"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-danger" id="line-delete" style="visibility:hidden">Delete</button>
+      <div><button class="btn-secondary" data-close>Cancel</button> <button class="btn-primary" id="line-save">Save</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- Excel import (managers) -->
+<div class="modal-backdrop" id="import-modal">
+  <div class="modal wide">
+    <div class="modal-header"><h3>Import an Excel price list</h3><button class="modal-close" data-close>&times;</button></div>
+    <div class="modal-body">
+      <div class="grid">
+        <div><label for="i-file">Excel or CSV file</label><input id="i-file" type="file" accept=".xlsx,.xls,.xlsm,.csv"/></div>
+        <div><label for="i-sheet">Sheet</label><select id="i-sheet" disabled></select></div>
+      </div>
+      <div id="i-mapping" style="display:none">
+        <div class="section-title">Which columns hold what?</div>
+        <div class="grid-4">
+          <div><label for="i-header">Heading row</label><input id="i-header" type="number" min="1" step="1"/></div>
+          <div><label for="i-col-code">Product code</label><select id="i-col-code"></select></div>
+          <div><label for="i-col-desc">Description</label><select id="i-col-desc"></select></div>
+          <div><label for="i-col-price">Price each, ex VAT</label><select id="i-col-price"></select></div>
+          <div><label for="i-col-qty">Quantity (optional)</label><select id="i-col-qty"></select></div>
+        </div>
+        <div class="section-title">About this file</div>
+        <div class="grid-4">
+          <div><label for="i-supplier">Wholesaler</label><input id="i-supplier" list="supplier-list"/></div>
+          <div><label for="i-date">Date quoted or invoiced</label><input id="i-date" type="date"/></div>
+          <div><label for="i-type">From</label><select id="i-type"><option value="price list">Price list</option><option value="quote">Quote</option><option value="invoice">Invoice</option></select></div>
+          <div><label for="i-ref">Reference (optional)</label><input id="i-ref"/></div>
+        </div>
+        <div class="section-title" id="i-summary"></div>
+        <div class="preview"><table><thead id="i-preview-head"></thead><tbody id="i-preview"></tbody></table></div>
+        <div class="hint">Rows with no description or no price are skipped (shown crossed out). Prices are saved as entered, so check they are ex VAT.</div>
+      </div>
+      <div class="form-error" id="import-error"></div>
+    </div>
+    <div class="modal-footer">
+      <span></span>
+      <div><button class="btn-secondary" data-close>Cancel</button> <button class="btn-primary" id="import-go" disabled>Import</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- Check the lines Claude read from a PDF (managers) -->
+<div class="modal-backdrop" id="pdf-modal">
+  <div class="modal wide">
+    <div class="modal-header"><h3 id="pdf-title">Check the lines</h3><button class="modal-close" data-close>&times;</button></div>
+    <div class="modal-body">
+      <div class="grid-4">
+        <div><label for="p-supplier">Wholesaler</label><input id="p-supplier" list="supplier-list"/></div>
+        <div><label for="p-date">Date quoted or invoiced</label><input id="p-date" type="date"/></div>
+        <div><label for="p-type">From</label><select id="p-type"><option value="quote">Quote</option><option value="invoice">Invoice</option><option value="price list">Price list</option></select></div>
+        <div><label for="p-ref">Reference</label><input id="p-ref"/></div>
+      </div>
+      <div class="section-title" id="p-summary"></div>
+      <div class="preview" style="max-height:420px">
+        <table class="review"><colgroup><col style="width:52px"/><col style="width:150px"/><col/><col style="width:130px"/><col style="width:80px"/></colgroup><thead><tr><th class="keep">Save</th><th>Code</th><th>Description</th><th class="num">Price each, ex VAT</th><th class="num">Qty</th></tr></thead><tbody id="p-lines"></tbody></table>
+      </div>
+      <div class="hint">Read by Claude, so check the prices against the PDF before saving. Untick any line you don't want.</div>
+      <div class="form-error" id="pdf-error"></div>
+    </div>
+    <div class="modal-footer">
+      <span></span>
+      <div><button class="btn-secondary" data-close>Cancel</button> <button class="btn-primary" id="p-save">Save lines</button></div>
+    </div>
+  </div>
+</div>
+
+<script src="shared/escape-html.js"></script>
+<script src="shared/manager-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+
+/* ── Supabase ────────────────────────────────────────────── */
+const { createClient } = supabase;
+const db = createClient(
+  'https://gkvropheqktytghmiwgp.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdrdnJvcGhlcWt0eXRnaG1pd2dwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5Mjg2NjAsImV4cCI6MjEwMTUwNDY2MH0.swu4sPPi2X9fS-DQEh-cW-ypWZqbWNHXLnGHaKWMxI8'
+);
+
+/* ── Wholesaler prices (price_lines, migration 064, Greg 2026-11-08) ──
+   Search lists every matching line, newest first. Everyone reads; managers
+   add, edit, delete and import. Prices are ex VAT as entered. */
+const RESULT_LIMIT = 300;
+const TYPE_LABEL = { quote: 'Quote', invoice: 'Invoice', 'price list': 'Price list' };
+let currentUser = null;
+let editingLine = null;
+let shownLines = [];
+
+const money = v => '£' + Number(v).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtDate = d => d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+const today = () => new Date().toISOString().slice(0, 10);
+
+function highlight(text, words) {
+  let html = escapeHtml(text || '');
+  words.forEach(w => {
+    const safe = escapeHtml(w).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (safe) html = html.replace(new RegExp(`(${safe})`, 'gi'), '<mark>$1</mark>');
+  });
+  return html;
+}
+
+function searchWords() {
+  return document.getElementById('search').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+}
+
+let searchSeq = 0;
+async function runSearch() {
+  const seq = ++searchSeq;
+  const words = searchWords();
+  const status = document.getElementById('status');
+  status.textContent = 'Searching…';
+  let query = db.from('price_lines')
+    .select('id, supplier, product_code, description, unit_price, quantity, price_date, source_type, document_ref, document_id')
+    .order('price_date', { ascending: false }).order('created_at', { ascending: false })
+    .limit(RESULT_LIMIT);
+  // Every word must appear somewhere in the code, description or wholesaler.
+  words.forEach(w => { query = query.ilike('search_text', `%${w.replace(/[\\%_]/g, '\\$&')}%`); });
+  const { data, error } = await query;
+  if (seq !== searchSeq) return;
+  if (error) { status.textContent = 'Couldn\'t search: ' + error.message; return; }
+  shownLines = data;
+  renderResults(data, words);
+}
+
+function renderResults(lines, words) {
+  const status = document.getElementById('status');
+  const body = document.getElementById('results');
+  const manager = isAdmin(currentUser);
+  if (!lines.length) {
+    status.textContent = '';
+    body.innerHTML = `<tr><td colspan="8" class="empty">${words.length ? 'No prices match that search.' : 'No prices yet.' + (manager ? ' Add one, or import an Excel price list.' : '')}</td></tr>`;
+    return;
+  }
+  status.textContent = words.length
+    ? `${lines.length === RESULT_LIMIT ? `First ${RESULT_LIMIT}` : lines.length} matching price${lines.length === 1 ? '' : 's'}, newest first`
+    : `Latest ${lines.length} price${lines.length === 1 ? '' : 's'}. Search to find a product.`;
+  body.innerHTML = lines.map(l => `
+    <tr data-id="${escapeHtml(l.id)}"${manager ? ' class="editable"' : ''}>
+      <td class="nowrap">${fmtDate(l.price_date)}</td>
+      <td>${highlight(l.supplier, words)}</td>
+      <td class="code">${l.product_code ? highlight(l.product_code, words) : '<span class="muted">—</span>'}</td>
+      <td>${highlight(l.description, words)}</td>
+      <td class="num"><strong>${money(l.unit_price)}</strong></td>
+      <td class="num">${l.quantity != null ? Number(l.quantity).toLocaleString('en-GB') : '<span class="muted">—</span>'}</td>
+      <td><span class="type-tag ${l.source_type === 'price list' ? '' : l.source_type}">${TYPE_LABEL[l.source_type] || l.source_type}</span>${l.document_id ? '<span class="from-email">from email</span>' : ''}</td>
+      <td>${l.document_ref ? escapeHtml(l.document_ref) : '<span class="muted">—</span>'}</td>
+    </tr>`).join('');
+}
+
+let searchTimer = null;
+document.getElementById('search').addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(runSearch, 250); });
+
+async function loadSuppliers() {
+  const { data, error } = await db.from('price_suppliers').select('supplier').order('supplier');
+  if (error) { console.error('Failed to load wholesalers:', error); return; }
+  document.getElementById('supplier-list').innerHTML = data.map(s => `<option value="${escapeHtml(s.supplier)}">`).join('');
+}
+
+/* ── Modals ── */
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => closeModal(b.closest('.modal-backdrop').id)));
+
+/* ── Add / edit one price ── */
+function openLineModal(line) {
+  editingLine = line || null;
+  const v = line || { description: '', product_code: '', supplier: '', unit_price: '', quantity: '', price_date: today(), source_type: 'quote', document_ref: '' };
+  document.getElementById('line-title').textContent = line ? 'Edit price' : 'Add price';
+  document.getElementById('f-description').value = v.description || '';
+  document.getElementById('f-code').value = v.product_code || '';
+  document.getElementById('f-supplier').value = v.supplier || '';
+  document.getElementById('f-price').value = v.unit_price ?? '';
+  document.getElementById('f-qty').value = v.quantity ?? '';
+  document.getElementById('f-date').value = v.price_date || today();
+  document.getElementById('f-type').value = v.source_type || 'quote';
+  document.getElementById('f-ref').value = v.document_ref || '';
+  document.getElementById('line-delete').style.visibility = line ? 'visible' : 'hidden';
+  document.getElementById('line-error').textContent = '';
+  openModal('line-modal');
+  document.getElementById('f-description').focus();
+}
+
+document.getElementById('add-btn').addEventListener('click', () => openLineModal(null));
+document.getElementById('results').addEventListener('click', e => {
+  if (!isAdmin(currentUser)) return;
+  const row = e.target.closest('tr[data-id]');
+  const line = row && shownLines.find(l => l.id === row.dataset.id);
+  if (line) openLineModal(line);
+});
+
+document.getElementById('line-save').addEventListener('click', async () => {
+  const err = document.getElementById('line-error');
+  const row = {
+    description: document.getElementById('f-description').value.trim(),
+    product_code: document.getElementById('f-code').value.trim() || null,
+    supplier: document.getElementById('f-supplier').value.trim(),
+    unit_price: document.getElementById('f-price').value === '' ? null : Number(document.getElementById('f-price').value),
+    quantity: document.getElementById('f-qty').value === '' ? null : Number(document.getElementById('f-qty').value),
+    price_date: document.getElementById('f-date').value,
+    source_type: document.getElementById('f-type').value,
+    document_ref: document.getElementById('f-ref').value.trim() || null,
+  };
+  if (!row.description || !row.supplier || row.unit_price == null || !row.price_date) {
+    err.textContent = 'Description, wholesaler, price and date are needed.';
+    return;
+  }
+  const btn = document.getElementById('line-save');
+  btn.disabled = true;
+  const { error } = editingLine
+    ? await db.from('price_lines').update(row).eq('id', editingLine.id)
+    : await db.from('price_lines').insert({ ...row, created_by_email: currentUser?.email || null });
+  btn.disabled = false;
+  if (error) { err.textContent = 'Couldn\'t save: ' + error.message; return; }
+  closeModal('line-modal');
+  loadSuppliers();
+  runSearch();
+});
+
+document.getElementById('line-delete').addEventListener('click', async () => {
+  if (!editingLine || !confirm('Delete this price? This can\'t be undone.')) return;
+  const { error } = await db.from('price_lines').delete().eq('id', editingLine.id);
+  if (error) { document.getElementById('line-error').textContent = 'Couldn\'t delete: ' + error.message; return; }
+  closeModal('line-modal');
+  runSearch();
+});
+
+/* ── Excel import ──
+   Reads the file in the browser (SheetJS), guesses which columns hold the
+   code, description, price and quantity from the heading names, and lets the
+   manager correct them before importing. */
+let workbook = null;
+let sheetRows = [];
+
+function parsePrice(v) {
+  if (typeof v === 'number') return v;
+  const n = Number(String(v ?? '').replace(/[£,\s]/g, ''));
+  return Number.isFinite(n) && String(v ?? '').trim() !== '' ? n : null;
+}
+
+function guessHeaderRow(rows) {
+  for (let i = 0; i < Math.min(rows.length, 30); i++) {
+    const cells = rows[i].map(c => String(c ?? '').toLowerCase());
+    if (cells.some(c => /desc|product|item/.test(c)) && cells.some(c => /price|cost|net|rate|value/.test(c))) return i;
+  }
+  return 0;
+}
+
+function guessColumn(headers, patterns, avoid) {
+  for (const re of patterns) {
+    const i = headers.findIndex((h, idx) => re.test(h) && !(avoid && avoid.test(h)));
+    if (i >= 0) return i;
+  }
+  return -1;
+}
+
+function fillColumnSelects(headers) {
+  const opts = (blankLabel) => `<option value="-1">${blankLabel}</option>` + headers.map((h, i) =>
+    `<option value="${i}">${escapeHtml(h || `Column ${XLSX.utils.encode_col(i)}`)}</option>`).join('');
+  const lower = headers.map(h => String(h || '').toLowerCase());
+  const set = (id, blank, idx) => { const el = document.getElementById(id); el.innerHTML = opts(blank); el.value = String(idx); };
+  set('i-col-code', 'None', guessColumn(lower, [/^(product |part |item |stock |cat(alogue)? )?(code|no\.?|number|ref)$/, /code/, /part/, /sku/, /ref/], /vat|post/));
+  set('i-col-desc', 'Choose…', guessColumn(lower, [/desc/, /product/, /item/, /name/]));
+  set('i-col-price', 'Choose…', guessColumn(lower, [/net.*(price|cost)|(price|cost).*net/, /unit (price|cost)/, /^(price|cost)$/, /price/, /cost/, /rate/], /total|vat|gross|rrp|list|line/));
+  set('i-col-qty', 'None', guessColumn(lower, [/^qty$/, /quantity/, /qty/]));
+}
+
+function readSheet() {
+  const name = document.getElementById('i-sheet').value;
+  sheetRows = XLSX.utils.sheet_to_json(workbook.Sheets[name], { header: 1, raw: true, defval: '' });
+  const headerIdx = guessHeaderRow(sheetRows);
+  document.getElementById('i-header').value = headerIdx + 1;
+  fillColumnSelects((sheetRows[headerIdx] || []).map(c => String(c ?? '').trim()));
+  document.getElementById('i-mapping').style.display = '';
+  renderPreview();
+}
+
+function importRows() {
+  const headerIdx = Math.max(0, Number(document.getElementById('i-header').value) - 1);
+  const col = id => Number(document.getElementById(id).value);
+  const [cCode, cDesc, cPrice, cQty] = ['i-col-code', 'i-col-desc', 'i-col-price', 'i-col-qty'].map(col);
+  return sheetRows.slice(headerIdx + 1).map(r => {
+    const description = cDesc >= 0 ? String(r[cDesc] ?? '').trim() : '';
+    const price = cPrice >= 0 ? parsePrice(r[cPrice]) : null;
+    const qty = cQty >= 0 ? parsePrice(r[cQty]) : null;
+    return {
+      ok: !!description && price != null && price >= 0,
+      product_code: cCode >= 0 ? (String(r[cCode] ?? '').trim() || null) : null,
+      description, unit_price: price, quantity: qty,
+    };
+  }).filter(r => r.description || r.unit_price != null);
+}
+
+function renderPreview() {
+  const rows = importRows();
+  const good = rows.filter(r => r.ok);
+  document.getElementById('i-summary').textContent = `${good.length.toLocaleString()} line${good.length === 1 ? '' : 's'} ready to import${rows.length > good.length ? `, ${rows.length - good.length} skipped` : ''}`;
+  document.getElementById('i-preview-head').innerHTML = '<tr><th>Code</th><th>Description</th><th class="num">Price</th><th class="num">Qty</th></tr>';
+  document.getElementById('i-preview').innerHTML = rows.slice(0, 40).map(r => `
+    <tr class="${r.ok ? '' : 'skip'}"><td class="code">${escapeHtml(r.product_code || '')}</td><td>${escapeHtml(r.description)}</td>
+    <td class="num">${r.unit_price != null ? money(r.unit_price) : ''}</td><td class="num">${r.quantity ?? ''}</td></tr>`).join('');
+  document.getElementById('import-go').disabled = !good.length;
+}
+
+document.getElementById('import-btn').addEventListener('click', () => {
+  workbook = null; sheetRows = [];
+  document.getElementById('i-file').value = '';
+  document.getElementById('i-sheet').innerHTML = ''; document.getElementById('i-sheet').disabled = true;
+  document.getElementById('i-mapping').style.display = 'none';
+  document.getElementById('i-date').value = today();
+  document.getElementById('i-supplier').value = '';
+  document.getElementById('i-ref').value = '';
+  document.getElementById('import-error').textContent = '';
+  document.getElementById('import-go').disabled = true;
+  openModal('import-modal');
+});
+
+document.getElementById('i-file').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  const err = document.getElementById('import-error');
+  err.textContent = '';
+  if (!file) return;
+  try {
+    workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+  } catch (ex) {
+    err.textContent = 'Couldn\'t read that file. Is it an Excel or CSV file?';
+    return;
+  }
+  const sheet = document.getElementById('i-sheet');
+  sheet.innerHTML = workbook.SheetNames.map(n => `<option>${escapeHtml(n)}</option>`).join('');
+  sheet.disabled = workbook.SheetNames.length < 2;
+  readSheet();
+});
+document.getElementById('i-sheet').addEventListener('change', readSheet);
+document.getElementById('i-header').addEventListener('change', () => {
+  const headerIdx = Math.max(0, Number(document.getElementById('i-header').value) - 1);
+  fillColumnSelects((sheetRows[headerIdx] || []).map(c => String(c ?? '').trim()));
+  renderPreview();
+});
+['i-col-code', 'i-col-desc', 'i-col-price', 'i-col-qty'].forEach(id => document.getElementById(id).addEventListener('change', renderPreview));
+
+document.getElementById('import-go').addEventListener('click', async () => {
+  const err = document.getElementById('import-error');
+  const supplier = document.getElementById('i-supplier').value.trim();
+  const price_date = document.getElementById('i-date').value;
+  if (!supplier || !price_date) { err.textContent = 'Add the wholesaler and the date first.'; return; }
+  const batch = crypto.randomUUID();
+  const common = {
+    supplier, price_date, source_type: document.getElementById('i-type').value,
+    document_ref: document.getElementById('i-ref').value.trim() || null,
+    import_batch: batch, created_by_email: currentUser?.email || null,
+  };
+  const rows = importRows().filter(r => r.ok).map(({ ok, ...r }) => ({ ...r, ...common }));
+  const btn = document.getElementById('import-go');
+  btn.disabled = true;
+  for (let i = 0; i < rows.length; i += 500) {
+    btn.textContent = `Importing… ${Math.min(i + 500, rows.length).toLocaleString()} / ${rows.length.toLocaleString()}`;
+    const { error } = await db.from('price_lines').insert(rows.slice(i, i + 500));
+    if (error) {
+      // Take back anything already saved from this file, so a retry doesn't double up.
+      await db.from('price_lines').delete().eq('import_batch', batch);
+      err.textContent = 'Import failed and nothing was saved: ' + error.message;
+      btn.disabled = false; btn.textContent = 'Import';
+      return;
+    }
+  }
+  btn.textContent = 'Import';
+  closeModal('import-modal');
+  document.getElementById('search').value = supplier;
+  loadSuppliers();
+  await runSearch();
+  document.getElementById('status').textContent = `Imported ${rows.length.toLocaleString()} price${rows.length === 1 ? '' : 's'} from ${supplier}.`;
+});
+
+/* ── PDF quotes and invoices ──
+   The extract-price-lines Edge Function has Claude read the lines; nothing
+   is saved until the manager has checked them here. */
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function functionError(error) {
+  try { const body = await error.context.json(); if (body?.error) return body.error; } catch (e) { /* not JSON */ }
+  return error.message || 'Something went wrong';
+}
+
+function reviewRowHtml(l, i) {
+  return `<tr data-i="${i}">
+    <td class="keep"><input type="checkbox" checked aria-label="Save this line"/></td>
+    <td><input class="r-code" value="${escapeHtml(l.product_code || '')}"/></td>
+    <td><input class="r-desc" value="${escapeHtml(l.description || '')}"/></td>
+    <td class="num"><input class="r-price" type="number" min="0" step="0.01" value="${l.unit_price ?? ''}" style="text-align:right"/></td>
+    <td class="num"><input class="r-qty" type="number" min="0" step="any" value="${l.quantity ?? ''}" style="text-align:right"/></td>
+  </tr>`;
+}
+
+function updateReviewSummary() {
+  const rows = [...document.querySelectorAll('#p-lines tr')];
+  rows.forEach(r => r.classList.toggle('off', !r.querySelector('input[type=checkbox]').checked));
+  const keep = rows.filter(r => r.querySelector('input[type=checkbox]').checked).length;
+  document.getElementById('p-summary').textContent = `${keep} of ${rows.length} line${rows.length === 1 ? '' : 's'} will be saved`;
+  document.getElementById('p-save').disabled = !keep;
+}
+document.getElementById('p-lines').addEventListener('change', updateReviewSummary);
+
+function openReview(fileName, result) {
+  document.getElementById('pdf-title').textContent = `Check the lines from ${fileName}`;
+  document.getElementById('p-supplier').value = result.supplier || '';
+  document.getElementById('p-date').value = result.document_date || today();
+  document.getElementById('p-type').value = TYPE_LABEL[result.document_type] ? result.document_type : 'quote';
+  document.getElementById('p-ref').value = result.document_ref || '';
+  document.getElementById('p-lines').innerHTML = result.lines.map(reviewRowHtml).join('');
+  document.getElementById('pdf-error').textContent = '';
+  updateReviewSummary();
+  openModal('pdf-modal');
+}
+
+document.getElementById('pdf-btn').addEventListener('click', () => document.getElementById('pdf-file').click());
+document.getElementById('pdf-file').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const status = document.getElementById('status');
+  const btn = document.getElementById('pdf-btn');
+  btn.disabled = true;
+  status.classList.add('busy');
+  status.textContent = `Reading ${file.name}… this usually takes under a minute.`;
+  try {
+    const known = [...document.querySelectorAll('#supplier-list option')].map(o => o.value);
+    const { data, error } = await db.functions.invoke('extract-price-lines', {
+      body: { pdf_base64: await fileToBase64(file), file_name: file.name, known_suppliers: known },
+    });
+    if (error) throw new Error(await functionError(error));
+    if (!data?.lines?.length) throw new Error('No product lines were found in that PDF.');
+    status.textContent = '';
+    openReview(file.name, data);
+  } catch (ex) {
+    status.textContent = `Couldn't read ${file.name}: ${ex.message}`;
+  } finally {
+    status.classList.remove('busy');
+    btn.disabled = false;
+  }
+});
+
+document.getElementById('p-save').addEventListener('click', async () => {
+  const err = document.getElementById('pdf-error');
+  const supplier = document.getElementById('p-supplier').value.trim();
+  const price_date = document.getElementById('p-date').value;
+  if (!supplier || !price_date) { err.textContent = 'Add the wholesaler and the date first.'; return; }
+  const batch = crypto.randomUUID();
+  const common = {
+    supplier, price_date, source_type: document.getElementById('p-type').value,
+    document_ref: document.getElementById('p-ref').value.trim() || null,
+    import_batch: batch, created_by_email: currentUser?.email || null,
+  };
+  const rows = [];
+  for (const tr of document.querySelectorAll('#p-lines tr')) {
+    if (!tr.querySelector('input[type=checkbox]').checked) continue;
+    const description = tr.querySelector('.r-desc').value.trim();
+    const price = tr.querySelector('.r-price').value;
+    if (!description || price === '' || Number(price) < 0) { err.textContent = 'Every ticked line needs a description and a price.'; return; }
+    const qty = tr.querySelector('.r-qty').value;
+    rows.push({ ...common, product_code: tr.querySelector('.r-code').value.trim() || null, description,
+      unit_price: Number(price), quantity: qty === '' ? null : Number(qty) });
+  }
+  const btn = document.getElementById('p-save');
+  btn.disabled = true;
+  const { error } = await db.from('price_lines').insert(rows);
+  btn.disabled = false;
+  if (error) {
+    await db.from('price_lines').delete().eq('import_batch', batch);
+    err.textContent = 'Couldn\'t save, nothing was saved: ' + error.message;
+    return;
+  }
+  closeModal('pdf-modal');
+  document.getElementById('search').value = supplier;
+  loadSuppliers();
+  await runSearch();
+  document.getElementById('status').textContent = `Saved ${rows.length} price${rows.length === 1 ? '' : 's'} from ${supplier}.`;
+});
+
+/* ── Documents read from email (price_documents, migration 065) ──
+   supplier-mail-prices saves prices without a check (Greg's choice), so this
+   list is where a manager spots and undoes a bad one. */
+const DOC_STATUS = { saved: 'Saved', 'no lines': 'No prices found', 'not a price document': 'Skipped, not a quote or invoice',
+  failed: 'Couldn\'t read', undone: 'Undone', reading: 'Reading…' };
+
+async function loadDocuments() {
+  if (!isAdmin(currentUser)) return;
+  const [docs, boxes] = await Promise.all([
+    db.from('price_documents').select('id, received_at, supplier, document_type, document_ref, file_name, line_count, mailbox, status, error')
+      .order('received_at', { ascending: false }).limit(50),
+    db.from('price_mail_mailboxes').select('mailbox, synced_through, last_run_at, last_error'),
+  ]);
+  const body = document.getElementById('docs');
+  if (docs.error) { body.innerHTML = `<tr><td colspan="7" class="empty">Couldn't load: ${escapeHtml(docs.error.message)}</td></tr>`; return; }
+  const runs = (boxes.data || []).filter(b => b.last_run_at).map(b => new Date(b.last_run_at));
+  const errors = (boxes.data || []).filter(b => b.last_error).map(b => `${b.mailbox}: ${b.last_error}`);
+  const behind = (boxes.data || []).filter(b => Date.now() - new Date(b.synced_through) > 86400000).length;
+  document.getElementById('docs-hint').textContent = !runs.length ? 'Not run yet. It checks every 10 minutes once switched on.'
+    : `Last checked ${new Date(Math.max(...runs)).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`
+      + (behind ? ` · still catching up on older emails` : '') + (errors.length ? ` · problem: ${errors[0]}` : '');
+  body.innerHTML = docs.data.length ? docs.data.map(d => `
+    <tr>
+      <td class="nowrap">${fmtDate(d.received_at)}</td>
+      <td>${escapeHtml(d.supplier || '')}</td>
+      <td>${(() => { const label = [TYPE_LABEL[d.document_type], d.document_ref].filter(Boolean).join(' ');
+        return label ? `${escapeHtml(label)}${d.file_name ? `<span class="from-email">${escapeHtml(d.file_name)}</span>` : ''}` : escapeHtml(d.file_name || ''); })()}</td>
+      <td class="num">${d.line_count ?? '<span class="muted">—</span>'}</td>
+      <td>${escapeHtml((d.mailbox || '').split('@')[0])}</td>
+      <td><span class="doc-status ${escapeHtml(d.status)}" title="${escapeHtml(d.error || '')}">${escapeHtml(DOC_STATUS[d.status] || d.status)}</span></td>
+      <td>${d.status === 'saved' ? `<button class="link-btn" data-undo="${escapeHtml(d.id)}">Undo</button>` : ''}</td>
+    </tr>`).join('') : '<tr><td colspan="7" class="empty">No wholesaler emails read yet.</td></tr>';
+}
+
+document.getElementById('docs').addEventListener('click', async e => {
+  const id = e.target.closest('[data-undo]')?.dataset.undo;
+  if (!id || !confirm('Remove every price saved from this document? It won\'t be read again.')) return;
+  const { error } = await db.from('price_lines').delete().eq('document_id', id);
+  if (!error) await db.from('price_documents').update({ status: 'undone' }).eq('id', id);
+  if (error) { alert('Couldn\'t undo: ' + error.message); return; }
+  await Promise.all([loadDocuments(), runSearch()]);
+});
+
+/* ── Boot ── */
+async function boot(user) {
+  currentUser = user;
+  const manager = isAdmin(user);
+  document.getElementById('nav-home-link').style.display = manager ? '' : 'none';
+  document.querySelectorAll('.manager-only').forEach(el => { el.style.display = manager ? '' : 'none'; });
+  document.getElementById('wrap').style.display = 'block';
+  loadSuppliers();
+  const q = new URLSearchParams(location.search).get('q');
+  if (q) document.getElementById('search').value = q;
+  await runSearch();
+  loadDocuments();
+  document.getElementById('search').focus();
+}
+
+document.getElementById('sign-out-btn').addEventListener('click', async () => { await db.auth.signOut(); location.href = 'index.html'; });
+
+db.auth.getSession().then(({ data: { session } }) => {
+  if (session?.user) boot(session.user);
+  else location.href = 'index.html';
+});
+
+</script>
+</body>
+</html>
