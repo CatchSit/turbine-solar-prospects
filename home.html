@@ -143,7 +143,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .chip { padding: 5px 12px; border-radius: 100px; border: 1px solid var(--border); background: var(--surface); font-size: 12px; color: var(--text2); }
 .chip:hover { color: var(--text); }
 .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-.mini-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+.mini-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 18px; }
 .mini-value { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; margin-top: 4px; }
 .grid-2.inner { gap: 28px; }
 .sub-card h3 { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
@@ -979,8 +979,10 @@ function wonMoneySummary(jobs) {
     const p = (people[j.l.commissionTo || ''] ||= { paidJobs: 0, paid: 0, toComeJobs: 0, toCome: 0 });
     if (isClosedJob(j.l)) { p.paidJobs++; p.paid += j.l.commission; } else { p.toComeJobs++; p.toCome += j.l.commission; }
   });
-  return { closed, open, people,
-    profitMade: profit(closed), profitToCome: profit(open),
+  // Installed jobs (Completed or Paid, job closed), whether or not the invoice is paid yet.
+  const completed = jobs.filter(j => j.l.stage === 'completed');
+  return { closed, open, people, completed,
+    profitCompleted: profit(completed), profitMade: profit(closed), profitToCome: profit(open),
     commissionPaid: commission(closed), commissionToCome: commission(open),
     unassigned: jobs.filter(j => j.l.commission && !j.l.commissionTo).length };
 }
@@ -1017,6 +1019,7 @@ function renderWon() {
     <div><div class="tile-label">Average job</div><div class="mini-value">${jobs.length ? money(total / jobs.length) : '—'}</div></div>
     <div><div class="tile-label">Total profit</div><div class="mini-value">${costed.length ? money(costedMargin) : '—'}</div>
       <div class="tile-sub">${costed.length ? `${pct(costedMargin, costedValue)} · from ${costed.length} of ${jobs.length} job${jobs.length === 1 ? '' : 's'} with costs entered` : 'No costs entered yet'}</div></div>
+    <div><div class="tile-label">Profit on completed jobs</div><div class="mini-value">${money(ms.profitCompleted)}</div><div class="tile-sub">${num(ms.completed.length)} job${ms.completed.length === 1 ? '' : 's'} installed, paid or not</div></div>
     <div><div class="tile-label">Profit made</div><div class="mini-value">${money(ms.profitMade)}</div><div class="tile-sub">${num(ms.closed.length)} job${ms.closed.length === 1 ? '' : 's'} paid and closed</div></div>
     <div><div class="tile-label">Profit to come</div><div class="mini-value">${money(ms.profitToCome)}</div><div class="tile-sub">${num(ms.open.length)} job${ms.open.length === 1 ? '' : 's'} not yet paid</div></div>
     <div><div class="tile-label">Commission paid</div><div class="mini-value">${money(ms.commissionPaid)}</div><div class="tile-sub">On closed jobs, assumed paid on time</div></div>
