@@ -47,7 +47,7 @@ const OUTPUT_SCHEMA = {
 const SYSTEM_PROMPT = `You read UK electrical and roofing wholesaler documents (quotes, invoices and price lists) for Turbine Energy, a solar, battery and heat pump installer, and return each product line as data.
 
 For every product line:
-- unit_price: the net price for ONE unit, ex VAT, after any discount. Never use the line total. If there is a "Per" column (price per N units), divide the price by N. If a discount percentage applies and only the pre-discount price is shown, apply it. If a "Unit" or "Net" column already shows the discounted price each, use that.
+- unit_price: the net price for ONE unit, ex VAT, after any discount. Never use the line total. If there is a "Per" column (price per N units), divide the price by N. If a discount percentage applies and only the pre-discount price is shown, apply it. If a "Unit" or "Net" column already shows the discounted price each, use that. If the only price on the line is the amount for the whole line (such as a "Net Amount" or "Total" column with a quantity above 1), divide it by the quantity.
 - quantity: the quantity on the line, or 0 if none is shown.
 - description: the full product description as printed, joined into one line if it wraps across lines. Keep the wording and capitals.
 - product_code: the supplier's part number or product code when there is a code column. When there is no code column but the description contains a manufacturer part number (a run of mostly digits, such as 5024801001 or 11040005), copy that number here and leave it in the description too. Otherwise use an empty string. Never invent a code.
