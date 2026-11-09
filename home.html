@@ -987,6 +987,14 @@ function wonMoneySummary(jobs) {
     unassigned: jobs.filter(j => j.l.commission && !j.l.commissionTo).length };
 }
 
+// Jobs won status: a completed job is split by whether we've been paid
+// ("Paid, job closed" logged = paid, as for commission).
+function wonStatusTag(l) {
+  if (l.stage !== 'completed') return stageTag(l.stage);
+  const paid = isClosedJob(l);
+  return `<span class="stage-tag"><span class="dot" style="background:${paid ? '#16a34a' : '#d97706'}"></span>Completed, ${paid ? 'paid' : 'not paid'}</span>`;
+}
+
 function commissionCell(l) {
   if (!l.commission) return '<span class="muted">—</span>';
   const who = l.commissionTo ? escapeHtml(repName(l.commissionTo)) : '<span class="to-assign">Nobody assigned</span>';
@@ -1085,7 +1093,7 @@ function renderWon() {
     <tr><td class="job"><a href="${leadLink(l)}">${escapeHtml(leadName(l))}</a>
       ${optionLabel ? `<div class="job-line" title="${escapeHtml(optionLabel)}">${escapeHtml(optionLabel)}</div>` : ''}
       <div class="job-line">${jobTypeLabel(l)} · ${escapeHtml(owner)}</div></td>
-    <td>${stageTag(l.stage)}</td>
+    <td>${wonStatusTag(l)}</td>
     <td>${l.wonAt ? fmtDate(l.wonAt) : '<span class="muted">—</span>'}</td>
     <td>${installCell(l)}</td>
     <td>${commissionCell(l)}</td>
