@@ -1,25 +1,81 @@
--- Heat pump installs get their own checklist (Greg, 2026-11-11).
+-- Job type on the lead, and a heat pump install checklist (Greg, 2026-11-11).
 --
--- Solar installs keep scaffold, electrician, roofer, kit. Air source heat
--- pump installs need electrician, plumber, scaffold, kit (no roofer). The
--- type is picked on the CRM lead page's Install checklist and defaults to
--- solar, so every existing checklist is unchanged.
+-- prospects.product says what the job is: 'solar' (solar and battery, the
+-- default, so every existing lead stays solar) or 'ashp' (air source heat
+-- pump). With the existing lead_type (domestic / commercial) the CRM shows
+-- four job types: Solar - Domestic, Solar - Commercial, ASHP - Domestic,
+-- ASHP - Commercial.
 --
--- Adds install_type plus a plumber task with the same columns as the other
--- four (done, name, N/A, who/when stamps), and re-creates the stamping
--- trigger function from 047 with plumber included. Safe to run twice.
+-- The install checklist follows the product: solar needs scaffold,
+-- electrician, roofer, kit; ASHP needs electrician, plumber, scaffold, kit.
+-- This adds the plumber task (same columns as the other four) and re-creates
+-- the stamping trigger function from 047 with plumber included.
+--
+-- Product changes go into the lead's edit history like lead_type does
+-- (log_customer_name_change, last re-created in 049). Safe to run twice.
 
+-- 1. Product on the lead
+alter table prospects add column if not exists product text not null default 'solar';
+alter table prospects drop constraint if exists prospects_product_check;
+alter table prospects add constraint prospects_product_check check (product in ('solar', 'ashp'));
+
+-- 2. Edit history
+alter table prospect_name_audit
+  add column if not exists old_product text,
+  add column if not exists new_product text;
+
+create or replace function log_customer_name_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if old.customer_name is distinct from new.customer_name
+     or old.address is distinct from new.address
+     or old.postcode is distinct from new.postcode
+     or old.contact_phone is distinct from new.contact_phone
+     or old.contact_email is distinct from new.contact_email
+     or old.lead_type is distinct from new.lead_type
+     or old.product is distinct from new.product
+     or old.assigned_to_email is distinct from new.assigned_to_email
+     or old.lead_origin_id is distinct from new.lead_origin_id
+  then
+    insert into prospect_name_audit (
+      prospect_id, old_name, new_name,
+      old_address, new_address, old_postcode, new_postcode,
+      old_contact_phone, new_contact_phone, old_contact_email, new_contact_email,
+      old_lead_type, new_lead_type,
+      old_product, new_product,
+      old_assigned_to_email, new_assigned_to_email,
+      old_lead_origin_id, new_lead_origin_id,
+      edited_by_email
+    )
+    values (
+      new.id, old.customer_name, new.customer_name,
+      old.address, new.address, old.postcode, new.postcode,
+      old.contact_phone, new.contact_phone, old.contact_email, new.contact_email,
+      old.lead_type, new.lead_type,
+      old.product, new.product,
+      old.assigned_to_email, new.assigned_to_email,
+      old.lead_origin_id, new.lead_origin_id,
+      lower(auth.jwt() ->> 'email')
+    );
+  end if;
+  return new;
+end;
+$$;
+
+-- 3. Plumber task on the install checklist
 alter table install_checklists
-  add column if not exists install_type        text not null default 'solar',
   add column if not exists plumber_done        boolean not null default false,
   add column if not exists plumber_name        text,
   add column if not exists plumber_na          boolean not null default false,
   add column if not exists plumber_updated_at  timestamptz,
   add column if not exists plumber_updated_by  text;
+-- An earlier draft of this migration put the type on the checklist; it lives on the lead now.
+alter table install_checklists drop column if exists install_type;
 
-alter table install_checklists drop constraint if exists install_checklists_install_type_check;
-alter table install_checklists add constraint install_checklists_install_type_check
-  check (install_type in ('solar', 'ashp'));
 alter table install_checklists drop constraint if exists install_checklists_plumber_done_na_excl;
 alter table install_checklists add constraint install_checklists_plumber_done_na_excl
   check (not (plumber_done and plumber_na));

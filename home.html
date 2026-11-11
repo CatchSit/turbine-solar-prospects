@@ -657,14 +657,15 @@ function sourceLabel(p) {
 function leadName(p) { return p.customer_name || p.address || p.postcode || 'Unnamed lead'; }
 function leadLink(p) { return p.source === 'manual' ? `crm.html?lead=${encodeURIComponent(p.id)}` : `index.html?lead=${encodeURIComponent(p.id)}`; }
 
-const LEAD_COLUMNS = 'id, source, customer_name, address, postcode, lead_type, assigned_to_email, created_at, install_hub_job_id, install_scheduled_date, lead_channel';
+const LEAD_COLUMNS = 'id, source, customer_name, address, postcode, lead_type, product, assigned_to_email, created_at, install_hub_job_id, install_scheduled_date, lead_channel';
 // Same cost fields and margin formula as crm.html's QUOTE_COST_FIELDS /
 // quoteOptionTotals(): margin = quote price − sum of costs.
 // Install checklist items (install_checklists, migration 044) — edited on
 // crm.html's lead page. short = how they read in "still to book: …".
 // Solar jobs need scaffold, electrician, roofer, kit; heat pump (ASHP) jobs
-// need electrician, plumber, scaffold, kit (migration 068). INSTALL_TASKS is
-// every task, in the Install prep table's column order.
+// need electrician, plumber, scaffold, kit, going by the lead's product
+// (migration 068). INSTALL_TASKS is every task, in the Install prep
+// table's column order.
 const INSTALL_TASKS = [
   { key: 'scaffold',    label: 'Scaffold',    short: 'scaffold' },
   { key: 'electrician', label: 'Electrician', short: 'electrician' },
@@ -673,8 +674,8 @@ const INSTALL_TASKS = [
   { key: 'kit',         label: 'Kit',         short: 'kit order' },
 ];
 const INSTALL_TYPE_TASKS = { solar: ['scaffold', 'electrician', 'roofer', 'kit'], ashp: ['electrician', 'plumber', 'scaffold', 'kit'] };
-function installTasksFor(checklist) {
-  const keys = INSTALL_TYPE_TASKS[checklist?.install_type] || INSTALL_TYPE_TASKS.solar;
+function installTasksFor(product) {
+  const keys = INSTALL_TYPE_TASKS[product] || INSTALL_TYPE_TASKS.solar;
   return keys.map(k => INSTALL_TASKS.find(t => t.key === k));
 }
 const QUOTE_COST_FIELDS = ['kit_price', 'scaffold_price', 'electrical_cost', 'roofer_cost', 'mcs_cost',
@@ -739,7 +740,7 @@ async function loadPipelineData() {
     const checklist = checklistByLead[p.id] || null;
     // N/A tasks (migration 047) count as resolved, same as done — a job
     // with no scaffold needed shouldn't sit in "Needs attention" forever.
-    const outstanding = installTasksFor(checklist).filter(t => !checklist?.[`${t.key}_done`] && !checklist?.[`${t.key}_na`]);
+    const outstanding = installTasksFor(p.product).filter(t => !checklist?.[`${t.key}_done`] && !checklist?.[`${t.key}_na`]);
     const webEnquiries = enquiriesByLead[p.id] || [];
     return { ...p, contacts: cs, latest, stage, value, valueOption, installDate, completedAt, closedAt, commission, commissionTo, checklist, outstanding, webEnquiries, wonAt: wonContact?.contacted_at || null };
   });
@@ -884,7 +885,7 @@ LOADERS.pipeline = async function () {
    one shows the name if entered ("not confirmed") or "To book". */
 function prepCell(l, task, soon) {
   const c = l.checklist;
-  if (!installTasksFor(c).includes(task)) return '<span class="muted">Not needed</span>';
+  if (!installTasksFor(l.product).includes(task)) return '<span class="muted">Not needed</span>';
   const name = c?.[`${task.key}_name`];
   if (c?.[`${task.key}_na`]) {
     return `<span class="prep na"><span class="status-icon neutral" aria-hidden="true">–</span><span class="muted">N/A</span></span>`;
@@ -906,9 +907,9 @@ function installPrepCard(leads) {
     const soon = daysTo != null && daysTo <= 7;
     const when = daysTo == null ? '<span class="muted">No install date</span>'
       : `${fmtDate(l.installDate)}<div class="muted">${daysTo < 0 ? `${-daysTo} day${daysTo === -1 ? '' : 's'} ago` : daysTo === 0 ? 'Today' : `In ${daysTo} day${daysTo === 1 ? '' : 's'}`}</div>`;
-    const needed = installTasksFor(l.checklist).length;
+    const needed = installTasksFor(l.product).length;
     const resolved = needed - l.outstanding.length; // done + N/A
-    return `<tr><td><a href="${leadLink(l)}">${escapeHtml(leadName(l))}</a><div class="muted">${l.checklist?.install_type === 'ashp' ? 'Heat pump' : 'Solar'}</div></td>
+    return `<tr><td><a href="${leadLink(l)}">${escapeHtml(leadName(l))}</a><div class="muted">${l.product === 'ashp' ? 'Heat pump' : 'Solar'}</div></td>
       <td style="white-space:nowrap">${when}</td>
       ${INSTALL_TASKS.map(t => `<td>${prepCell(l, t, soon)}</td>`).join('')}
       <td class="num"><strong>${resolved}</strong> / ${needed}</td></tr>`;

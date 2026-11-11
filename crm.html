@@ -251,7 +251,7 @@ tbody tr:hover { background: var(--surface2); }
 .ic-row input[type=text]:disabled { opacity: .5; cursor: not-allowed; }
 .ic-row.ic-na-active { opacity: .55; }
 .ic-type { display: flex; align-items: center; gap: 12px; padding: 4px 0 10px; border-bottom: 1px solid var(--border); font-size: 13.5px; font-weight: 500; }
-.ic-type select { padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 13px; background: var(--surface2); color: var(--text); }
+.ic-type-hint { font-size: 12px; font-weight: 400; color: var(--text3); }
 .ic-meta { font-size: 11.5px; color: var(--text3); grid-column: 1 / -1; margin-top: -8px; }
 .ic-meta:empty { display: none; }
 .web-tag { display: inline-block; margin-top: 3px; font-size: 10.5px; font-weight: 600; color: #2563eb; background: #dbeafe; padding: 1px 7px; border-radius: 100px; }
@@ -883,7 +883,7 @@ function originOptionsHtml(currentId) {
 }
 
 /* ── Leads table ─────────────────────────────────────────── */
-const LEAD_COLUMNS = 'id, customer_name, lead_type, contact_phone, contact_email, address, postcode, created_at, install_hub_job_id, sent_to_install_hub_at, sent_to_install_hub_by_email, assigned_to_email, lead_channel, lead_origin_id, lead_cost, deleted_at, install_scheduled_date';
+const LEAD_COLUMNS = 'id, customer_name, lead_type, product, contact_phone, contact_email, address, postcode, created_at, install_hub_job_id, sent_to_install_hub_at, sent_to_install_hub_by_email, assigned_to_email, lead_channel, lead_origin_id, lead_cost, deleted_at, install_scheduled_date';
 
 /* ── Several people on one lead (2026-10-12): no locking. A save only goes
    through if the fields being saved still hold the values this page
@@ -1229,8 +1229,8 @@ async function fetchCalendarData() {
   return { at: Date.now(), dates, checklists };
 }
 
-function calTasksHtml(checklist) {
-  return `<div class="cal-tasks">${installTasksFor(checklist).map(t => {
+function calTasksHtml(checklist, product) {
+  return `<div class="cal-tasks">${installTasksFor(product).map(t => {
     const name = CAL_TASK_NAMES[t.key] || t.label;
     if (checklist?.[`${t.key}_na`]) return `<span class="cal-task na">${escapeHtml(name)} N/A</span>`;
     if (checklist?.[`${t.key}_done`]) {
@@ -1240,14 +1240,14 @@ function calTasksHtml(checklist) {
     return `<span class="cal-task todo">✗ ${escapeHtml(name)}</span>`;
   }).join('')}</div>`;
 }
-function calOutstandingCount(checklist) {
-  return installTasksFor(checklist).filter(t => !checklist?.[`${t.key}_na`] && !checklist?.[`${t.key}_done`]).length;
+function calOutstandingCount(checklist, product) {
+  return installTasksFor(product).filter(t => !checklist?.[`${t.key}_na`] && !checklist?.[`${t.key}_done`]).length;
 }
 
 function calCardHtml(d, dateKey, todayKey) {
   const checklist = calData.checklists[d.id];
   const installed = CAL_INSTALLED.includes(d.latest_outcome);
-  const outstanding = calOutstandingCount(checklist);
+  const outstanding = calOutstandingCount(checklist, d.product);
   let flag = '';
   if (installed) flag = '<div class="cal-flag ok">✔ Installed</div>';
   else if (dateKey < todayKey) flag = '<div class="cal-flag late">Date passed, not marked installed</div>';
@@ -1259,7 +1259,7 @@ function calCardHtml(d, dateKey, todayKey) {
   return `<button type="button" class="board-card cal-card" data-id="${escapeHtml(d.id)}" style="--card-color:${color}">
     <div class="bc-name">${escapeHtml(d.customer_name || 'Unnamed lead')}</div>
     <div class="bc-meta">${meta}</div>
-    ${installed ? '' : calTasksHtml(checklist)}
+    ${installed ? '' : calTasksHtml(checklist, d.product)}
     ${flag}
   </button>`;
 }
@@ -1273,7 +1273,7 @@ function calUnscheduledCardHtml(d) {
     <div class="bc-name">${escapeHtml(d.customer_name || 'Unnamed lead')}</div>
     <div class="bc-outcome"><span class="tag-dot" style="background:${color}"></span>${escapeHtml(cfg?.label || d.latest_outcome || '')}</div>
     <div class="bc-meta">${meta}</div>
-    ${calTasksHtml(calData.checklists[d.id])}
+    ${calTasksHtml(calData.checklists[d.id], d.product)}
   </button>`;
 }
 
@@ -1449,7 +1449,7 @@ function populateLeadFields(lead) {
   const typeCfg = LEAD_TYPE[lead.lead_type];
   const originKey = leadOriginKey(lead);
   document.getElementById('lead-pills').innerHTML = [
-    typeCfg ? pillHtml(typeCfg.color, typeCfg.label) : '',
+    typeCfg ? pillHtml(typeCfg.color, leadJobLabel(lead)) : '',
     pillHtml(originColor(originKey), `Origin: ${originLabel(originKey)}`, 'Where this lead came from'),
     pillHtml(ASSIGNED_CHIP_COLOR[lead.assigned_to_email || ''] || '#94a3b8', lead.assigned_to_email ? `Assigned: ${repName(lead.assigned_to_email)}` : 'Unassigned'),
   ].join('');
@@ -1466,7 +1466,7 @@ function populateLeadFields(lead) {
     row('Postcode', escapeHtml(lead.postcode || '')),
     row('Phone', escapeHtml(lead.contact_phone || '')),
     row('Email', escapeHtml(lead.contact_email || '')),
-    row('Type', escapeHtml(typeCfg?.label || '')),
+    row('Type', escapeHtml(leadJobLabel(lead))),
     row('Origin', escapeHtml(originLabel(originKey)) + cost),
     row('Assigned', escapeHtml(lead.assigned_to_email ? repName(lead.assigned_to_email) : '')),
   ].join('');
@@ -1484,9 +1484,10 @@ function populateLeadFields(lead) {
   document.getElementById('ld-phone').value = lead.contact_phone || '';
   document.getElementById('ld-email').value = lead.contact_email || '';
   selectedEditLeadType = lead.lead_type || null;
+  selectedEditProduct = lead.product || 'solar';
   document.querySelectorAll('#ld-type-chips .outcome-chip').forEach(c => {
-    const cfg = LEAD_TYPE[c.dataset.value];
-    const on = c.dataset.value === selectedEditLeadType;
+    const cfg = JOB_TYPES.find(t => t.key === c.dataset.value);
+    const on = c.dataset.value === `${selectedEditProduct}-${selectedEditLeadType}`;
     c.classList.toggle('on', on);
     c.style.background = on ? cfg.color : '';
     c.style.borderColor = on ? cfg.color : '';
@@ -1604,6 +1605,9 @@ function detailsHistoryChanges(h) {
     const newLabel = LEAD_TYPE[h.new_lead_type]?.label || h.new_lead_type || '(empty)';
     changes.push(`Type: "${escapeHtml(oldLabel)}" → "${escapeHtml(newLabel)}"`);
   }
+  if (h.old_product && h.new_product && h.old_product !== h.new_product) {
+    changes.push(`Job: "${escapeHtml(PRODUCT[h.old_product]?.label || h.old_product)}" → "${escapeHtml(PRODUCT[h.new_product]?.label || h.new_product)}"`);
+  }
   if (h.old_assigned_to_email !== h.new_assigned_to_email) {
     changes.push(`Assigned to: "${escapeHtml(repName(h.old_assigned_to_email))}" → "${escapeHtml(repName(h.new_assigned_to_email))}"`);
   }
@@ -1631,7 +1635,7 @@ async function loadActivity(prospectId) {
       .select('prospect_id, received_at, form, message, channel, utm_campaign, is_new_lead')
       .eq('prospect_id', prospectId).order('received_at', { ascending: false }),
     db.from('prospect_name_audit')
-      .select('prospect_id, old_name, new_name, old_address, new_address, old_postcode, new_postcode, old_contact_phone, new_contact_phone, old_contact_email, new_contact_email, old_lead_type, new_lead_type, old_assigned_to_email, new_assigned_to_email, old_lead_origin_id, new_lead_origin_id, edited_at, edited_by_email')
+      .select('prospect_id, old_name, new_name, old_address, new_address, old_postcode, new_postcode, old_contact_phone, new_contact_phone, old_contact_email, new_contact_email, old_lead_type, new_lead_type, old_product, new_product, old_assigned_to_email, new_assigned_to_email, old_lead_origin_id, new_lead_origin_id, edited_at, edited_by_email')
       .eq('prospect_id', prospectId)
       .order('edited_at', { ascending: false }),
     db.from('email_log')
@@ -1983,6 +1987,7 @@ function subscribeToLead(leadId) {
       if (p.deleted_at && !currentLead.deleted_at) { showToast('A manager has just deleted this lead.'); return; }
       const editing = document.getElementById('ld-form').style.display !== 'none';
       applyLeadRow(p);
+      renderInstallChecklist();
       showToast(editing
         ? "Someone else just changed this customer's details. If you both changed the same thing, your save will be stopped."
         : "Someone else just updated this customer's details.");
@@ -2053,21 +2058,22 @@ function subscribeToLeadsList() {
 /* ── Lead details edit (prospect_name_audit, migrations 025/031/042/049 —
    written by a database trigger on every change, "not client-driven") ── */
 let selectedEditLeadType = null;
+let selectedEditProduct = 'solar';
 (function initDetailsEditChips() {
   const chipsEl = document.getElementById('ld-type-chips');
-  LEAD_TYPE_ORDER.forEach(type => {
-    const cfg = LEAD_TYPE[type];
+  JOB_TYPES.forEach(cfg => {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'outcome-chip';
-    chip.dataset.value = type;
+    chip.dataset.value = cfg.key;
     chip.innerHTML = `<span class="chip-dot" style="background:${cfg.color}"></span>${escapeHtml(cfg.label)}`;
     chip.addEventListener('click', () => {
       chipsEl.querySelectorAll('.outcome-chip').forEach(c => { c.classList.remove('on'); c.style.background = ''; c.style.borderColor = ''; });
       chip.classList.add('on');
       chip.style.background = cfg.color;
       chip.style.borderColor = cfg.color;
-      selectedEditLeadType = type;
+      selectedEditLeadType = cfg.lead_type;
+      selectedEditProduct = cfg.product;
     });
     chipsEl.appendChild(chip);
   });
@@ -2121,7 +2127,7 @@ document.getElementById('details-save-btn').addEventListener('click', async () =
   const newEmail = document.getElementById('ld-email').value.trim();
   if (!newName) { alert('Please enter a customer name.'); return; }
   if (!newAddress || !newPostcode) { alert('Please enter an address and postcode.'); return; }
-  if (!selectedEditLeadType) { alert('Please pick commercial or domestic.'); return; }
+  if (!selectedEditLeadType) { alert('Please pick the job type.'); return; }
 
   const btn = document.getElementById('details-save-btn');
   btn.disabled = true; btn.textContent = 'Saving…';
@@ -2133,6 +2139,7 @@ document.getElementById('details-save-btn').addEventListener('click', async () =
     contact_phone: newPhone || null,
     contact_email: newEmail || null,
     lead_type: selectedEditLeadType,
+    product: selectedEditProduct,
     assigned_to_email: selectedEditAssignedTo || null,
   };
   const newOrigin = document.getElementById('ld-origin').value || null;
@@ -2141,7 +2148,7 @@ document.getElementById('details-save-btn').addEventListener('click', async () =
   // Conditional on the fields still holding what this page loaded, so a
   // newer change by someone else isn't overwritten. lead_cost is set by the
   // database from the supplier (049), so read it back.
-  const DETAIL_FIELDS = ['customer_name', 'address', 'postcode', 'contact_phone', 'contact_email', 'lead_type', 'assigned_to_email', 'lead_origin_id'];
+  const DETAIL_FIELDS = ['customer_name', 'address', 'postcode', 'contact_phone', 'contact_email', 'lead_type', 'product', 'assigned_to_email', 'lead_origin_id'];
   lastOwnLeadSaveAt = Date.now();
   const { data: savedRows, error } = await whereUnchanged(
     db.from('prospects').update(updates).eq('id', currentLead.id), currentLead, DETAIL_FIELDS,
@@ -2170,6 +2177,7 @@ document.getElementById('details-save-btn').addEventListener('click', async () =
   renderSidebarFilters();
   renderLeadsTable();
   populateLeadFields(currentLead);
+  renderInstallChecklist(); // the checklist follows the job type
   setDetailsEditing(false);
   loadActivity(currentLead.id);
 });
@@ -2189,13 +2197,14 @@ const INSTALL_TASK_DEFS = {
   kit:         { key: 'kit',         label: 'Kit ordered',           placeholder: 'Supplier' },
 };
 // Which tasks each kind of install needs (migration 068, Greg 2026-11-11).
-// A checklist with no install_type yet is a solar one.
+// Every lead has a product (solar by default), so every checklist has a list.
+// Follows the lead's product (prospects.product), set with the job type in Details.
 const INSTALL_TYPES = {
-  solar: { label: 'Solar / battery',      tasks: ['scaffold', 'electrician', 'roofer', 'kit'] },
+  solar: { label: 'Solar',                tasks: ['scaffold', 'electrician', 'roofer', 'kit'] },
   ashp:  { label: 'Air source heat pump', tasks: ['electrician', 'plumber', 'scaffold', 'kit'] },
 };
-function installTasksFor(checklist) {
-  return (INSTALL_TYPES[checklist?.install_type] || INSTALL_TYPES.solar).tasks.map(k => INSTALL_TASK_DEFS[k]);
+function installTasksFor(product) {
+  return (INSTALL_TYPES[product] || INSTALL_TYPES.solar).tasks.map(k => INSTALL_TASK_DEFS[k]);
 }
 let currentChecklist = null;
 
@@ -2217,7 +2226,7 @@ function installTaskMeta(task) {
 }
 
 function renderInstallChecklistProgress() {
-  const tasks = installTasksFor(currentChecklist);
+  const tasks = installTasksFor(currentLead?.product);
   const resolved = tasks.filter(t => currentChecklist?.[`${t.key}_done`] || currentChecklist?.[`${t.key}_na`]).length;
   const el = document.getElementById('ic-progress');
   el.textContent = resolved === tasks.length ? 'All booked' : `${resolved} of ${tasks.length} resolved`;
@@ -2249,10 +2258,8 @@ function renderInstallChecklist() {
     return;
   }
   document.getElementById('ic-status').textContent = '';
-  const tasks = installTasksFor(currentChecklist);
-  const type = INSTALL_TYPES[currentChecklist?.install_type] ? currentChecklist.install_type : 'solar';
-  const typeRow = `<div class="ic-type"><label for="ic-type">Install type</label>
-    <select id="ic-type">${Object.entries(INSTALL_TYPES).map(([k, t]) => `<option value="${k}" ${k === type ? 'selected' : ''}>${escapeHtml(t.label)}</option>`).join('')}</select></div>`;
+  const tasks = installTasksFor(currentLead?.product);
+  const typeRow = `<div class="ic-type">${escapeHtml((INSTALL_TYPES[currentLead?.product] || INSTALL_TYPES.solar).label)} install <span class="ic-type-hint">Change the job type in Details to switch the list</span></div>`;
   document.getElementById('ic-rows').innerHTML = typeRow + tasks.map(t => {
     const na = !!currentChecklist?.[`${t.key}_na`];
     return `
@@ -2263,7 +2270,6 @@ function renderInstallChecklist() {
       <span class="ic-meta" id="ic-meta-${t.key}"></span>
     </div>`;
   }).join('');
-  document.getElementById('ic-type').addEventListener('change', saveInstallType);
   tasks.forEach(t => {
     document.getElementById(`ic-done-${t.key}`).addEventListener('change', () => saveInstallTask(t.key));
     document.getElementById(`ic-name-${t.key}`).addEventListener('change', () => saveInstallTask(t.key));
@@ -2294,23 +2300,6 @@ async function saveInstallTask(key) {
     .select('*').single();
   if (!currentLead || currentLead.id !== prospectId) return;
   if (error) { statusEl.textContent = 'Failed to save: ' + error.message; return; }
-  currentChecklist = data;
-  renderInstallChecklist();
-  statusEl.textContent = 'Saved';
-}
-
-// Solar or heat pump: switches which tasks show. Ticks on tasks the new
-// type does not use are kept, so switching back loses nothing.
-async function saveInstallType() {
-  if (!currentLead || blockedReadOnly()) { renderInstallChecklist(); return; }
-  const prospectId = currentLead.id;
-  const statusEl = document.getElementById('ic-status');
-  statusEl.textContent = 'Saving…';
-  const { data, error } = await db.from('install_checklists')
-    .upsert({ prospect_id: prospectId, install_type: document.getElementById('ic-type').value }, { onConflict: 'prospect_id' })
-    .select('*').single();
-  if (!currentLead || currentLead.id !== prospectId) return;
-  if (error) { statusEl.textContent = 'Failed to save: ' + error.message; renderInstallChecklist(); return; }
   currentChecklist = data;
   renderInstallChecklist();
   statusEl.textContent = 'Saved';
@@ -3332,21 +3321,22 @@ document.getElementById('cm-submit').addEventListener('click', async () => {
 
 /* ── Add Lead modal (ported from index.html) ─────────────── */
 let selectedLeadType = null;
+let selectedProduct = 'solar';
 (function initLeadModal() {
   const chipsEl = document.getElementById('lm-type-chips');
-  LEAD_TYPE_ORDER.forEach(type => {
-    const cfg = LEAD_TYPE[type];
+  JOB_TYPES.forEach(cfg => {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'outcome-chip';
-    chip.dataset.value = type;
+    chip.dataset.value = cfg.key;
     chip.innerHTML = `<span class="chip-dot" style="background:${cfg.color}"></span>${escapeHtml(cfg.label)}`;
     chip.addEventListener('click', () => {
       chipsEl.querySelectorAll('.outcome-chip').forEach(c => { c.classList.remove('on'); c.style.background = ''; c.style.borderColor = ''; });
       chip.classList.add('on');
       chip.style.background = cfg.color;
       chip.style.borderColor = cfg.color;
-      selectedLeadType = type;
+      selectedLeadType = cfg.lead_type;
+      selectedProduct = cfg.product;
     });
     chipsEl.appendChild(chip);
   });
@@ -3359,6 +3349,7 @@ function openLeadModal() {
   document.getElementById('lm-phone').value = '';
   document.getElementById('lm-email').value = '';
   selectedLeadType = null;
+  selectedProduct = 'solar';
   document.querySelectorAll('#lm-type-chips .outcome-chip').forEach(c => { c.classList.remove('on'); c.style.background = ''; c.style.borderColor = ''; });
   document.getElementById('lm-origin').innerHTML = originOptionsHtml(null);
   document.getElementById('lm-origin').value = '';
@@ -3388,7 +3379,7 @@ document.getElementById('lm-submit').addEventListener('click', async () => {
   const originId = document.getElementById('lm-origin').value || null;
 
   if (!customerName) { alert('Please enter the customer name.'); return; }
-  if (!selectedLeadType) { alert('Please pick commercial or domestic.'); return; }
+  if (!selectedLeadType) { alert('Please pick the job type.'); return; }
   if (!address) { alert('Please enter an address.'); return; }
   if (!postcode) { alert('Please enter a postcode.'); return; }
 
@@ -3416,6 +3407,7 @@ document.getElementById('lm-submit').addEventListener('click', async () => {
     region: 'yorkshire-humber',
     customer_name: customerName,
     lead_type: selectedLeadType,
+    product: selectedProduct,
     contact_phone: phone || null,
     contact_email: email || null,
     address,
@@ -3427,7 +3419,7 @@ document.getElementById('lm-submit').addEventListener('click', async () => {
     created_by_email: currentUser?.email || null,
     assigned_to_email: isAdmin(currentUser) ? null : (currentUser?.email || '').toLowerCase() || null,
     lead_origin_id: originId,
-  }]).select('id, customer_name, lead_type, contact_phone, contact_email, address, postcode, created_at, install_hub_job_id, sent_to_install_hub_at, sent_to_install_hub_by_email, assigned_to_email, lead_channel, lead_origin_id, lead_cost').single();
+  }]).select('id, customer_name, lead_type, product, contact_phone, contact_email, address, postcode, created_at, install_hub_job_id, sent_to_install_hub_at, sent_to_install_hub_by_email, assigned_to_email, lead_channel, lead_origin_id, lead_cost').single();
 
   btn.disabled = false; btn.textContent = 'Add lead';
 
