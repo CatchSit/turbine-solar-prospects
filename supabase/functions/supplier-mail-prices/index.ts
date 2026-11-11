@@ -36,6 +36,7 @@ const WHOLESALERS: Record<string, string> = {
   'ukgreentech.co.uk': 'UK Greentech',
   'yesss.co.uk': 'YESSS',
   'logicool-ac.com': 'Logicool',
+  'rexel.co.uk': 'Rexel',
 }
 const PAGE_SIZE = 50
 const MAX_PDF_BYTES = 15 * 1024 * 1024
