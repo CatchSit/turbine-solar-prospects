@@ -657,9 +657,9 @@ function sourceLabel(p) {
 function leadName(p) { return p.customer_name || p.address || p.postcode || 'Unnamed lead'; }
 function leadLink(p) { return p.source === 'manual' ? `crm.html?lead=${encodeURIComponent(p.id)}` : `index.html?lead=${encodeURIComponent(p.id)}`; }
 
-const LEAD_COLUMNS = 'id, source, customer_name, address, postcode, lead_type, product, assigned_to_email, created_at, install_hub_job_id, install_scheduled_date, lead_channel';
+const LEAD_COLUMNS = 'id, source, customer_name, address, postcode, lead_type, product, assigned_to_email, created_at, install_hub_job_id, install_scheduled_date, lead_channel, lead_cost';
 // Same cost fields and margin formula as crm.html's QUOTE_COST_FIELDS /
-// quoteOptionTotals(): margin = quote price − sum of costs.
+// quoteOptionTotals(): margin = quote price − (sum of costs + lead cost).
 // Install checklist items (install_checklists, migration 044) — edited on
 // crm.html's lead page. short = how they read in "still to book: …".
 // Solar jobs need scaffold, electrician, roofer, kit; heat pump (ASHP) jobs
@@ -938,12 +938,14 @@ function wonPeriodStart(period) {
   return null;
 }
 
-// Total costs for a job's quote option, or null when no costs were entered —
-// reporting price − 0 as a 100% margin would be misleading.
-function jobCosts(opt) {
+// Total costs for a job's quote option plus what the lead cost to buy
+// (prospects.lead_cost, 049), or null when no costs were entered on the
+// option: reporting price minus the lead cost alone as the margin would
+// be misleading.
+function jobCosts(opt, leadCost) {
   if (!opt) return null;
   if (!QUOTE_COST_FIELDS.some(f => opt[f] != null && Number(opt[f]) !== 0)) return null;
-  return QUOTE_COST_FIELDS.reduce((t, f) => t + (Number(opt[f]) || 0), 0);
+  return QUOTE_COST_FIELDS.reduce((t, f) => t + (Number(opt[f]) || 0), 0) + (Number(leadCost) || 0);
 }
 
 function jobTypeLabel(l) {
@@ -1020,7 +1022,7 @@ function renderWon() {
   const start = wonPeriodStart(wonPeriod);
   const jobs = pipelineLeads
     .filter(l => WON_STAGES.has(l.stage) && (!start || (l.wonAt && new Date(l.wonAt) >= start)))
-    .map(l => ({ l, costs: jobCosts(l.valueOption) }))
+    .map(l => ({ l, costs: jobCosts(l.valueOption, l.lead_cost) }))
     .sort((a, b) => new Date(b.l.wonAt || 0) - new Date(a.l.wonAt || 0));
 
   const total = jobs.reduce((t, j) => t + (j.l.value || 0), 0);

@@ -1988,6 +1988,7 @@ function subscribeToLead(leadId) {
       const editing = document.getElementById('ld-form').style.display !== 'none';
       applyLeadRow(p);
       renderInstallChecklist();
+      refreshQuoteLeadCost();
       showToast(editing
         ? "Someone else just changed this customer's details. If you both changed the same thing, your save will be stopped."
         : "Someone else just updated this customer's details.");
@@ -2178,6 +2179,7 @@ document.getElementById('details-save-btn').addEventListener('click', async () =
   renderLeadsTable();
   populateLeadFields(currentLead);
   renderInstallChecklist(); // the checklist follows the job type
+  refreshQuoteLeadCost();
   setDetailsEditing(false);
   loadActivity(currentLead.id);
 });
@@ -2409,8 +2411,19 @@ function qoFieldId(optionId, field) { return `qo-${field}-${optionId}`; }
 function qoInput(optionId, field) { return document.getElementById(qoFieldId(optionId, field)); }
 function optionRowsEl(optionId) { return document.querySelectorAll(`tr[data-option-id="${CSS.escape(optionId)}"]`); }
 
+// What the lead cost to buy (prospects.lead_cost, set by the database from
+// the supplier, migration 049). Greg 2026-11-11: it is part of every quote
+// option's cost breakdown but can't be edited there; it follows the
+// lead's Origin in Details.
+function currentLeadCost() { return Number(currentLead?.lead_cost) || 0; }
+function leadCostText() {
+  return currentLead?.lead_cost != null
+    ? `£${Number(currentLead.lead_cost).toLocaleString('en-GB', { minimumFractionDigits: 2 })}`
+    : '£0 (not a bought lead)';
+}
+
 function quoteOptionTotals(values) {
-  const total = QUOTE_COST_FIELDS.reduce((sum, f) => sum + (Number(values[f.key]) || 0), 0);
+  const total = QUOTE_COST_FIELDS.reduce((sum, f) => sum + (Number(values[f.key]) || 0), 0) + currentLeadCost();
   const price = Number(values.quote_price) || 0;
   const margin = price - total;
   const marginPct = price > 0 ? (margin / price) * 100 : 0;
@@ -2496,7 +2509,10 @@ function quoteOptionDetailRowHtml(opt) {
   const costFieldsHtml = QUOTE_COST_FIELDS.map(f => f.key === 'commission_cost' ? commissionFieldHtml(opt) : `
     <div class="quote-field"><label>${escapeHtml(f.label)}</label>
       <input type="number" min="0" step="1" id="${qoFieldId(id, f.key)}" value="${opt[f.key] ?? ''}" oninput="updateOptionTotals('${id}')" disabled/>
-    </div>`).join('');
+    </div>`).join('') + `
+    <div class="quote-field"><label>Lead cost (£)</label>
+      <div class="quote-fixed" id="qo-leadcost-${id}" title="Set by the lead's Origin in Details">${leadCostText()}</div>
+    </div>`;
 
   return `
     <tr class="qo-detail-row" id="qo-detail-${id}" data-option-id="${escapeHtml(id)}" style="display:none">
@@ -2543,6 +2559,17 @@ function quoteOptionDetailRowHtml(opt) {
       </div>
       </td>
     </tr>`;
+}
+
+// The lead cost changed (Origin changed in Details): update every option's
+// fixed Lead cost field and its totals without re-rendering the table.
+function refreshQuoteLeadCost() {
+  currentQuoteOptions.forEach(opt => {
+    const el = document.getElementById(`qo-leadcost-${opt.id}`);
+    if (el) el.textContent = leadCostText();
+    refreshSummaryRow(opt);
+    if (document.getElementById(`qo-total-${opt.id}`)) updateOptionTotals(opt.id);
+  });
 }
 
 function quoteOptionRowsHtml(opt) {
