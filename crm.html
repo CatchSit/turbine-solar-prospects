@@ -250,6 +250,8 @@ tbody tr:hover { background: var(--surface2); }
 .ic-row input[type=text]:focus { outline: none; border-color: var(--accent); }
 .ic-row input[type=text]:disabled { opacity: .5; cursor: not-allowed; }
 .ic-row.ic-na-active { opacity: .55; }
+.ic-type { display: flex; align-items: center; gap: 12px; padding: 4px 0 10px; border-bottom: 1px solid var(--border); font-size: 13.5px; font-weight: 500; }
+.ic-type select { padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 13px; background: var(--surface2); color: var(--text); }
 .ic-meta { font-size: 11.5px; color: var(--text3); grid-column: 1 / -1; margin-top: -8px; }
 .ic-meta:empty { display: none; }
 .web-tag { display: inline-block; margin-top: 3px; font-size: 10.5px; font-weight: 600; color: #2563eb; background: #dbeafe; padding: 1px 7px; border-radius: 100px; }
@@ -1193,7 +1195,7 @@ document.getElementById('leads-board').addEventListener('click', e => {
    search as the other views. Read-only: nothing here writes. ── */
 const CAL_WON_UNSCHEDULED = ['Converted', 'Contract Signed', 'DNO Submitted', 'DNO Approved'];
 const CAL_INSTALLED = ['Completed', 'Job Closed'];
-const CAL_TASK_NAMES = { scaffold: 'Scaffold', electrician: 'Electrician', roofer: 'Roofer', kit: 'Kit' };
+const CAL_TASK_NAMES = { scaffold: 'Scaffold', electrician: 'Electrician', roofer: 'Roofer', plumber: 'Plumber', kit: 'Kit' };
 const CAL_CACHE_MS = 30000;
 let calWeekOffset = 0;            // 0 = last week to the week after next
 let calData = null;               // { at, dates: {id: 'YYYY-MM-DD'}, checklists: {id: row} }
@@ -1228,7 +1230,7 @@ async function fetchCalendarData() {
 }
 
 function calTasksHtml(checklist) {
-  return `<div class="cal-tasks">${INSTALL_TASKS.map(t => {
+  return `<div class="cal-tasks">${installTasksFor(checklist).map(t => {
     const name = CAL_TASK_NAMES[t.key] || t.label;
     if (checklist?.[`${t.key}_na`]) return `<span class="cal-task na">${escapeHtml(name)} N/A</span>`;
     if (checklist?.[`${t.key}_done`]) {
@@ -1239,7 +1241,7 @@ function calTasksHtml(checklist) {
   }).join('')}</div>`;
 }
 function calOutstandingCount(checklist) {
-  return INSTALL_TASKS.filter(t => !checklist?.[`${t.key}_na`] && !checklist?.[`${t.key}_done`]).length;
+  return installTasksFor(checklist).filter(t => !checklist?.[`${t.key}_na`] && !checklist?.[`${t.key}_done`]).length;
 }
 
 function calCardHtml(d, dateKey, todayKey) {
@@ -2001,7 +2003,7 @@ function subscribeToLead(leadId) {
       if (currentLead?.id !== leadId || !row) return;
       const typing = document.activeElement && document.getElementById('ic-rows').contains(document.activeElement);
       if (typing) return; // don't re-render under someone's cursor; their next save reloads it anyway
-      const changedByOther = INSTALL_TASKS.some(t => row[`${t.key}_updated_by`] && !isMe(row[`${t.key}_updated_by`]) && row[`${t.key}_updated_at`] !== currentChecklist?.[`${t.key}_updated_at`]);
+      const changedByOther = Object.values(INSTALL_TASK_DEFS).some(t => row[`${t.key}_updated_by`] && !isMe(row[`${t.key}_updated_by`]) && row[`${t.key}_updated_at`] !== currentChecklist?.[`${t.key}_updated_at`]);
       currentChecklist = row;
       renderInstallChecklist();
       if (changedByOther) showToast('Someone else just updated the install checklist.');
@@ -2179,12 +2181,22 @@ document.getElementById('details-save-btn').addEventListener('click', async () =
    locked, listing what comes next, so new staff can see the whole flow.
    Each tick/name saves on its own via upsert; the database stamps who
    changed it and when. */
-const INSTALL_TASKS = [
-  { key: 'scaffold',    label: 'Scaffold scheduled',    placeholder: 'Scaffolding company' },
-  { key: 'electrician', label: 'Electrician scheduled', placeholder: 'Electrician' },
-  { key: 'roofer',      label: 'Roofer scheduled',      placeholder: 'Roofer' },
-  { key: 'kit',         label: 'Kit ordered',           placeholder: 'Supplier' },
-];
+const INSTALL_TASK_DEFS = {
+  scaffold:    { key: 'scaffold',    label: 'Scaffold scheduled',    placeholder: 'Scaffolding company' },
+  electrician: { key: 'electrician', label: 'Electrician scheduled', placeholder: 'Electrician' },
+  roofer:      { key: 'roofer',      label: 'Roofer scheduled',      placeholder: 'Roofer' },
+  plumber:     { key: 'plumber',     label: 'Plumber scheduled',     placeholder: 'Plumber' },
+  kit:         { key: 'kit',         label: 'Kit ordered',           placeholder: 'Supplier' },
+};
+// Which tasks each kind of install needs (migration 068, Greg 2026-11-11).
+// A checklist with no install_type yet is a solar one.
+const INSTALL_TYPES = {
+  solar: { label: 'Solar / battery',      tasks: ['scaffold', 'electrician', 'roofer', 'kit'] },
+  ashp:  { label: 'Air source heat pump', tasks: ['electrician', 'plumber', 'scaffold', 'kit'] },
+};
+function installTasksFor(checklist) {
+  return (INSTALL_TYPES[checklist?.install_type] || INSTALL_TYPES.solar).tasks.map(k => INSTALL_TASK_DEFS[k]);
+}
 let currentChecklist = null;
 
 async function loadInstallChecklist(prospectId) {
@@ -2205,11 +2217,12 @@ function installTaskMeta(task) {
 }
 
 function renderInstallChecklistProgress() {
-  const resolved = INSTALL_TASKS.filter(t => currentChecklist?.[`${t.key}_done`] || currentChecklist?.[`${t.key}_na`]).length;
+  const tasks = installTasksFor(currentChecklist);
+  const resolved = tasks.filter(t => currentChecklist?.[`${t.key}_done`] || currentChecklist?.[`${t.key}_na`]).length;
   const el = document.getElementById('ic-progress');
-  el.textContent = resolved === INSTALL_TASKS.length ? 'All booked' : `${resolved} of ${INSTALL_TASKS.length} resolved`;
-  el.classList.toggle('all-done', resolved === INSTALL_TASKS.length);
-  INSTALL_TASKS.forEach(t => { const m = document.getElementById(`ic-meta-${t.key}`); if (m) m.innerHTML = installTaskMeta(t); });
+  el.textContent = resolved === tasks.length ? 'All booked' : `${resolved} of ${tasks.length} resolved`;
+  el.classList.toggle('all-done', resolved === tasks.length);
+  tasks.forEach(t => { const m = document.getElementById(`ic-meta-${t.key}`); if (m) m.innerHTML = installTaskMeta(t); });
 }
 
 function installUnlocked() {
@@ -2232,11 +2245,15 @@ function renderInstallChecklist() {
     lockedEl.innerHTML = closed
       ? '<span>This lead is closed, so there is no install to plan.</span>'
       : `<span>Unlocks when the quote is accepted. Then you will:</span>
-         <ul><li>Send the order contract and take the £200 deposit</li><li>Apply to the DNO and wait for approval</li><li>Book the install date and send it to the installs team</li>${INSTALL_TASKS.map(t => `<li>${escapeHtml(t.label)}</li>`).join('')}</ul>`;
+         <ul><li>Send the order contract and take the £200 deposit</li><li>Apply to the DNO and wait for approval</li><li>Book the install date and send it to the installs team</li><li>Book the trades and order the kit (the list depends on whether it is a solar or heat pump install)</li></ul>`;
     return;
   }
   document.getElementById('ic-status').textContent = '';
-  document.getElementById('ic-rows').innerHTML = INSTALL_TASKS.map(t => {
+  const tasks = installTasksFor(currentChecklist);
+  const type = INSTALL_TYPES[currentChecklist?.install_type] ? currentChecklist.install_type : 'solar';
+  const typeRow = `<div class="ic-type"><label for="ic-type">Install type</label>
+    <select id="ic-type">${Object.entries(INSTALL_TYPES).map(([k, t]) => `<option value="${k}" ${k === type ? 'selected' : ''}>${escapeHtml(t.label)}</option>`).join('')}</select></div>`;
+  document.getElementById('ic-rows').innerHTML = typeRow + tasks.map(t => {
     const na = !!currentChecklist?.[`${t.key}_na`];
     return `
     <div class="ic-row ${na ? 'ic-na-active' : ''}" id="ic-row-${t.key}">
@@ -2246,7 +2263,8 @@ function renderInstallChecklist() {
       <span class="ic-meta" id="ic-meta-${t.key}"></span>
     </div>`;
   }).join('');
-  INSTALL_TASKS.forEach(t => {
+  document.getElementById('ic-type').addEventListener('change', saveInstallType);
+  tasks.forEach(t => {
     document.getElementById(`ic-done-${t.key}`).addEventListener('change', () => saveInstallTask(t.key));
     document.getElementById(`ic-name-${t.key}`).addEventListener('change', () => saveInstallTask(t.key));
     document.getElementById(`ic-na-${t.key}`).addEventListener('change', () => saveInstallTask(t.key));
@@ -2276,6 +2294,23 @@ async function saveInstallTask(key) {
     .select('*').single();
   if (!currentLead || currentLead.id !== prospectId) return;
   if (error) { statusEl.textContent = 'Failed to save: ' + error.message; return; }
+  currentChecklist = data;
+  renderInstallChecklist();
+  statusEl.textContent = 'Saved';
+}
+
+// Solar or heat pump: switches which tasks show. Ticks on tasks the new
+// type does not use are kept, so switching back loses nothing.
+async function saveInstallType() {
+  if (!currentLead || blockedReadOnly()) { renderInstallChecklist(); return; }
+  const prospectId = currentLead.id;
+  const statusEl = document.getElementById('ic-status');
+  statusEl.textContent = 'Saving…';
+  const { data, error } = await db.from('install_checklists')
+    .upsert({ prospect_id: prospectId, install_type: document.getElementById('ic-type').value }, { onConflict: 'prospect_id' })
+    .select('*').single();
+  if (!currentLead || currentLead.id !== prospectId) return;
+  if (error) { statusEl.textContent = 'Failed to save: ' + error.message; renderInstallChecklist(); return; }
   currentChecklist = data;
   renderInstallChecklist();
   statusEl.textContent = 'Saved';
