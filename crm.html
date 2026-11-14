@@ -293,6 +293,9 @@ tbody tr:hover { background: var(--surface2); }
 .dv-img { max-width: 100%; max-height: 100%; object-fit: contain; cursor: zoom-in; border-radius: 4px; background: #fff; }
 .dv-img.zoomed { max-width: none; max-height: none; cursor: zoom-out; }
 .dv-pdf { width: 100%; height: 100%; border: none; background: #fff; border-radius: 4px; }
+.dv-video-wrap { display: flex; flex-direction: column; align-items: center; max-width: 100%; max-height: 100%; height: 100%; justify-content: center; }
+.dv-video { max-width: 100%; max-height: calc(100% - 44px); border-radius: 4px; background: #000; }
+.dv-video-dl { margin-top: 8px; font-size: 13px; color: #cbd5e1; text-align: center; }
 .dv-msg { color: #e6ece9; font-size: 14px; text-align: center; line-height: 2; }
 .dv-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 44px; height: 64px; border: none; border-radius: 8px; background: rgba(255,255,255,.12); color: #fff; font-size: 32px; cursor: pointer; }
 .dv-nav:hover:not(:disabled) { background: rgba(255,255,255,.25); }
@@ -626,7 +629,7 @@ tbody tr:hover { background: var(--surface2); }
             <div class="doc-list" id="doc-list">Loading…</div>
             <div class="doc-upload">
               <select class="doc-category-select" id="doc-category-select" title="What is this document?"></select>
-              <input type="file" accept="application/pdf,image/jpeg,image/png,image/heic,.doc,.docx" class="doc-file-input" id="doc-file-input" multiple>
+              <input type="file" accept="application/pdf,image/jpeg,image/png,image/heic,.doc,.docx,video/quicktime,video/mp4,.mov,.mp4" class="doc-file-input" id="doc-file-input" multiple>
               <button type="button" class="doc-upload-btn" id="doc-upload-btn">Upload</button>
             </div>
             <div class="doc-upload-status" id="doc-upload-status"></div>
@@ -2596,7 +2599,7 @@ function quoteOptionDetailRowHtml(opt) {
       <div class="quote-status" style="margin-top:16px;font-weight:600">Documents</div>
       <div class="doc-list" id="qo-doc-list-${id}">Loading…</div>
       <div class="doc-upload">
-        <input type="file" accept="application/pdf,image/jpeg,image/png,image/heic,.doc,.docx" class="doc-file-input" id="qo-doc-file-${id}" multiple>
+        <input type="file" accept="application/pdf,image/jpeg,image/png,image/heic,.doc,.docx,video/quicktime,video/mp4,.mov,.mp4" class="doc-file-input" id="qo-doc-file-${id}" multiple>
         <button type="button" class="doc-upload-btn" id="qo-doc-btn-${id}" onclick="uploadOptionDocument('${id}')">Upload</button>
       </div>
       <div class="doc-upload-status" id="qo-doc-status-${id}"></div>
@@ -2985,13 +2988,31 @@ async function uploadOptionDocument(optionId) {
    same generalised-from-proposals mechanism as index.html's popup,
    migration 018) ─────────────────────────────────────────── */
 const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024;
+// Videos (.mov/.mp4, Greg 2026-11-14) get their own limit: 45 MB fits under
+// Supabase's 50 MB per-file upload cap and the bucket limit (migration 070).
+const MAX_VIDEO_BYTES = 45 * 1024 * 1024;
 const ALLOWED_DOCUMENT_TYPES = new Set([
   'application/pdf', 'image/jpeg', 'image/png', 'image/heic',
   'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'video/quicktime', 'video/mp4',
 ]);
-const ALLOWED_DOCUMENT_EXTENSIONS = /\.(pdf|jpe?g|png|heic|docx?)$/i;
+const ALLOWED_DOCUMENT_EXTENSIONS = /\.(pdf|jpe?g|png|heic|docx?|mov|mp4)$/i;
+const VIDEO_FILE_RE = /\.(mov|mp4|m4v)$/i;
+function isVideoFile(file) { return /^video\//.test(file.type) || VIDEO_FILE_RE.test(file.name); }
 function isAllowedDocumentFile(file) {
   return ALLOWED_DOCUMENT_TYPES.has(file.type) || ALLOWED_DOCUMENT_EXTENSIONS.test(file.name);
+}
+// Windows often gives .mov/.heic files no type; the bucket only accepts the
+// listed types, so fall back to one worked out from the extension.
+const DOCUMENT_TYPE_BY_EXT = {
+  pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', heic: 'image/heic',
+  doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  mov: 'video/quicktime', mp4: 'video/mp4',
+};
+function documentContentType(file) {
+  if (ALLOWED_DOCUMENT_TYPES.has(file.type)) return file.type;
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  return DOCUMENT_TYPE_BY_EXT[ext] || file.type || 'application/octet-stream';
 }
 
 // Uploads every file chosen in fileInput (the inputs allow several), one
@@ -3010,14 +3031,16 @@ async function uploadDocuments({ prospectId, quoteOptionId = null, category = nu
   if (btn) btn.disabled = true;
   try {
     for (const [i, file] of files.entries()) {
-      if (!isAllowedDocumentFile(file)) { skipped.push(`${file.name} (PDF, Word or image files only)`); continue; }
-      if (file.size > MAX_DOCUMENT_BYTES) { skipped.push(`${file.name} (over 20 MB)`); continue; }
+      if (!isAllowedDocumentFile(file)) { skipped.push(`${file.name} (PDF, Word, image or video files only)`); continue; }
+      const video = isVideoFile(file);
+      if (video && file.size > MAX_VIDEO_BYTES) { skipped.push(`${file.name} (video over 45 MB: trim it, or send a smaller version from the phone)`); continue; }
+      if (!video && file.size > MAX_DOCUMENT_BYTES) { skipped.push(`${file.name} (over 20 MB)`); continue; }
       statusEl.textContent = files.length > 1 ? `Uploading ${i + 1} of ${files.length}: ${file.name}…` : 'Uploading…';
 
       const safeFileName = file.name.replace(/[^\w.\- ]+/g, '_').slice(-120);
       const storagePath = `${prospectId}/${Date.now()}-${safeFileName}`;
       const { error: uploadError } = await db.storage.from('proposals')
-        .upload(storagePath, file, { contentType: file.type || 'application/octet-stream' });
+        .upload(storagePath, file, { contentType: documentContentType(file) });
       if (uploadError) { skipped.push(`${file.name} (upload failed: ${uploadError.message || 'try again'})`); continue; }
 
       const row = {
@@ -3312,17 +3335,21 @@ document.getElementById('doc-upload-btn').addEventListener('click', async () => 
    that was clicked (the lead's Documents card, or one quote option's).
    Files stay private: every view uses a short-lived signed URL, the same
    as the old Open link. Word/HEIC files can't render in a browser, so the
-   viewer offers Download for those. No third-party viewers (customer data). */
+   viewer offers Download for those. Videos (.mov/.mp4) play in a <video>
+   player, with Download when the browser can't play them. No third-party viewers (customer data). */
 const docViewerLists = {};     // list key ('general' or a quote option id) -> rows in display order
 const DOC_IMAGE_RE = /\.(jpe?g|jfif|png|gif|webp)$/i;
 const DOC_PDF_RE = /\.pdf$/i;
-function docKind(name) { return DOC_IMAGE_RE.test(name || '') ? 'image' : DOC_PDF_RE.test(name || '') ? 'pdf' : 'other'; }
+function docKind(name) {
+  return DOC_IMAGE_RE.test(name || '') ? 'image' : DOC_PDF_RE.test(name || '') ? 'pdf'
+    : VIDEO_FILE_RE.test(name || '') ? 'video' : 'other';
+}
 
 function docMainHtml(p, listKey, idx) {
   const kind = docKind(p.file_name);
   const thumb = kind === 'image'
     ? `<img class="doc-thumb" alt="" loading="lazy" data-thumb-path="${escapeHtml(p.storage_path)}">`
-    : `<span class="doc-thumb doc-thumb-icon">${kind === 'pdf' ? 'PDF' : 'FILE'}</span>`;
+    : `<span class="doc-thumb doc-thumb-icon">${kind === 'pdf' ? 'PDF' : kind === 'video' ? 'VIDEO' : 'FILE'}</span>`;
   return `<div class="doc-main" onclick="openDocViewer('${escapeHtml(listKey)}', ${idx})" title="View">
       ${thumb}
       <div class="doc-text">
@@ -3431,7 +3458,7 @@ async function showViewedDoc() {
   body.innerHTML = '<div class="dv-msg">Loading…</div>';
   let data, error;
   try {
-    ({ data, error } = await db.storage.from('proposals').createSignedUrl(doc.storage_path, 600));
+    ({ data, error } = await db.storage.from('proposals').createSignedUrl(doc.storage_path, kind === 'video' ? 3600 : 600));
   } catch (e) { error = e; }
   if (token !== docViewer.token) return;   // moved on while this was loading
   if (error || !data?.signedUrl) { body.innerHTML = `<div class="dv-msg">Couldn't load this document. Try again in a moment.</div>`; return; }
@@ -3454,6 +3481,30 @@ async function showViewedDoc() {
     frame.title = doc.file_name;
     frame.src = data.signedUrl;
     body.appendChild(frame);
+  } else if (kind === 'video') {
+    // iPhone "High Efficiency" (HEVC) videos often won't play in Chrome/Edge
+    // on Windows: offer Download whenever playback fails.
+    body.classList.remove('zoomed');
+    body.innerHTML = '';
+    const video = document.createElement('video');
+    video.className = 'dv-video';
+    video.controls = true;
+    video.preload = 'metadata';
+    video.playsInline = true;
+    video.src = data.signedUrl;
+    const wrap = document.createElement('div');
+    wrap.className = 'dv-video-wrap';
+    video.onerror = () => {
+      if (token !== docViewer.token) return;
+      body.innerHTML = `<div class="dv-msg">This video can't play in this browser (often an iPhone "High Efficiency" video).<br>
+        <button type="button" class="dv-btn" onclick="downloadViewedDoc()">Download it</button></div>`;
+    };
+    wrap.appendChild(video);
+    const dl = document.createElement('div');
+    dl.className = 'dv-video-dl';
+    dl.innerHTML = `Won't play? <button type="button" class="dv-btn" onclick="downloadViewedDoc()">Download it</button>`;
+    wrap.appendChild(dl);
+    body.appendChild(wrap);
   } else {
     body.classList.remove('zoomed');
     body.innerHTML = `<div class="dv-msg">This type of file can't be shown here.<br>
