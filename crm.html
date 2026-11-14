@@ -270,6 +270,18 @@ tbody tr:hover { background: var(--surface2); }
 .doc-open-link { color: var(--accent); font-size: 12px; white-space: nowrap; cursor: pointer; }
 .doc-remove-link { color: var(--alert); font-size: 12px; white-space: nowrap; cursor: pointer; }
 .doc-empty { color: var(--text3); font-size: 12px; padding: 4px 0; }
+/* Document categories (migration 069) */
+.doc-cat { margin-top: 10px; }
+.doc-cat:first-child { margin-top: 0; }
+.doc-cat-h { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--text3); padding: 4px 0 2px; display: flex; justify-content: space-between; }
+.doc-cat-h .n { font-weight: 500; }
+.doc-cat-move { font-size: 11px; padding: 2px 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface2); color: var(--text2); max-width: 150px; }
+.doc-category-select { font-size: 12px; padding: 5px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface2); color: var(--text); max-width: 190px; }
+.doc-paperwork { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; font-size: 12px; background: var(--surface2); }
+.doc-paperwork .pw-h { font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.doc-paperwork .pw-list { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.doc-paperwork .ok { color: var(--accentDk); }
+.doc-paperwork .miss { color: var(--alert); }
 .contact-log-item { padding: 10px 0; border-top: 1px solid var(--border); }
 .contact-log-item:first-child { border-top: none; }
 .contact-log-item .clog-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -389,6 +401,7 @@ tbody tr:hover { background: var(--surface2); }
 .readonly-banner { margin: 10px 0 0; padding: 8px 12px; border-radius: 8px; background: #fef3c7; color: #92400e; font-size: 13px; font-weight: 500; }
 #detail-view.lead-readonly :is(#log-contact-btn, .composer, #details-edit-btn, #add-quote-option-btn,
   #doc-file-input, #doc-upload-btn, #ih-send-btn, .doc-file-input, .doc-upload-btn, .doc-remove-link,
+  .doc-category-select, .doc-cat-move,
   .row-action-link, .email-due-actions, [id^="qo-save-"], [id^="qo-cancel-"], .qo-detail-row .btn-secondary) { display: none !important; }
 #detail-view.lead-readonly :is(#install-unlocked, .qo-detail-row) :is(input, select, textarea) { pointer-events: none; opacity: .7; }
 </style>
@@ -573,9 +586,11 @@ tbody tr:hover { background: var(--surface2); }
             <h3>Documents</h3>
           </div>
           <div class="sec-b">
-            <div class="quote-status" style="margin-bottom:10px">Site photos, bills and anything not tied to one quote. A quote's own PDF goes inside that quote option above.</div>
+            <div class="quote-status" style="margin-bottom:10px">Job paperwork, sorted by type. A quote's own PDF goes inside that quote option above.</div>
+            <div id="doc-paperwork"></div>
             <div class="doc-list" id="doc-list">Loading…</div>
             <div class="doc-upload">
+              <select class="doc-category-select" id="doc-category-select" title="What is this document?"></select>
               <input type="file" accept="application/pdf,image/jpeg,image/png,image/heic,.doc,.docx" class="doc-file-input" id="doc-file-input" multiple>
               <button type="button" class="doc-upload-btn" id="doc-upload-btn">Upload</button>
             </div>
@@ -1976,6 +1991,7 @@ function subscribeToLead(leadId) {
       if (listRow) { listRow.latest_outcome = c.outcome; listRow.latest_contact = c; applyListDate(listRow, c); }
       document.getElementById('lead-status-sub').innerHTML = statusBadgeHtml(c.outcome);
       renderInstallChecklist();
+      loadLeadDocuments(leadId);   // MCS paperwork box appears once the job is Won
       renderSidebarFilters();
       renderLeadsTable();
       scheduleActivityRefresh(leadId);
@@ -2945,7 +2961,7 @@ function isAllowedDocumentFile(file) {
 // after another so each gets its own Date.now() storage path. A file that
 // fails the type/size check or the upload is skipped and named in the
 // status line; the rest still go up. quoteOptionId null = lead-level.
-async function uploadDocuments({ prospectId, quoteOptionId = null, fileInput, statusEl, btn, reload }) {
+async function uploadDocuments({ prospectId, quoteOptionId = null, category = null, fileInput, statusEl, btn, reload }) {
   if (blockedReadOnly()) return;
   const files = [...fileInput.files];
   statusEl.classList.remove('error');
@@ -2976,6 +2992,7 @@ async function uploadDocuments({ prospectId, quoteOptionId = null, fileInput, st
         uploaded_by_email: currentUser ? currentUser.email : null,
       };
       if (quoteOptionId) row.quote_option_id = quoteOptionId;
+      if (category && !quoteOptionId) row.category = category;
       const { error: insertError } = await db.from('lead_documents').insert(row);
       if (insertError) { skipped.push(`${file.name} (saved but not recorded: ${insertError.message || 'try again'})`); continue; }
       done++;
@@ -3071,20 +3088,98 @@ async function restoreLeadDocument(docId, reloadContext) {
   }
 }
 
+/* ── Document categories (migration 069, Greg 2026-11-14) — from the MCS/
+   HIES audit: job paperwork was only in the shared folder. Keys match the
+   database check constraint. Datasheets and Building Regs are deliberately
+   not categories (datasheets get linked from the proposal). Null = Other. */
+const DOC_CATEGORIES = [
+  { key: 'survey',          label: 'Site survey and photos' },
+  { key: 'bills',           label: 'Bills and usage' },
+  { key: 'design',          label: 'Design and MCS estimate' },
+  { key: 'contract',        label: 'Signed quote and contract' },
+  { key: 'dno',             label: 'DNO application and notification' },
+  { key: 'commissioning',   label: 'Commissioning records' },
+  { key: 'mcs_certificate', label: 'MCS certificate' },
+  { key: 'handover',        label: 'Handover pack' },
+  { key: 'hies',            label: 'HIES registration and guarantee' },
+  { key: 'invoices',        label: 'Invoices and payments' },
+  { key: 'other',           label: 'Other' },
+];
+const DOC_CATEGORY_LABEL = Object.fromEntries(DOC_CATEGORIES.map(c => [c.key, c.label]));
+// MCS paperwork a won job should end up with (shown once a lead is Won or later).
+const MCS_PAPERWORK = ['design', 'contract', 'dno', 'commissioning', 'mcs_certificate', 'handover', 'hies'];
+
+(function fillDocCategorySelect() {
+  const sel = document.getElementById('doc-category-select');
+  sel.innerHTML = `<option value="">Choose type…</option>` +
+    DOC_CATEGORIES.map(c => `<option value="${c.key}">${escapeHtml(c.label)}</option>`).join('');
+})();
+
+function renderGroupedDocuments(rows) {
+  const groups = Object.fromEntries(DOC_CATEGORIES.map(c => [c.key, []]));
+  rows.forEach(r => groups[DOC_CATEGORY_LABEL[r.category] ? r.category : 'other'].push(r));
+  const parts = DOC_CATEGORIES.filter(c => groups[c.key].length).map(c => `
+    <div class="doc-cat">
+      <div class="doc-cat-h"><span>${escapeHtml(c.label)}</span><span class="n">${groups[c.key].length}</span></div>
+      ${groups[c.key].map(p => `
+        <div class="doc-item">
+          <div>
+            <div class="doc-name">${escapeHtml(p.file_name)}</div>
+            <div class="doc-meta">${escapeHtml(p.uploaded_by)} · ${formatShortDate(p.uploaded_at)}</div>
+          </div>
+          <div class="doc-actions">
+            <select class="doc-cat-move" title="Move to another type" data-doc-id="${escapeHtml(p.id)}" onchange="moveLeadDocument(this)">
+              ${DOC_CATEGORIES.map(o => `<option value="${o.key}" ${o.key === (DOC_CATEGORY_LABEL[p.category] ? p.category : 'other') ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
+            </select>
+            <span class="doc-open-link" data-storage-path="${escapeHtml(p.storage_path)}" onclick="openLeadDocument(this)">Open</span>
+            <span class="doc-remove-link" data-doc-id="${escapeHtml(p.id)}" data-reload-context="general" onclick="removeLeadDocument(this)">Remove</span>
+          </div>
+        </div>`).join('')}
+    </div>`);
+  return parts.length ? parts.join('') : `<div class="doc-empty">No documents attached yet.</div>`;
+}
+
+function renderPaperwork(rows) {
+  const box = document.getElementById('doc-paperwork');
+  const stage = CONTACT_OUTCOME[currentLead?.latest_outcome]?.stage;
+  if (typeof stage !== 'number' || stage < 4) { box.innerHTML = ''; return; }   // Won (stage 4) or later only
+  const have = new Set(rows.map(r => r.category));
+  const done = MCS_PAPERWORK.filter(k => have.has(k)).length;
+  box.innerHTML = `<div class="doc-paperwork">
+    <div class="pw-h">MCS paperwork: ${done} of ${MCS_PAPERWORK.length}</div>
+    <div class="pw-list">${MCS_PAPERWORK.map(k => have.has(k)
+      ? `<span class="ok">✓ ${escapeHtml(DOC_CATEGORY_LABEL[k])}</span>`
+      : `<span class="miss">✗ ${escapeHtml(DOC_CATEGORY_LABEL[k])}</span>`).join('')}</div>
+  </div>`;
+}
+
+async function moveLeadDocument(sel) {
+  const value = sel.value;
+  const { data, error } = await db.from('lead_documents')
+    .update({ category: value })
+    .eq('id', sel.dataset.docId)
+    .select('id');   // RLS-filtered updates "succeed" with 0 rows, so check
+  if (error || !data?.length) {
+    alert("Couldn't change the type" + (error ? ': ' + error.message : ' - you may not have permission.'));
+  }
+  if (currentLead) loadLeadDocuments(currentLead.id);
+}
+
 async function loadLeadDocuments(prospectId) {
   const list = document.getElementById('doc-list');
   list.textContent = 'Loading…';
   // General documents only — anything tied to a specific quote option
   // (quote_option_id not null) shows in that option's own card instead.
   const { data, error } = await db.from('lead_documents')
-    .select('id, file_name, storage_path, uploaded_by, uploaded_at')
+    .select('id, file_name, storage_path, uploaded_by, uploaded_at, category')
     .eq('prospect_id', prospectId)
     .is('quote_option_id', null)
     .is('deleted_at', null)
     .order('uploaded_at', { ascending: false });
   if (!currentLead || currentLead.id !== prospectId) return; // detail view moved on while this was in flight
   if (error) { list.innerHTML = `<div class="doc-empty">Couldn't load documents.</div>`; return; }
-  list.innerHTML = renderDocumentsList(data || [], 'general');
+  list.innerHTML = renderGroupedDocuments(data || []);
+  renderPaperwork(data || []);
 }
 
 async function loadDeletedLeadDocuments(prospectId) {
@@ -3114,8 +3209,17 @@ function toggleDeletedLeadDocs() {
 document.getElementById('doc-upload-btn').addEventListener('click', async () => {
   if (!currentLead) return;
   const prospectId = currentLead.id;
+  const catSel = document.getElementById('doc-category-select');
+  const statusEl = document.getElementById('doc-upload-status');
+  if (!catSel.value) {
+    statusEl.textContent = 'Choose what type of document it is first.';
+    statusEl.classList.add('error');
+    catSel.focus();
+    return;
+  }
   await uploadDocuments({
     prospectId,
+    category: catSel.value,
     fileInput: document.getElementById('doc-file-input'),
     statusEl: document.getElementById('doc-upload-status'),
     btn: document.getElementById('doc-upload-btn'),
