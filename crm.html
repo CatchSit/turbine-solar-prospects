@@ -270,6 +270,41 @@ tbody tr:hover { background: var(--surface2); }
 .doc-open-link { color: var(--accent); font-size: 12px; white-space: nowrap; cursor: pointer; }
 .doc-remove-link { color: var(--alert); font-size: 12px; white-space: nowrap; cursor: pointer; }
 .doc-empty { color: var(--text3); font-size: 12px; padding: 4px 0; }
+/* Document thumbnails + in-page viewer (2026-11-14) */
+.doc-main { display: flex; align-items: center; gap: 10px; min-width: 0; cursor: pointer; }
+.doc-text { min-width: 0; }
+.doc-main:hover .doc-name { color: var(--accent); }
+.doc-thumb { width: 44px; height: 44px; border-radius: 6px; object-fit: cover; flex-shrink: 0; background: var(--surface2); border: 1px solid var(--border); }
+.doc-thumb-icon { display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; letter-spacing: .04em; color: var(--text3); }
+.doc-item { align-items: center; }
+.dv-overlay { position: fixed; inset: 0; z-index: 9999; background: rgba(15, 20, 18, .88); display: none; flex-direction: column; }
+.dv-overlay.open { display: flex; }
+.dv-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 16px; background: #111815; color: #fff; flex-shrink: 0; }
+.dv-title { min-width: 0; }
+.dv-name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dv-meta { font-size: 12px; color: #b9c2bd; margin-top: 2px; }
+.dv-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.dv-count { font-size: 12px; color: #b9c2bd; margin-right: 4px; }
+.dv-btn { background: rgba(255,255,255,.12); color: #fff; border: none; border-radius: 6px; padding: 6px 12px; font-size: 12.5px; cursor: pointer; }
+.dv-btn:hover { background: rgba(255,255,255,.22); }
+.dv-close { font-size: 15px; padding: 5px 11px; }
+.dv-body { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 16px 64px; overflow: auto; }
+.dv-body.zoomed { align-items: flex-start; justify-content: flex-start; }
+.dv-img { max-width: 100%; max-height: 100%; object-fit: contain; cursor: zoom-in; border-radius: 4px; background: #fff; }
+.dv-img.zoomed { max-width: none; max-height: none; cursor: zoom-out; }
+.dv-pdf { width: 100%; height: 100%; border: none; background: #fff; border-radius: 4px; }
+.dv-msg { color: #e6ece9; font-size: 14px; text-align: center; line-height: 2; }
+.dv-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 44px; height: 64px; border: none; border-radius: 8px; background: rgba(255,255,255,.12); color: #fff; font-size: 32px; cursor: pointer; }
+.dv-nav:hover:not(:disabled) { background: rgba(255,255,255,.25); }
+.dv-nav:disabled { opacity: .25; cursor: default; }
+.dv-prev { left: 10px; }
+.dv-next { right: 10px; }
+@media (max-width: 700px) {
+  .dv-body { padding: 8px; }
+  .dv-nav { top: auto; bottom: 12px; transform: none; }
+  .dv-bar { flex-wrap: wrap; }
+  #dv-newtab { display: none; }
+}
 /* Document categories (migration 069) */
 .doc-cat { margin-top: 10px; }
 .doc-cat:first-child { margin-top: 0; }
@@ -3016,14 +3051,13 @@ async function uploadDocuments({ prospectId, quoteOptionId = null, category = nu
 // or a quote option's id for that option's own document list.
 function renderDocumentsList(rows, reloadContext) {
   if (!rows.length) return `<div class="doc-empty">No documents attached yet.</div>`;
-  return rows.map(p => `
+  docViewerLists[reloadContext] = rows;
+  queueDocThumbs();
+  return rows.map((p, i) => `
     <div class="doc-item">
-      <div>
-        <div class="doc-name">${escapeHtml(p.file_name)}</div>
-        <div class="doc-meta">${escapeHtml(p.uploaded_by)} · ${formatShortDate(p.uploaded_at)}</div>
-      </div>
+      ${docMainHtml(p, reloadContext, i)}
       <div class="doc-actions">
-        <span class="doc-open-link" data-storage-path="${escapeHtml(p.storage_path)}" onclick="openLeadDocument(this)">Open</span>
+        <span class="doc-open-link" onclick="openDocViewer('${escapeHtml(reloadContext)}', ${i})">View</span>
         <span class="doc-remove-link" data-doc-id="${escapeHtml(p.id)}" data-reload-context="${escapeHtml(reloadContext)}" onclick="removeLeadDocument(this)">Remove</span>
       </div>
     </div>`).join('');
@@ -3118,20 +3152,21 @@ const MCS_PAPERWORK = ['design', 'contract', 'dno', 'commissioning', 'mcs_certif
 function renderGroupedDocuments(rows) {
   const groups = Object.fromEntries(DOC_CATEGORIES.map(c => [c.key, []]));
   rows.forEach(r => groups[DOC_CATEGORY_LABEL[r.category] ? r.category : 'other'].push(r));
+  // The viewer steps through documents in the order they are shown.
+  const ordered = DOC_CATEGORIES.flatMap(c => groups[c.key]);
+  docViewerLists.general = ordered;
+  queueDocThumbs();
   const parts = DOC_CATEGORIES.filter(c => groups[c.key].length).map(c => `
     <div class="doc-cat">
       <div class="doc-cat-h"><span>${escapeHtml(c.label)}</span><span class="n">${groups[c.key].length}</span></div>
       ${groups[c.key].map(p => `
         <div class="doc-item">
-          <div>
-            <div class="doc-name">${escapeHtml(p.file_name)}</div>
-            <div class="doc-meta">${escapeHtml(p.uploaded_by)} · ${formatShortDate(p.uploaded_at)}</div>
-          </div>
+          ${docMainHtml(p, 'general', ordered.indexOf(p))}
           <div class="doc-actions">
             <select class="doc-cat-move" title="Move to another type" data-doc-id="${escapeHtml(p.id)}" onchange="moveLeadDocument(this)">
               ${DOC_CATEGORIES.map(o => `<option value="${o.key}" ${o.key === (DOC_CATEGORY_LABEL[p.category] ? p.category : 'other') ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
             </select>
-            <span class="doc-open-link" data-storage-path="${escapeHtml(p.storage_path)}" onclick="openLeadDocument(this)">Open</span>
+            <span class="doc-open-link" onclick="openDocViewer('general', ${ordered.indexOf(p)})">View</span>
             <span class="doc-remove-link" data-doc-id="${escapeHtml(p.id)}" data-reload-context="general" onclick="removeLeadDocument(this)">Remove</span>
           </div>
         </div>`).join('')}
@@ -3226,6 +3261,175 @@ document.getElementById('doc-upload-btn').addEventListener('click', async () => 
     reload: () => loadLeadDocuments(prospectId),
   });
 });
+
+/* ── In-page document viewer + photo thumbnails (Greg, 2026-11-14: view
+   images and documents without opening a separate tab). Photos and PDFs
+   show inside an overlay; arrows step through the documents of the list
+   that was clicked (the lead's Documents card, or one quote option's).
+   Files stay private: every view uses a short-lived signed URL, the same
+   as the old Open link. Word/HEIC files can't render in a browser, so the
+   viewer offers Download for those. No third-party viewers (customer data). */
+const docViewerLists = {};     // list key ('general' or a quote option id) -> rows in display order
+const DOC_IMAGE_RE = /\.(jpe?g|jfif|png|gif|webp)$/i;
+const DOC_PDF_RE = /\.pdf$/i;
+function docKind(name) { return DOC_IMAGE_RE.test(name || '') ? 'image' : DOC_PDF_RE.test(name || '') ? 'pdf' : 'other'; }
+
+function docMainHtml(p, listKey, idx) {
+  const kind = docKind(p.file_name);
+  const thumb = kind === 'image'
+    ? `<img class="doc-thumb" alt="" loading="lazy" data-thumb-path="${escapeHtml(p.storage_path)}">`
+    : `<span class="doc-thumb doc-thumb-icon">${kind === 'pdf' ? 'PDF' : 'FILE'}</span>`;
+  return `<div class="doc-main" onclick="openDocViewer('${escapeHtml(listKey)}', ${idx})" title="View">
+      ${thumb}
+      <div class="doc-text">
+        <div class="doc-name">${escapeHtml(p.file_name)}</div>
+        <div class="doc-meta">${escapeHtml(p.uploaded_by)} · ${formatShortDate(p.uploaded_at)}</div>
+      </div>
+    </div>`;
+}
+
+// One batched signed-URL request for every photo thumbnail not yet loaded
+// (runs after the list HTML is in the page).
+let docThumbTimer = null;
+function queueDocThumbs() {
+  clearTimeout(docThumbTimer);
+  docThumbTimer = setTimeout(async () => {
+    const imgs = [...document.querySelectorAll('img.doc-thumb[data-thumb-path]:not([src])')];
+    if (!imgs.length) return;
+    try {
+      const { data, error } = await db.storage.from('proposals')
+        .createSignedUrls(imgs.map(i => i.dataset.thumbPath), 3600);
+      if (error || !data) return;
+      data.forEach((d, i) => { if (d.signedUrl) imgs[i].src = d.signedUrl; });
+    } catch (e) { /* thumbnails are a nicety; the list still works */ }
+  }, 50);
+}
+
+const docViewer = { list: [], idx: 0, token: 0, url: null };
+
+function ensureDocViewer() {
+  let el = document.getElementById('doc-viewer');
+  if (el) return el;
+  el = document.createElement('div');
+  el.id = 'doc-viewer';
+  el.className = 'dv-overlay';
+  el.innerHTML = `
+    <div class="dv-bar">
+      <div class="dv-title"><div class="dv-name" id="dv-name"></div><div class="dv-meta" id="dv-meta"></div></div>
+      <div class="dv-actions">
+        <span class="dv-count" id="dv-count"></span>
+        <button type="button" class="dv-btn" id="dv-download">Download</button>
+        <button type="button" class="dv-btn" id="dv-newtab">Open in new tab</button>
+        <button type="button" class="dv-btn dv-close" id="dv-close" title="Close (Esc)">✕</button>
+      </div>
+    </div>
+    <div class="dv-body" id="dv-body"></div>
+    <button type="button" class="dv-nav dv-prev" id="dv-prev" title="Previous (←)">‹</button>
+    <button type="button" class="dv-nav dv-next" id="dv-next" title="Next (→)">›</button>`;
+  document.body.appendChild(el);
+  el.addEventListener('click', e => { if (e.target === el || e.target.id === 'dv-body') closeDocViewer(); });
+  document.getElementById('dv-close').onclick = closeDocViewer;
+  document.getElementById('dv-prev').onclick = () => stepDocViewer(-1);
+  document.getElementById('dv-next').onclick = () => stepDocViewer(1);
+  document.getElementById('dv-download').onclick = downloadViewedDoc;
+  document.getElementById('dv-newtab').onclick = () => {
+    if (!docViewer.url) return;
+    const w = window.open(docViewer.url, '_blank');
+    if (w) w.opener = null;
+  };
+  document.addEventListener('keydown', e => {
+    if (!el.classList.contains('open')) return;
+    if (e.key === 'Escape') closeDocViewer();
+    else if (e.key === 'ArrowLeft') stepDocViewer(-1);
+    else if (e.key === 'ArrowRight') stepDocViewer(1);
+  });
+  return el;
+}
+
+function openDocViewer(listKey, idx) {
+  const list = docViewerLists[listKey] || [];
+  if (!list[idx]) return;
+  docViewer.list = list;
+  docViewer.idx = idx;
+  ensureDocViewer().classList.add('open');
+  document.body.style.overflow = 'hidden';
+  showViewedDoc();
+}
+
+function closeDocViewer() {
+  const el = document.getElementById('doc-viewer');
+  if (!el) return;
+  el.classList.remove('open');
+  document.getElementById('dv-body').innerHTML = '';   // stops a PDF iframe
+  document.body.style.overflow = '';
+  docViewer.token++;
+}
+
+function stepDocViewer(dir) {
+  const n = docViewer.idx + dir;
+  if (n < 0 || n >= docViewer.list.length) return;
+  docViewer.idx = n;
+  showViewedDoc();
+}
+
+async function showViewedDoc() {
+  const doc = docViewer.list[docViewer.idx];
+  const token = ++docViewer.token;
+  const body = document.getElementById('dv-body');
+  const kind = docKind(doc.file_name);
+  document.getElementById('dv-name').textContent = doc.file_name;
+  document.getElementById('dv-meta').textContent =
+    [DOC_CATEGORY_LABEL[doc.category], doc.uploaded_by, formatShortDate(doc.uploaded_at)].filter(Boolean).join(' · ');
+  document.getElementById('dv-count').textContent = docViewer.list.length > 1 ? `${docViewer.idx + 1} of ${docViewer.list.length}` : '';
+  document.getElementById('dv-prev').disabled = docViewer.idx === 0;
+  document.getElementById('dv-next').disabled = docViewer.idx === docViewer.list.length - 1;
+  docViewer.url = null;
+  body.innerHTML = '<div class="dv-msg">Loading…</div>';
+  let data, error;
+  try {
+    ({ data, error } = await db.storage.from('proposals').createSignedUrl(doc.storage_path, 600));
+  } catch (e) { error = e; }
+  if (token !== docViewer.token) return;   // moved on while this was loading
+  if (error || !data?.signedUrl) { body.innerHTML = `<div class="dv-msg">Couldn't load this document. Try again in a moment.</div>`; return; }
+  docViewer.url = data.signedUrl;
+  if (kind === 'image') {
+    const img = document.createElement('img');
+    img.className = 'dv-img';
+    img.alt = doc.file_name;
+    img.src = data.signedUrl;
+    img.title = 'Click to zoom';
+    img.onclick = e => { e.stopPropagation(); img.classList.toggle('zoomed'); body.classList.toggle('zoomed'); };
+    body.classList.remove('zoomed');
+    body.innerHTML = '';
+    body.appendChild(img);
+  } else if (kind === 'pdf') {
+    body.classList.remove('zoomed');
+    body.innerHTML = '';
+    const frame = document.createElement('iframe');
+    frame.className = 'dv-pdf';
+    frame.title = doc.file_name;
+    frame.src = data.signedUrl;
+    body.appendChild(frame);
+  } else {
+    body.classList.remove('zoomed');
+    body.innerHTML = `<div class="dv-msg">This type of file can't be shown here.<br>
+      <button type="button" class="dv-btn" onclick="downloadViewedDoc()">Download it</button></div>`;
+  }
+}
+
+async function downloadViewedDoc() {
+  const doc = docViewer.list[docViewer.idx];
+  if (!doc) return;
+  let data, error;
+  try {
+    ({ data, error } = await db.storage.from('proposals').createSignedUrl(doc.storage_path, 300, { download: doc.file_name }));
+  } catch (e) { error = e; }
+  if (error || !data?.signedUrl) { alert("Couldn't download this document. Try again in a moment."); return; }
+  const a = document.createElement('a');
+  a.href = data.signedUrl;
+  a.rel = 'noopener';
+  document.body.appendChild(a); a.click(); a.remove();
+}
 
 async function openLeadDocument(linkEl) {
   const path = linkEl.dataset.storagePath;
