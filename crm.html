@@ -621,7 +621,7 @@ tbody tr:hover { background: var(--surface2); }
             <h3>Documents</h3>
           </div>
           <div class="sec-b">
-            <div class="quote-status" style="margin-bottom:10px">Job paperwork, sorted by type. A quote's own PDF goes inside that quote option above.</div>
+            <div class="quote-status" style="margin-bottom:10px">Job paperwork, sorted by type. Each quote's PDF, design and MCS estimate go inside that quote option above.</div>
             <div id="doc-paperwork"></div>
             <div class="doc-list" id="doc-list">Loading…</div>
             <div class="doc-upload">
@@ -2751,6 +2751,7 @@ async function selectQuoteOption(optionId) {
   if (error) { alert('Failed to mark as selected: ' + error.message); return; }
   if (currentLead) await loadQuoteOptions(currentLead.id); // is_selected changed on every option, not just this one
   syncLeadSelectedQuotePrice();
+  refreshPaperwork();
 }
 
 async function deleteQuoteOption(optionId) {
@@ -2941,6 +2942,7 @@ async function loadOptionDocuments(optionId) {
     return true;
   });
   list.innerHTML = renderDocumentsList(docs, optionId);
+  refreshPaperwork();   // the selected quote's documents count towards MCS paperwork
 }
 
 async function loadDeletedOptionDocuments(optionId) {
@@ -3129,8 +3131,12 @@ async function restoreLeadDocument(docId, reloadContext) {
 const DOC_CATEGORIES = [
   { key: 'survey',          label: 'Site survey and photos' },
   { key: 'bills',           label: 'Bills and usage' },
-  { key: 'design',          label: 'Design and MCS estimate' },
-  { key: 'contract',        label: 'Signed quote and contract' },
+  // 'design' is not offered at lead level any more (Greg 2026-11-14): the
+  // design / MCS estimate and the quote live inside each quote option,
+  // because a lead can have several quotes. Kept so any row already typed
+  // 'design' still shows under its own heading.
+  { key: 'design',          label: 'Design and MCS estimate', leadUpload: false },
+  { key: 'contract',        label: 'Signed contract' },
   { key: 'dno',             label: 'DNO application and notification' },
   { key: 'commissioning',   label: 'Commissioning records' },
   { key: 'mcs_certificate', label: 'MCS certificate' },
@@ -3141,12 +3147,15 @@ const DOC_CATEGORIES = [
 ];
 const DOC_CATEGORY_LABEL = Object.fromEntries(DOC_CATEGORIES.map(c => [c.key, c.label]));
 // MCS paperwork a won job should end up with (shown once a lead is Won or later).
+// 'design' is checked against the SELECTED quote option's documents, not
+// the lead's (see refreshPaperwork).
 const MCS_PAPERWORK = ['design', 'contract', 'dno', 'commissioning', 'mcs_certificate', 'handover', 'hies'];
+const leadUploadCategories = () => DOC_CATEGORIES.filter(c => c.leadUpload !== false);
 
 (function fillDocCategorySelect() {
   const sel = document.getElementById('doc-category-select');
   sel.innerHTML = `<option value="">Choose type…</option>` +
-    DOC_CATEGORIES.map(c => `<option value="${c.key}">${escapeHtml(c.label)}</option>`).join('');
+    leadUploadCategories().map(c => `<option value="${c.key}">${escapeHtml(c.label)}</option>`).join('');
 })();
 
 function renderGroupedDocuments(rows) {
@@ -3164,7 +3173,7 @@ function renderGroupedDocuments(rows) {
           ${docMainHtml(p, 'general', ordered.indexOf(p))}
           <div class="doc-actions">
             <select class="doc-cat-move" title="Move to another type" data-doc-id="${escapeHtml(p.id)}" onchange="moveLeadDocument(this)">
-              ${DOC_CATEGORIES.map(o => `<option value="${o.key}" ${o.key === (DOC_CATEGORY_LABEL[p.category] ? p.category : 'other') ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
+              ${DOC_CATEGORIES.filter(o => o.leadUpload !== false || o.key === p.category).map(o => `<option value="${o.key}" ${o.key === (DOC_CATEGORY_LABEL[p.category] ? p.category : 'other') ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
             </select>
             <span class="doc-open-link" onclick="openDocViewer('general', ${ordered.indexOf(p)})">View</span>
             <span class="doc-remove-link" data-doc-id="${escapeHtml(p.id)}" data-reload-context="general" onclick="removeLeadDocument(this)">Remove</span>
@@ -3174,18 +3183,52 @@ function renderGroupedDocuments(rows) {
   return parts.length ? parts.join('') : `<div class="doc-empty">No documents attached yet.</div>`;
 }
 
-function renderPaperwork(rows) {
+// selected: { label, docCount } for the quote option marked Selected, or null.
+function renderPaperwork(rows, selected) {
   const box = document.getElementById('doc-paperwork');
   const stage = CONTACT_OUTCOME[currentLead?.latest_outcome]?.stage;
   if (typeof stage !== 'number' || stage < 4) { box.innerHTML = ''; return; }   // Won (stage 4) or later only
   const have = new Set(rows.map(r => r.category));
-  const done = MCS_PAPERWORK.filter(k => have.has(k)).length;
+  const designOk = !!(selected && selected.docCount > 0) || have.has('design');
+  const item = k => {
+    if (k === 'design') {
+      const label = 'Design and MCS estimate in the selected quote';
+      if (designOk) return `<span class="ok">✓ ${escapeHtml(label)}</span>`;
+      return `<span class="miss">✗ ${escapeHtml(selected ? label : 'Design and MCS estimate (no quote selected yet)')}</span>`;
+    }
+    return have.has(k) ? `<span class="ok">✓ ${escapeHtml(DOC_CATEGORY_LABEL[k])}</span>`
+                       : `<span class="miss">✗ ${escapeHtml(DOC_CATEGORY_LABEL[k])}</span>`;
+  };
+  const done = MCS_PAPERWORK.filter(k => k === 'design' ? designOk : have.has(k)).length;
   box.innerHTML = `<div class="doc-paperwork">
     <div class="pw-h">MCS paperwork: ${done} of ${MCS_PAPERWORK.length}</div>
-    <div class="pw-list">${MCS_PAPERWORK.map(k => have.has(k)
-      ? `<span class="ok">✓ ${escapeHtml(DOC_CATEGORY_LABEL[k])}</span>`
-      : `<span class="miss">✗ ${escapeHtml(DOC_CATEGORY_LABEL[k])}</span>`).join('')}</div>
+    <div class="pw-list">${MCS_PAPERWORK.map(item).join('')}</div>
   </div>`;
+}
+
+// Lead-level rows from the last loadLeadDocuments, so a quote-option change
+// can redraw the paperwork box without reloading the whole list.
+let leadDocRows = [];
+let paperworkTimer = null;
+function refreshPaperwork() {
+  clearTimeout(paperworkTimer);
+  paperworkTimer = setTimeout(async () => {
+    const lead = currentLead;
+    if (!lead) return;
+    const stage = CONTACT_OUTCOME[lead.latest_outcome]?.stage;
+    if (typeof stage !== 'number' || stage < 4) { renderPaperwork(leadDocRows, null); return; }
+    const { data: opts } = await db.from('quote_options')
+      .select('id, label').eq('prospect_id', lead.id).eq('is_selected', true).is('deleted_at', null).limit(1);
+    let selected = null;
+    if (opts?.length) {
+      const { count } = await db.from('lead_documents')
+        .select('id', { count: 'exact', head: true })
+        .eq('quote_option_id', opts[0].id).is('deleted_at', null);
+      selected = { label: opts[0].label, docCount: count || 0 };
+    }
+    if (currentLead?.id !== lead.id) return;
+    renderPaperwork(leadDocRows, selected);
+  }, 150);
 }
 
 async function moveLeadDocument(sel) {
@@ -3214,7 +3257,8 @@ async function loadLeadDocuments(prospectId) {
   if (!currentLead || currentLead.id !== prospectId) return; // detail view moved on while this was in flight
   if (error) { list.innerHTML = `<div class="doc-empty">Couldn't load documents.</div>`; return; }
   list.innerHTML = renderGroupedDocuments(data || []);
-  renderPaperwork(data || []);
+  leadDocRows = data || [];
+  refreshPaperwork();
 }
 
 async function loadDeletedLeadDocuments(prospectId) {
