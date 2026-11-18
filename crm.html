@@ -840,15 +840,15 @@ tbody tr:hover { background: var(--surface2); }
       <!-- Each group of settings is its own section; add new ones below Fuel. -->
       <section class="settings-section">
       <h3 class="settings-h">Fuel</h3>
-      <div class="settings-sub">Fuel per installer on quote options: road miles from the office, there and back, at the rate below. Jobs inside the free radius show N/A. Changes only affect new quote options; saved quotes keep the rate they were made with. Installers can't be deleted: untick Active to hide one from new quotes.</div>
+      <div class="settings-sub">Fuel per trade on quote options (who exactly goes isn't known at quote stage): road miles from the office, there and back, at the rate below. Jobs inside the free radius show N/A. Changes only affect new quote options; saved quotes keep the rate they were made with. Trades can't be deleted: untick Active to hide one from new quotes.</div>
       <div class="fuel-settings-grid">
         <div><label for="fm-radius">Free radius (road miles from the office)</label><input type="number" id="fm-radius" min="0" step="1"/></div>
         <div><label for="fm-ppm">Pence per mile</label><input type="number" id="fm-ppm" min="0" step="0.1"/></div>
       </div>
-      <div class="quote-status" style="font-weight:600;margin-bottom:6px">Installers</div>
+      <div class="quote-status" style="font-weight:600;margin-bottom:6px">Trades</div>
       <div id="fm-installers"></div>
       <div class="fuel-inst-add">
-        <div><label for="fm-new-name">New installer</label><input type="text" id="fm-new-name" placeholder="Full name"/></div>
+        <div><label for="fm-new-name">New trade</label><input type="text" id="fm-new-name" placeholder="e.g. Scaffolder"/></div>
         <button class="btn-secondary" type="button" id="fm-add-btn">Add</button>
       </div>
       </section>
@@ -4023,7 +4023,9 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && document.getElementById('origins-modal-overlay').classList.contains('open')) closeOriginsModal();
 });
 
-/* ── Fuel per installer (Greg, 2026-11-18, migration 072) ─────────────
+/* ── Fuel per trade (Greg, 2026-11-18, migration 072; named installers
+   swapped for trades the same day: who exactly goes isn't known when
+   quoting). The setting key stays crm_fuel_installers. ─────────────
    New quote options get one fuel line per installer instead of the flat
    Fuel costs box: tick who is on the job, and each ticked installer costs
    road miles x 2 (there and back) x pence per mile. Inside the free radius
@@ -4104,8 +4106,8 @@ function fuelTotalFieldHtml(opt) {
   const id = opt.id;
   if (!fuelDrafts[id]) fuelDrafts[id] = fuelDraftFrom(opt.fuel_breakdown);
   return `
-    <div class="quote-field"><label>Fuel (£, per installer below)</label>
-      <input type="number" readonly tabindex="-1" id="${qoFieldId(id, 'fuel_cost')}" value="${fuelTotal(fuelDrafts[id])}" disabled title="Worked out from the installers ticked below"/>
+    <div class="quote-field"><label>Fuel (£, per trade below)</label>
+      <input type="number" readonly tabindex="-1" id="${qoFieldId(id, 'fuel_cost')}" value="${fuelTotal(fuelDrafts[id])}" disabled title="Worked out from the trades ticked below"/>
     </div>`;
 }
 
@@ -4132,13 +4134,13 @@ function fuelBoxInnerHtml(optionId) {
   const lm = leadRoadMiles();
   const stale = editing && ((lm != null && fb.miles != null && lm !== fb.miles) || fb.ppm !== fuelSettings.ppm || fb.radius !== fuelSettings.radius);
   return `
-    <div class="fuel-box-head">Fuel by installer <span>${escapeHtml(dist)}</span></div>
+    <div class="fuel-box-head">Fuel by trade <span>${escapeHtml(dist)}</span></div>
     <table class="fuel-table">
-      <tr><th>Installer</th><th>On this job</th>${manager ? '<th>Mark N/A</th>' : ''}<th class="num">Fuel</th></tr>
-      ${body || `<tr><td colspan="${manager ? 4 : 3}" class="fuel-na">No installers set up. A manager can add them in Settings.</td></tr>`}
+      <tr><th>Trade</th><th>On this job</th>${manager ? '<th>Mark N/A</th>' : ''}<th class="num">Fuel</th></tr>
+      ${body || `<tr><td colspan="${manager ? 4 : 3}" class="fuel-na">No trades set up. A manager can add them in Settings.</td></tr>`}
       <tr><td>Total fuel</td><td></td>${manager ? '<td></td>' : ''}<td class="num">${money2(fuelTotal(fb))}</td></tr>
     </table>
-    <div class="fuel-note">${fb.ppm}p a mile, there and back, per installer. Free within ${fb.radius} road miles of the office.
+    <div class="fuel-note">${fb.ppm}p a mile, there and back, per trade. Free within ${fb.radius} road miles of the office.
       ${stale ? `<button type="button" class="btn-secondary" style="margin-left:6px" onclick="useCurrentFuelSettings('${optionId}')">Use current distance and rate (${fuelSettings.ppm}p, ${fuelSettings.radius} miles)</button>` : ''}</div>`;
 }
 
@@ -4175,9 +4177,9 @@ let fuelModalInstallers = [];
 function renderFuelInstallerRows() {
   document.getElementById('fm-installers').innerHTML = fuelModalInstallers.map((i, idx) => `
     <div class="fuel-inst-row">
-      <input type="text" value="${escapeHtml(i.name)}" oninput="fuelModalInstallers[${idx}].name = this.value" aria-label="Installer name"/>
+      <input type="text" value="${escapeHtml(i.name)}" oninput="fuelModalInstallers[${idx}].name = this.value" aria-label="Trade name"/>
       <label><input type="checkbox" ${i.active ? 'checked' : ''} onchange="fuelModalInstallers[${idx}].active = this.checked"/> Active</label>
-    </div>`).join('') || '<div class="quote-status">No installers yet.</div>';
+    </div>`).join('') || '<div class="quote-status">No trades yet.</div>';
 }
 async function openFuelModal() {
   await fetchFuelSettings();
@@ -4213,7 +4215,7 @@ document.getElementById('fm-save-btn').addEventListener('click', async () => {
   if (!(radius >= 0) || document.getElementById('fm-radius').value === '') { status.textContent = 'Enter the free radius in miles.'; return; }
   if (!(ppm > 0)) { status.textContent = 'Enter the pence per mile.'; return; }
   const installers = fuelModalInstallers.map(i => ({ ...i, name: i.name.trim() }));
-  if (installers.some(i => !i.name)) { status.textContent = 'Every installer needs a name.'; return; }
+  if (installers.some(i => !i.name)) { status.textContent = 'Every trade needs a name.'; return; }
   const now = new Date().toISOString();
   const by = currentUser?.email || null;
   const { error } = await db.from('app_settings').upsert([
