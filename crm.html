@@ -396,6 +396,29 @@ tbody tr:hover { background: var(--surface2); }
   .cm-details { border-left: 0; padding-left: 0; border-top: 1px solid var(--border); padding-top: 14px; }
 }
 #origins-modal { width: 600px; }
+/* Fuel per installer (migration 072) */
+#fuel-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(17,24,39,0.4); z-index: 2000; align-items: center; justify-content: center; }
+#fuel-modal-overlay.open { display: flex; }
+#fuel-modal { width: 520px; max-width: 92vw; max-height: 88vh; overflow-y: auto; background: var(--surface); border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+.settings-section { margin-bottom: 6px; }
+.settings-h { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
+.settings-sub { font-size: 12px; color: var(--text3); margin-bottom: 12px; line-height: 1.45; }
+.fuel-settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+.fuel-settings-grid label, .fuel-inst-add label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 4px; }
+.fuel-settings-grid input, .fuel-inst-row input[type=text], .fuel-inst-add input { width: 100%; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface2); color: var(--text); font-size: 13px; box-sizing: border-box; }
+.fuel-inst-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; margin-bottom: 6px; }
+.fuel-inst-row label { font-size: 12.5px; color: var(--text2); white-space: nowrap; }
+.fuel-inst-add { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; margin-top: 10px; }
+.fuel-box { margin-top: 14px; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+.fuel-box-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.fuel-box-head span { font-weight: 400; color: var(--text2); }
+.fuel-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.fuel-table th { text-align: left; font-weight: 500; color: var(--text3); font-size: 11.5px; padding: 4px 6px; border-bottom: 1px solid var(--border); }
+.fuel-table td { padding: 5px 6px; border-bottom: 1px solid var(--border); }
+.fuel-table tr:last-child td { border-bottom: none; font-weight: 600; }
+.fuel-table .num { text-align: right; }
+.fuel-na { color: var(--text3); }
+.fuel-note { margin-top: 6px; font-size: 11.5px; color: var(--text3); }
 .modal-body select { width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 13px; background: var(--surface2); color: var(--text); }
 .origin-row { display: grid; grid-template-columns: 1fr 110px auto auto; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
 .origin-row:last-child { border-bottom: 0; }
@@ -435,13 +458,13 @@ tbody tr:hover { background: var(--surface2); }
 .modal-btns { display: flex; gap: 8px; }
 /* View-only lead (migration 056): managers edit any lead, everyone else only
    the leads assigned to them. The database enforces it; this just hides the
-   controls that would fail. */
+   controls that would fail. Uploading documents stays open to everyone
+   (migration 071, Greg 2026-11-17), so the upload controls are not hidden. */
 .readonly-banner { margin: 10px 0 0; padding: 8px 12px; border-radius: 8px; background: #fef3c7; color: #92400e; font-size: 13px; font-weight: 500; }
 #detail-view.lead-readonly :is(#log-contact-btn, .composer, #details-edit-btn, #add-quote-option-btn,
-  #doc-file-input, #doc-upload-btn, #ih-send-btn, .doc-file-input, .doc-upload-btn, .doc-remove-link,
-  .doc-category-select, .doc-cat-move,
+  #ih-send-btn, .doc-remove-link, .doc-cat-move,
   .row-action-link, .email-due-actions, [id^="qo-save-"], [id^="qo-cancel-"], .qo-detail-row .btn-secondary) { display: none !important; }
-#detail-view.lead-readonly :is(#install-unlocked, .qo-detail-row) :is(input, select, textarea) { pointer-events: none; opacity: .7; }
+#detail-view.lead-readonly :is(#install-unlocked, .qo-detail-row) :is(input:not(.doc-file-input), select, textarea) { pointer-events: none; opacity: .7; }
 </style>
 </head>
 <body>
@@ -487,6 +510,7 @@ tbody tr:hover { background: var(--surface2); }
             <button class="btn-secondary" type="button" id="refresh-leads-btn" title="Reload the leads list">↻ Refresh</button>
             <button class="btn-secondary" type="button" id="show-deleted-leads-btn" style="display:none">Recently deleted</button>
             <button class="btn-secondary" type="button" id="lead-suppliers-btn" style="display:none">Lead suppliers</button>
+            <button class="btn-secondary" type="button" id="settings-btn" style="display:none">Settings</button>
             <button class="btn-primary" id="add-lead-btn">+ Add lead</button>
           </div>
         </div>
@@ -802,6 +826,44 @@ tbody tr:hover { background: var(--surface2); }
   </div>
 </div>
 
+<div id="fuel-modal-overlay">
+  <div id="fuel-modal">
+    <div class="modal-header">
+      <div class="modal-header-text">
+        <div class="modal-eyebrow">Managers only</div>
+        <h2>Settings</h2>
+        <div class="modal-sub">CRM settings shared by everyone. Only managers can change them.</div>
+      </div>
+      <button class="modal-close" id="fm-close-btn" aria-label="Close">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <!-- Each group of settings is its own section; add new ones below Fuel. -->
+      <section class="settings-section">
+      <h3 class="settings-h">Fuel</h3>
+      <div class="settings-sub">Fuel per installer on quote options: road miles from the office, there and back, at the rate below. Jobs inside the free radius show N/A. Changes only affect new quote options; saved quotes keep the rate they were made with. Installers can't be deleted: untick Active to hide one from new quotes.</div>
+      <div class="fuel-settings-grid">
+        <div><label for="fm-radius">Free radius (road miles from the office)</label><input type="number" id="fm-radius" min="0" step="1"/></div>
+        <div><label for="fm-ppm">Pence per mile</label><input type="number" id="fm-ppm" min="0" step="0.1"/></div>
+      </div>
+      <div class="quote-status" style="font-weight:600;margin-bottom:6px">Installers</div>
+      <div id="fm-installers"></div>
+      <div class="fuel-inst-add">
+        <div><label for="fm-new-name">New installer</label><input type="text" id="fm-new-name" placeholder="Full name"/></div>
+        <button class="btn-secondary" type="button" id="fm-add-btn">Add</button>
+      </div>
+      </section>
+      <div class="quote-status" id="fm-status" style="margin-top:8px"></div>
+    </div>
+    <div class="modal-footer">
+      <span class="quote-status"></span>
+      <div class="modal-btns">
+        <button class="btn-secondary" id="fm-cancel-btn">Cancel</button>
+        <button class="btn-primary" id="fm-save-btn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="shared/escape-html.js"></script>
 <script src="shared/manager-config.js"></script>
 <script src="shared/lead-type-config.js"></script>
@@ -936,7 +998,7 @@ function originOptionsHtml(currentId) {
 }
 
 /* ── Leads table ─────────────────────────────────────────── */
-const LEAD_COLUMNS = 'id, customer_name, lead_type, product, contact_phone, contact_email, address, postcode, created_at, install_hub_job_id, sent_to_install_hub_at, sent_to_install_hub_by_email, assigned_to_email, lead_channel, lead_origin_id, lead_cost, deleted_at, install_scheduled_date';
+const LEAD_COLUMNS = 'id, customer_name, lead_type, product, contact_phone, contact_email, address, postcode, created_at, install_hub_job_id, sent_to_install_hub_at, sent_to_install_hub_by_email, assigned_to_email, lead_channel, lead_origin_id, lead_cost, deleted_at, install_scheduled_date, road_miles_from_office, road_miles_postcode';
 
 /* ── Several people on one lead (2026-10-12): no locking. A save only goes
    through if the fields being saved still hold the values this page
@@ -962,8 +1024,8 @@ function applyLeadEditAccess() {
   banner.style.display = editable ? 'none' : '';
   if (!editable && currentLead) {
     banner.textContent = currentLead.assigned_to_email
-      ? `View only. This lead is assigned to ${repName(currentLead.assigned_to_email)}, so only they or a manager can change it.`
-      : 'View only. This lead is unassigned. Ask a manager to assign it to you.';
+      ? `View only. This lead is assigned to ${repName(currentLead.assigned_to_email)}, so only they or a manager can change it. You can still upload documents.`
+      : 'View only. This lead is unassigned. Ask a manager to assign it to you. You can still upload documents.';
   }
   // Only managers reassign leads.
   document.getElementById('ld-assigned-chips').closest('.quote-field').style.display = isAdmin(currentUser) ? '' : 'none';
@@ -1596,6 +1658,7 @@ function openLeadDetail(lead) {
   renderProgress();
   subscribeToLead(lead.id);
   loadQuoteOptions(lead.id);
+  ensureRoadMiles(lead);
   loadLeadDocuments(lead.id);
   renderInstallHubStatus();
   loadActivity(lead.id);
@@ -2234,6 +2297,7 @@ document.getElementById('details-save-btn').addEventListener('click', async () =
   populateLeadFields(currentLead);
   renderInstallChecklist(); // the checklist follows the job type
   refreshQuoteLeadCost();
+  ensureRoadMiles(currentLead); // a new postcode needs a new road distance
   setDetailsEditing(false);
   loadActivity(currentLead.id);
 });
@@ -2560,7 +2624,8 @@ function commissionFieldHtml(opt) {
 function quoteOptionDetailRowHtml(opt) {
   const { total, margin, marginPct } = quoteOptionTotals(opt);
   const id = opt.id;
-  const costFieldsHtml = QUOTE_COST_FIELDS.map(f => f.key === 'commission_cost' ? commissionFieldHtml(opt) : `
+  const costFieldsHtml = QUOTE_COST_FIELDS.map(f => f.key === 'commission_cost' ? commissionFieldHtml(opt)
+    : (f.key === 'fuel_cost' && opt.fuel_breakdown) ? fuelTotalFieldHtml(opt) : `
     <div class="quote-field"><label>${escapeHtml(f.label)}</label>
       <input type="number" min="0" step="1" id="${qoFieldId(id, f.key)}" value="${opt[f.key] ?? ''}" oninput="updateOptionTotals('${id}')" disabled/>
     </div>`).join('') + `
@@ -2578,6 +2643,7 @@ function quoteOptionDetailRowHtml(opt) {
           : `<button class="btn-secondary" type="button" onclick="selectQuoteOption('${id}')">Mark as selected</button>`}
       </div>
       <div class="quote-grid" style="margin-top:12px">${costFieldsHtml}</div>
+      ${opt.fuel_breakdown ? `<div class="fuel-box" id="qo-fuel-${id}">${fuelBoxInnerHtml(id)}</div>` : ''}
       <div class="quote-total"><span>Total cost</span><strong id="qo-total-${id}">£${total.toLocaleString()}</strong></div>
       <div class="quote-grid" style="margin-top:12px">
         <div class="quote-field"><label>Quote price (£)</label>
@@ -2662,6 +2728,8 @@ function setOptionEditing(optionId, editing) {
     const el = qoInput(optionId, field);
     if (el) el.disabled = !editing;
   });
+  if (editing) fuelEditing.add(optionId); else fuelEditing.delete(optionId);
+  renderFuelBox(optionId);
 }
 
 function editQuoteOption(optionId) { setOptionEditing(optionId, true); }
@@ -2671,6 +2739,7 @@ function cancelQuoteOptionEdit(optionId) {
   if (!opt) return;
   qoInput(optionId, 'label').value = opt.label || '';
   QUOTE_COST_FIELDS.forEach(f => { const input = qoInput(optionId, f.key); if (input) input.value = opt[f.key] ?? ''; });
+  if (opt.fuel_breakdown) { fuelDrafts[optionId] = fuelDraftFrom(opt.fuel_breakdown); renderFuelBox(optionId); }
   const commissionTo = qoInput(optionId, 'commission_to');
   if (commissionTo) commissionTo.value = opt.commission_to_email || '';
   qoInput(optionId, 'quote_price').value = opt.quote_price ?? '';
@@ -2684,6 +2753,12 @@ async function saveQuoteOption(optionId) {
   const updates = { label: values.label.trim() || null };
   QUOTE_COST_FIELDS.forEach(f => { if (qoInput(optionId, f.key)) updates[f.key] = values[f.key] === '' ? null : Number(values[f.key]); });
   updates.quote_price = values.quote_price === '' ? null : Number(values.quote_price);
+  if (fuelDrafts[optionId]) {
+    const fb = fuelDrafts[optionId];
+    if (fb.miles == null) fb.miles = leadRoadMiles();
+    updates.fuel_breakdown = JSON.parse(JSON.stringify(fb));
+    updates.fuel_cost = fuelTotal(fb);
+  }
   updates.updated_at = new Date().toISOString();
   updates.updated_by_email = currentUser?.email || null;
 
@@ -2834,6 +2909,7 @@ document.getElementById('add-quote-option-btn').addEventListener('click', async 
     prospect_id: currentLead.id,
     label: `Option ${position + 1}`,
     position,
+    fuel_breakdown: newFuelBreakdown(),
     created_by_email: currentUser?.email || null,
     updated_by_email: currentUser?.email || null,
   }).select().single();
@@ -2849,7 +2925,7 @@ document.getElementById('add-quote-option-btn').addEventListener('click', async 
 
 async function loadQuoteOptions(prospectId) {
   const { data, error } = await db.from('quote_options')
-    .select('id, prospect_id, label, position, kit_price, scaffold_price, electrical_cost, roofer_cost, mcs_cost, fuel_cost, commission_cost, heat_loss_epc_cost, plumbing_cost, quote_price, is_selected, updated_at')
+    .select('id, prospect_id, label, position, kit_price, scaffold_price, electrical_cost, roofer_cost, mcs_cost, fuel_cost, commission_cost, heat_loss_epc_cost, plumbing_cost, quote_price, is_selected, updated_at, fuel_breakdown')
     .eq('prospect_id', prospectId)
     .is('deleted_at', null)
     .order('position', { ascending: true });
@@ -2877,6 +2953,7 @@ async function loadQuoteOptions(prospectId) {
     options.forEach(o => { o.commission_to_email = to[o.id] || null; });
   }
   currentQuoteOptions = options;
+  options.forEach(o => { delete fuelDrafts[o.id]; fuelEditing.delete(o.id); });
   const listEl = document.getElementById('quote-options-list');
   listEl.innerHTML = currentQuoteOptions.map(quoteOptionRowsHtml).join('');
   document.getElementById('quote-options-empty').style.display = currentQuoteOptions.length ? 'none' : 'block';
@@ -3020,7 +3097,7 @@ function documentContentType(file) {
 // fails the type/size check or the upload is skipped and named in the
 // status line; the rest still go up. quoteOptionId null = lead-level.
 async function uploadDocuments({ prospectId, quoteOptionId = null, category = null, fileInput, statusEl, btn, reload }) {
-  if (blockedReadOnly()) return;
+  // No view-only check: anyone can upload to any lead (migration 071).
   const files = [...fileInput.files];
   statusEl.classList.remove('error');
   statusEl.textContent = '';
@@ -3946,6 +4023,211 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && document.getElementById('origins-modal-overlay').classList.contains('open')) closeOriginsModal();
 });
 
+/* ── Fuel per installer (Greg, 2026-11-18, migration 072) ─────────────
+   New quote options get one fuel line per installer instead of the flat
+   Fuel costs box: tick who is on the job, and each ticked installer costs
+   road miles x 2 (there and back) x pence per mile. Inside the free radius
+   it's N/A (GBP 0); a manager can also mark any installer N/A by hand.
+   Each option keeps a snapshot (quote_options.fuel_breakdown) of the
+   distance, radius and rate it was made with, so changing Fuel settings
+   never changes a saved quote. Older options (fuel_breakdown null) keep
+   their flat Fuel costs box. The total is written into fuel_cost, which
+   profit, commission and Jobs won already use. ── */
+let fuelSettings = { radius: 40, ppm: 30, installers: [] };
+const fuelDrafts = {};          // optionId -> breakdown being edited
+const fuelEditing = new Set();  // optionIds open for editing
+let roadMilesStatus = { leadId: null, text: '' };
+
+async function fetchFuelSettings() {
+  const { data, error } = await db.from('app_settings').select('key, value')
+    .in('key', ['crm_fuel_radius_miles', 'crm_fuel_pence_per_mile', 'crm_fuel_installers']);
+  if (error) { console.error('Failed to load fuel settings:', error); return; }
+  const v = Object.fromEntries((data || []).map(r => [r.key, r.value]));
+  if (v.crm_fuel_radius_miles !== undefined) fuelSettings.radius = Number(v.crm_fuel_radius_miles) || 0;
+  if (v.crm_fuel_pence_per_mile !== undefined) fuelSettings.ppm = Number(v.crm_fuel_pence_per_mile) || 0;
+  try { fuelSettings.installers = JSON.parse(v.crm_fuel_installers || '[]'); } catch { fuelSettings.installers = []; }
+}
+
+function normPostcode(pc) { return (pc || '').toUpperCase().replace(/\s+/g, ''); }
+// Road miles (one way) for the open lead, only if worked out for its current postcode.
+function leadRoadMiles() {
+  const l = currentLead;
+  return l && l.road_miles_from_office != null && l.road_miles_postcode === normPostcode(l.postcode)
+    ? Number(l.road_miles_from_office) : null;
+}
+
+async function ensureRoadMiles(lead) {
+  if (!lead || leadRoadMiles() != null || !normPostcode(lead.postcode)) return;
+  roadMilesStatus = { leadId: lead.id, text: 'Working out the road distance…' };
+  renderAllFuelBoxes();
+  const { data, error } = await db.functions.invoke('road-distance', { body: { prospect_id: lead.id } });
+  if (!currentLead || currentLead.id !== lead.id) return;
+  if (error || data?.miles == null) {
+    let msg = 'Road distance not available yet';
+    try { const b = await error?.context?.json?.(); if (b?.error) msg = b.error; } catch { /* keep default */ }
+    roadMilesStatus = { leadId: lead.id, text: msg };
+  } else {
+    lead.road_miles_from_office = data.miles;
+    lead.road_miles_postcode = data.postcode;
+    roadMilesStatus = { leadId: lead.id, text: '' };
+  }
+  renderAllFuelBoxes();
+}
+
+function newFuelBreakdown() {
+  return {
+    v: 1, miles: leadRoadMiles(), radius: fuelSettings.radius, ppm: fuelSettings.ppm,
+    rows: fuelSettings.installers.filter(i => i.active).map(i => ({ id: i.id, name: i.name, on: false, na: false })),
+  };
+}
+// Editable copy of a saved breakdown, plus any installer added since (unticked).
+function fuelDraftFrom(fb) {
+  const d = JSON.parse(JSON.stringify(fb));
+  d.rows = d.rows || [];
+  fuelSettings.installers.filter(i => i.active && !d.rows.some(r => r.id === i.id))
+    .forEach(i => d.rows.push({ id: i.id, name: i.name, on: false, na: false }));
+  return d;
+}
+function fuelMiles(fb) { return fb.miles ?? leadRoadMiles(); }
+function fuelRowCost(fb, row) {
+  if (!row.on) return { cost: 0, text: '' };
+  if (row.na) return { cost: 0, text: 'N/A', na: true };
+  const m = fuelMiles(fb);
+  if (m == null) return { cost: 0, text: 'Distance needed', na: true };
+  if (m <= fb.radius) return { cost: 0, text: 'N/A', na: true };
+  return { cost: Math.round(m * 2 * fb.ppm) / 100 };
+}
+function fuelTotal(fb) { return Math.round(fb.rows.reduce((t, r) => t + fuelRowCost(fb, r).cost, 0) * 100) / 100; }
+function money2(n) { return `£${Number(n).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
+
+function fuelTotalFieldHtml(opt) {
+  const id = opt.id;
+  if (!fuelDrafts[id]) fuelDrafts[id] = fuelDraftFrom(opt.fuel_breakdown);
+  return `
+    <div class="quote-field"><label>Fuel (£, per installer below)</label>
+      <input type="number" readonly tabindex="-1" id="${qoFieldId(id, 'fuel_cost')}" value="${fuelTotal(fuelDrafts[id])}" disabled title="Worked out from the installers ticked below"/>
+    </div>`;
+}
+
+function fuelBoxInnerHtml(optionId) {
+  const fb = fuelDrafts[optionId];
+  if (!fb) return '';
+  const editing = fuelEditing.has(optionId);
+  const manager = isAdmin(currentUser);
+  const m = fuelMiles(fb);
+  const dist = m != null
+    ? `${m.toLocaleString('en-GB')} road miles from the office (one way)${m <= fb.radius ? `, inside the ${fb.radius}-mile free radius` : ''}`
+    : (roadMilesStatus.leadId === currentLead?.id && roadMilesStatus.text) || 'Road distance not worked out yet';
+  const rows = fb.rows.filter(r => r.on || fuelSettings.installers.some(i => i.id === r.id && i.active));
+  const body = rows.map(r => {
+    const idx = fb.rows.indexOf(r);
+    const c = fuelRowCost(fb, r);
+    return `<tr>
+      <td>${escapeHtml(r.name)}</td>
+      <td><input type="checkbox" class="fuel-cb" ${r.on ? 'checked' : ''} ${editing ? '' : 'disabled'} onchange="setFuelRow('${optionId}', ${idx}, 'on', this.checked)" aria-label="${escapeHtml(r.name)} on this job"/></td>
+      ${manager ? `<td><input type="checkbox" class="fuel-cb" ${r.na ? 'checked' : ''} ${editing && r.on ? '' : 'disabled'} onchange="setFuelRow('${optionId}', ${idx}, 'na', this.checked)" aria-label="Mark ${escapeHtml(r.name)} N/A"/></td>` : ''}
+      <td class="num ${c.na ? 'fuel-na' : ''}">${c.text ?? money2(c.cost)}</td>
+    </tr>`;
+  }).join('');
+  const lm = leadRoadMiles();
+  const stale = editing && ((lm != null && fb.miles != null && lm !== fb.miles) || fb.ppm !== fuelSettings.ppm || fb.radius !== fuelSettings.radius);
+  return `
+    <div class="fuel-box-head">Fuel by installer <span>${escapeHtml(dist)}</span></div>
+    <table class="fuel-table">
+      <tr><th>Installer</th><th>On this job</th>${manager ? '<th>Mark N/A</th>' : ''}<th class="num">Fuel</th></tr>
+      ${body || `<tr><td colspan="${manager ? 4 : 3}" class="fuel-na">No installers set up. A manager can add them in Settings.</td></tr>`}
+      <tr><td>Total fuel</td><td></td>${manager ? '<td></td>' : ''}<td class="num">${money2(fuelTotal(fb))}</td></tr>
+    </table>
+    <div class="fuel-note">${fb.ppm}p a mile, there and back, per installer. Free within ${fb.radius} road miles of the office.
+      ${stale ? `<button type="button" class="btn-secondary" style="margin-left:6px" onclick="useCurrentFuelSettings('${optionId}')">Use current distance and rate (${fuelSettings.ppm}p, ${fuelSettings.radius} miles)</button>` : ''}</div>`;
+}
+
+function renderFuelBox(optionId) {
+  const el = document.getElementById(`qo-fuel-${optionId}`);
+  if (!el || !fuelDrafts[optionId]) return;
+  el.innerHTML = fuelBoxInnerHtml(optionId);
+  const input = qoInput(optionId, 'fuel_cost');
+  if (input) input.value = fuelTotal(fuelDrafts[optionId]);
+  if (document.getElementById(`qo-total-${optionId}`)) updateOptionTotals(optionId);
+}
+function renderAllFuelBoxes() { currentQuoteOptions.forEach(o => renderFuelBox(o.id)); }
+
+function setFuelRow(optionId, idx, field, checked) {
+  const fb = fuelDrafts[optionId];
+  if (!fb || !fb.rows[idx]) return;
+  if (field === 'na' && !isAdmin(currentUser)) return;
+  fb.rows[idx][field] = checked;
+  if (field === 'on' && !checked) fb.rows[idx].na = false;
+  renderFuelBox(optionId);
+}
+function useCurrentFuelSettings(optionId) {
+  const fb = fuelDrafts[optionId];
+  if (!fb) return;
+  fb.miles = leadRoadMiles() ?? fb.miles;
+  fb.ppm = fuelSettings.ppm;
+  fb.radius = fuelSettings.radius;
+  renderFuelBox(optionId);
+}
+
+// ── Settings modal (managers; app_settings, migration 060/072). Fuel is
+// the first section; later settings get their own section in the modal. ──
+let fuelModalInstallers = [];
+function renderFuelInstallerRows() {
+  document.getElementById('fm-installers').innerHTML = fuelModalInstallers.map((i, idx) => `
+    <div class="fuel-inst-row">
+      <input type="text" value="${escapeHtml(i.name)}" oninput="fuelModalInstallers[${idx}].name = this.value" aria-label="Installer name"/>
+      <label><input type="checkbox" ${i.active ? 'checked' : ''} onchange="fuelModalInstallers[${idx}].active = this.checked"/> Active</label>
+    </div>`).join('') || '<div class="quote-status">No installers yet.</div>';
+}
+async function openFuelModal() {
+  await fetchFuelSettings();
+  document.getElementById('fm-radius').value = fuelSettings.radius;
+  document.getElementById('fm-ppm').value = fuelSettings.ppm;
+  document.getElementById('fm-new-name').value = '';
+  document.getElementById('fm-status').textContent = '';
+  fuelModalInstallers = JSON.parse(JSON.stringify(fuelSettings.installers));
+  renderFuelInstallerRows();
+  document.getElementById('fuel-modal-overlay').classList.add('open');
+}
+function closeFuelModal() { document.getElementById('fuel-modal-overlay').classList.remove('open'); }
+document.getElementById('settings-btn').addEventListener('click', openFuelModal);
+document.getElementById('fm-close-btn').addEventListener('click', closeFuelModal);
+document.getElementById('fm-cancel-btn').addEventListener('click', closeFuelModal);
+document.getElementById('fuel-modal-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('fuel-modal-overlay')) closeFuelModal();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('fuel-modal-overlay').classList.contains('open')) closeFuelModal();
+});
+document.getElementById('fm-add-btn').addEventListener('click', () => {
+  const name = document.getElementById('fm-new-name').value.trim();
+  if (!name) return;
+  fuelModalInstallers.push({ id: 'i' + Date.now().toString(36), name, active: true });
+  document.getElementById('fm-new-name').value = '';
+  renderFuelInstallerRows();
+});
+document.getElementById('fm-save-btn').addEventListener('click', async () => {
+  const status = document.getElementById('fm-status');
+  const radius = Number(document.getElementById('fm-radius').value);
+  const ppm = Number(document.getElementById('fm-ppm').value);
+  if (!(radius >= 0) || document.getElementById('fm-radius').value === '') { status.textContent = 'Enter the free radius in miles.'; return; }
+  if (!(ppm > 0)) { status.textContent = 'Enter the pence per mile.'; return; }
+  const installers = fuelModalInstallers.map(i => ({ ...i, name: i.name.trim() }));
+  if (installers.some(i => !i.name)) { status.textContent = 'Every installer needs a name.'; return; }
+  const now = new Date().toISOString();
+  const by = currentUser?.email || null;
+  const { error } = await db.from('app_settings').upsert([
+    { key: 'crm_fuel_radius_miles', value: String(radius), updated_at: now, updated_by: by },
+    { key: 'crm_fuel_pence_per_mile', value: String(ppm), updated_at: now, updated_by: by },
+    { key: 'crm_fuel_installers', value: JSON.stringify(installers), updated_at: now, updated_by: by },
+  ], { onConflict: 'key' });
+  if (error) { status.textContent = 'Failed to save: ' + error.message; return; }
+  await fetchFuelSettings();
+  renderAllFuelBoxes();
+  closeFuelModal();
+  showToast('Settings saved. Fuel changes apply to new quote options.');
+});
+
 /* ── Boot ────────────────────────────────────────────────── */
 // Shared by boot() and the delete/restore-lead flows, below — a full
 // refetch is the simplest way to keep latest_outcome/selected_quote_price
@@ -3988,8 +4270,9 @@ async function boot(user) {
   document.getElementById('nav-home-link').style.display = isAdmin(user) ? '' : 'none';
   document.getElementById('show-deleted-leads-btn').style.display = isAdmin(user) ? '' : 'none';
   document.getElementById('lead-suppliers-btn').style.display = isAdmin(user) ? '' : 'none';
+  document.getElementById('settings-btn').style.display = isAdmin(user) ? '' : 'none';
   document.getElementById('wrap').style.display = 'block';
-  await fetchLeadOrigins();
+  await Promise.all([fetchLeadOrigins(), fetchFuelSettings()]);
   originFilterKeys().forEach(k => activeSourceFilters.add(k));
   await refreshLeadsList();
   subscribeToLeadsList();

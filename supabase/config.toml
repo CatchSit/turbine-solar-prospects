@@ -44,3 +44,6 @@ verify_jwt = false
 # session. Authenticity comes from each supplier's own x-api-key
 # (POCKLA_API_KEY, ...), checked inside the function.
 verify_jwt = false
+
+[functions.road-distance]
+verify_jwt = true

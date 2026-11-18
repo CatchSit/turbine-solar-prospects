@@ -1,5 +1,53 @@
 # Turbine Energy — Solar Prospect Map — Handover
 
+> **2026-11-18: uploads open to everyone + fuel per installer + Settings button (LIVE).**
+> - **Uploads (migration 071, run by Greg 17 Nov):** anyone signed in with a Turbine account can upload documents to any lead (lead-level and inside quote options), even view-only/unassigned leads. Removing, moving category and every other edit still need `can_edit_lead()`.
+> - **Fuel per installer (migration 072, run by Greg 18 Nov):** new quote options get `quote_options.fuel_breakdown` (snapshot: miles, radius, ppm, rows of installers with `on`/`na`). Each ticked installer costs road miles x 2 x pence per mile; inside the free radius it's N/A; outside, the FULL round trip is paid (no 40-mile deduction, Greg confirmed). Managers can tick Mark N/A. Total is written into `fuel_cost`, so profit/Jobs won are unchanged. Old options (`fuel_breakdown` null) keep the flat box.
+> - **Settings (managers):** a general **Settings** button on the leads list opens a modal with sections; **Fuel** is the first (radius 40, 30p/mile, installers Alex Plant, Steve Pears, Richard Nehles, Dale Haywood). Stored in `app_settings` as `crm_fuel_*` keys (the proposal generator copies all keys into its config, harmlessly). Add later settings as new sections in `#fuel-modal`.
+> - **Road miles:** Edge Function `road-distance` (DEPLOYED 18 Nov), OpenRouteService driving-car from the office postcode (`crm_fuel_office_postcode`, DN5 7TR) to the lead's current postcode via postcodes.io; saved on `prospects.road_miles_from_office` + `road_miles_postcode`, recomputed only when the postcode changes. Secret `ORS_API_KEY` (free Public API key) set by Greg.
+
+> **2026-11-15: callback + WhatsApp decisions (still nothing built).**
+> - **Callback:** Greg chose **Twilio**.
+>   - Flow: a web form leads to ingest-enquiry (lead channel "Callback request"); Twilio rings the office line (01302 898508, a normal landline, no upgrade needed); a voice says "press 1 to connect" and it dials the customer, showing the office caller ID; the call result is logged on the lead.
+>   - If missed: a fallback mobile (number TBC), then a text to the customer and the lead flagged as urgent.
+>   - The button shows only Mon-Fri 8:30-17:30, on the homepage, home solar, commercial solar and other solar sales pages.
+>   - UK numbers only, with a rate limit and a honeypot.
+>   - Greg is opening a Twilio account. Before he buys a number, confirm UK pricing, number type and the regulatory bundle.
+> - **WhatsApp:** on 15 Nov Greg linked WhatsApp to **Meta Business Suite**. That is not the Cloud API connection yet.
+>   - Still to check: Meta business verification (free), and whether to go direct with Meta or through Twilio (coexistence support, fees).
+>   - Sending from the CRM is possible later: free-form within the 24-hour window, approved paid templates after that.
+>   - Order: callback -> wa.me button (Greg said yes; waiting on "go" after the explanation) -> logging -> sending.
+
+> **2026-11-14, end of day: ideas only, nothing built.**
+> - **WhatsApp Business -> CRM (brainstorm).** Greg's answers:
+>   - the office number is on the WhatsApp Business phone app;
+>   - he wants chats LOGGED on the lead (read-only, like the Outlook sync) and will keep replying from the phone;
+>   - the same visibility as the lead.
+>
+>   Plan:
+>   - Meta Cloud API "coexistence", so the app keeps working and its sent messages are still logged. Vendor articles say UK support since Nov 2025; confirm with Meta, and confirm the landline is eligible.
+>   - A webhook Edge Function (signature check) feeding a WhatsApp messages table, matched by normalised phone to prospects + prospect_contacts.
+>   - Messages show on the Activity timeline.
+>   - Customer photos, videos and voice notes are auto-saved to lead documents.
+>   - Managers get an unmatched-chats list.
+>
+>   Quick win offered: a wa.me click-to-chat button on the lead page. Awaiting go-ahead.
+>
+>   Still open:
+>   - direct Meta route or a provider (e.g. 360dialog);
+>   - Meta Business verification status;
+>   - privacy notice line;
+>   - template opt-in.
+> - **Website "call me back in 5 minutes" (idea raised, not discussed yet).** A website callback request, picked up by a person or by an automated call. To discuss next session:
+>   - who answers;
+>   - the office phone system;
+>   - out-of-hours wording (Mon-Fri 8:30-17:30);
+>   - person alert vs automatic call-connect;
+>   - which pages it goes on.
+>
+>   It would come in through ingest-enquiry as its own lead channel.
+> - **Vic's how-to guide:** a Claude doc "How to do a heat pump quote" (CRM lead -> quote option -> Manual Quote -> Save quote to CRM), with screenshots from demo data. It lives on claude.ai, not in this repo. Greg needs to share it with Vic.
+
 > **2026-11-14, later still: design/MCS estimate checked in the selected quote (crm.html, LIVE).** Greg keeps the design / MCS estimate and the quote PDF inside each quote option, because a lead can have several quotes. "Design and MCS estimate" is no longer offered as a lead-level type (`leadUpload: false` in `DOC_CATEGORIES`; kept so any row already typed design still shows, and the 069 constraint is unchanged). The paperwork box ticks it when the quote option marked Selected has at least one document (`refreshPaperwork`, debounced; one quote_options query + one head count). It shows "(no quote selected yet)" when none is selected. It re-runs after option documents load and after Select. The lead-level "Signed quote and contract" is relabelled "Signed contract" (key still `contract`). Tested with a Node test of the three cases plus the dropdown filtering.
 
 > **2026-11-14, later: in-page document viewer + photo thumbnails (crm.html only, LIVE).** Greg wanted to see images and documents without "Open" starting a new tab. Every document list (the lead Documents card and each quote option) now shows a 44px thumbnail for photos (jpg/jpeg/jfif/png/gif/webp; one batched `createSignedUrls` call, 1 h, lazy-loaded) and a PDF/FILE badge otherwise. Clicking the name, the thumbnail or **View** opens an overlay (`openDocViewer(listKey, idx)`; `docViewerLists` holds each list in display order, so the arrows follow the category grouping). Photos fit the screen with click-to-zoom; PDFs show in an iframe using the browser's own viewer; other types (Word, HEIC) show a Download button. The bar has the name, type, uploader, date, "n of m", Download (signed URL with `download`), Open in new tab and Close. Esc / ← / → work, and clicking the background closes it. Signed URLs last 10 min, private bucket unchanged, no third-party viewers. Mobile: arrows move to the bottom and "Open in new tab" is hidden. `openLeadDocument()` is kept but no longer linked. At the time the stored files were 117 PDFs, 41 JPEG/JFIF and 1 PNG, with no Word or HEIC. Tested in headless Edge against a test page that copies the real functions (list, photo, next, Word fallback). PDF-in-iframe was not checked in a real signed-in browser; Supabase sends no frame-blocking headers.
