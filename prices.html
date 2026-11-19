@@ -690,6 +690,14 @@ async function boot(user) {
   currentUser = user;
   const manager = isAdmin(user);
   document.getElementById('nav-home-link').style.display = manager ? '' : 'none';
+  // Cost prices are managers only (migration 075, Greg 2026-11-19). The
+  // database refuses the rows anyway; this just explains why.
+  if (!manager) {
+    const wrap = document.getElementById('wrap');
+    wrap.innerHTML = '<p style="padding:40px 20px;color:var(--text2)">Prices are for managers only. <a href="crm.html">Back to the CRM</a></p>';
+    wrap.style.display = 'block';
+    return;
+  }
   document.querySelectorAll('.manager-only').forEach(el => { el.style.display = manager ? '' : 'none'; });
   document.getElementById('wrap').style.display = 'block';
   loadSuppliers();

@@ -254,6 +254,10 @@ tbody tr:hover { background: var(--surface2); }
 .ic-type-hint { font-size: 12px; font-weight: 400; color: var(--text3); }
 .ic-meta { font-size: 11.5px; color: var(--text3); grid-column: 1 / -1; margin-top: -8px; }
 .ic-meta:empty { display: none; }
+/* Locked until Edit (Greg 2026-11-19: stray clicks were changing it) */
+.ic-actions { display: flex; gap: 8px; margin-top: 10px; }
+#ic-rows.ic-locked .ic-row { opacity: .6; }
+#ic-rows.ic-locked .ic-row label, #ic-rows.ic-locked .ic-row input { cursor: default; }
 .web-tag { display: inline-block; margin-top: 3px; font-size: 10.5px; font-weight: 600; color: #2563eb; background: #dbeafe; padding: 1px 7px; border-radius: 100px; }
 .web-enq { padding: 10px 0; border-bottom: 1px solid var(--border); }
 .web-enq:last-child { border-bottom: 0; }
@@ -314,6 +318,7 @@ tbody tr:hover { background: var(--surface2); }
 .doc-cat-h { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--text3); padding: 4px 0 2px; display: flex; justify-content: space-between; }
 .doc-cat-h .n { font-weight: 500; }
 .doc-cat-move { font-size: 11px; padding: 2px 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface2); color: var(--text2); max-width: 150px; }
+.qo-doc-type { font-size: 12px; padding: 3px 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface2); color: var(--text); }
 .doc-category-select { font-size: 12px; padding: 5px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface2); color: var(--text); max-width: 190px; }
 .doc-paperwork { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; font-size: 12px; background: var(--surface2); }
 .doc-paperwork .pw-h { font-weight: 600; color: var(--text); margin-bottom: 4px; }
@@ -401,6 +406,29 @@ tbody tr:hover { background: var(--surface2); }
 #fuel-modal-overlay.open { display: flex; }
 #fuel-modal { width: 520px; max-width: 92vw; max-height: 88vh; overflow-y: auto; background: var(--surface); border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
 .settings-section { margin-bottom: 6px; }
+#fuel-modal { width: 760px; }
+.settings-section + .settings-section { border-top: 1px solid var(--border); margin-top: 18px; padding-top: 16px; }
+/* Products (migration 074) */
+.pm-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.pm-bar select { width: auto; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface2); color: var(--text); font-size: 13px; }
+.pm-bar label { font-size: 12.5px; color: var(--text2); }
+.pm-bar .btn-secondary { margin-left: auto; }
+.pm-list { border: 1px solid var(--border); border-radius: 8px; max-height: 300px; overflow-y: auto; }
+.pm-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 13px; }
+.pm-row:last-child { border-bottom: 0; }
+.pm-row.retired { opacity: .55; }
+.pm-name { font-weight: 500; }
+.pm-facts { font-size: 12px; color: var(--text3); margin-top: 2px; }
+.pm-facts .pm-miss { color: #b45309; }
+.pm-edit-link { font-size: 12.5px; color: var(--accentDk); cursor: pointer; }
+.pm-editor { border: 1px solid var(--accent); border-radius: 8px; padding: 12px; margin-top: 10px; }
+.pm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
+.pm-grid .full { grid-column: 1 / -1; }
+.pm-grid label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 4px; }
+.pm-grid input, .pm-grid select, .pm-grid textarea { width: 100%; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface2); color: var(--text); font-size: 13px; box-sizing: border-box; font-family: inherit; }
+.pm-grid textarea { min-height: 54px; resize: vertical; }
+.pm-editor-btns { display: flex; gap: 8px; justify-content: flex-end; align-items: center; margin-top: 10px; }
+.pm-editor-btns .quote-status { margin-right: auto; }
 .settings-h { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
 .settings-sub { font-size: 12px; color: var(--text3); margin-bottom: 12px; line-height: 1.45; }
 .fuel-settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
@@ -461,7 +489,7 @@ tbody tr:hover { background: var(--surface2); }
    controls that would fail. Uploading documents stays open to everyone
    (migration 071, Greg 2026-11-17), so the upload controls are not hidden. */
 .readonly-banner { margin: 10px 0 0; padding: 8px 12px; border-radius: 8px; background: #fef3c7; color: #92400e; font-size: 13px; font-weight: 500; }
-#detail-view.lead-readonly :is(#log-contact-btn, .composer, #details-edit-btn, #add-quote-option-btn,
+#detail-view.lead-readonly :is(#log-contact-btn, #create-proposal-btn, #ic-edit-btn, .qo-doc-type, .composer, #details-edit-btn, #add-quote-option-btn,
   #ih-send-btn, .doc-remove-link, .doc-cat-move,
   .row-action-link, .email-due-actions, [id^="qo-save-"], [id^="qo-cancel-"], .qo-detail-row .btn-secondary) { display: none !important; }
 #detail-view.lead-readonly :is(#install-unlocked, .qo-detail-row) :is(input:not(.doc-file-input), select, textarea) { pointer-events: none; opacity: .7; }
@@ -473,7 +501,7 @@ tbody tr:hover { background: var(--surface2); }
   <div><span class="nav-brand">Turbine Energy</span><span class="nav-brand-sub">CRM</span></div>
   <div class="nav-right">
     <a class="nav-link" href="index.html">Map</a>
-    <a class="nav-link" href="prices.html">Prices</a>
+    <a class="nav-link" id="nav-prices-link" href="prices.html" style="display:none">Prices</a>
     <a class="nav-link" id="nav-home-link" href="home.html" style="display:none">Home</a>
     <button id="sign-out-btn">Sign out</button>
   </div>
@@ -546,6 +574,7 @@ tbody tr:hover { background: var(--surface2); }
         <div class="lh-actions">
           <button class="btn-ghost" type="button" id="lead-prev-btn" title="Previous lead in your list">‹ Prev</button>
           <button class="btn-ghost" type="button" id="lead-next-btn" title="Next lead in your list">Next ›</button>
+          <button class="btn-ghost" type="button" id="create-proposal-btn" title="Opens the Proposal Generator on this PC with this customer filled in">Create proposal</button>
           <button class="btn-primary" type="button" id="log-contact-btn">Log contact</button>
         </div>
       </div>
@@ -687,8 +716,13 @@ tbody tr:hover { background: var(--surface2); }
               </div>
               <div id="install-checklist-card">
                 <h4 class="sub-h" style="margin-top:18px">Install checklist</h4>
-                <div class="quote-status" style="margin-bottom:6px">What still needs booking before install day. Ticks and names save automatically.</div>
+                <div class="quote-status" style="margin-bottom:6px">What still needs booking before install day. Click Edit to change it, then Save.</div>
                 <div id="ic-rows"></div>
+                <div class="ic-actions">
+                  <button class="btn-secondary" type="button" id="ic-edit-btn">Edit</button>
+                  <button class="btn-secondary" type="button" id="ic-cancel-btn" style="display:none">Cancel</button>
+                  <button class="btn-primary" type="button" id="ic-save-btn" style="display:none">Save</button>
+                </div>
                 <div class="quote-status" id="ic-status" style="margin-top:6px"></div>
               </div>
             </div>
@@ -851,6 +885,20 @@ tbody tr:hover { background: var(--surface2); }
         <div><label for="fm-new-name">New trade</label><input type="text" id="fm-new-name" placeholder="e.g. Scaffolder"/></div>
         <button class="btn-secondary" type="button" id="fm-add-btn">Add</button>
       </div>
+      </section>
+      <section class="settings-section" id="pm-section">
+      <h3 class="settings-h">Products</h3>
+      <div class="settings-sub">Panels, inverters and batteries for solar proposals. The Proposal Generator fills max efficiency, warranties and the datasheet link from this list. "Name on proposal" is what the customer sees; "Other spellings" are how EasyPV or OpenSolar may print the same product, so it is still recognised. Products save on their own (Save product); retire one by unticking Active. No cost prices here.</div>
+      <div class="pm-bar">
+        <select id="pm-kind" aria-label="Product type">
+          <option value="panel">Panels</option><option value="inverter">Inverters</option><option value="battery">Batteries</option>
+          <option value="heat_pump">Heat pumps</option><option value="other">Other</option>
+        </select>
+        <label><input type="checkbox" id="pm-show-retired"/> Show retired</label>
+        <button class="btn-secondary" type="button" id="pm-add-btn">Add product</button>
+      </div>
+      <div class="pm-list" id="pm-list"><div class="quote-status" style="padding:10px">Loading…</div></div>
+      <div class="pm-editor" id="pm-editor" style="display:none"></div>
       </section>
       <div class="quote-status" id="fm-status" style="margin-top:8px"></div>
     </div>
@@ -2223,6 +2271,16 @@ const ASSIGNED_CHIP_COLOR = Object.assign({ '': '#94a3b8' }, Object.fromEntries(
   });
 })();
 
+/* Create proposal (Greg 2026-11-19): opens the Proposal Generator app on
+   this PC through the turbine-proposals:// link it registers for itself.
+   The link only carries the lead id; the app reads the details with the
+   rep's own CRM sign-in and opens on its home page with the customer
+   picked. Own leads only (hidden on view-only leads, like Log contact). */
+document.getElementById('create-proposal-btn').addEventListener('click', () => {
+  if (!currentLead || blockedReadOnly()) return;
+  window.location.href = `turbine-proposals://lead/${encodeURIComponent(currentLead.id)}`;
+});
+
 function setDetailsEditing(editing) {
   document.getElementById('ld-view').style.display = editing ? 'none' : '';
   document.getElementById('ld-form').style.display = editing ? '' : 'none';
@@ -2327,6 +2385,9 @@ function installTasksFor(product) {
   return (INSTALL_TYPES[product] || INSTALL_TYPES.solar).tasks.map(k => INSTALL_TASK_DEFS[k]);
 }
 let currentChecklist = null;
+// The checklist is greyed out until Edit is clicked; Save writes every row
+// at once (the database only stamps "Updated by" on rows that changed).
+let icEditing = false;
 
 async function loadInstallChecklist(prospectId) {
   const { data, error } = await db.from('install_checklists').select('*').eq('prospect_id', prospectId).maybeSingle();
@@ -2335,6 +2396,7 @@ async function loadInstallChecklist(prospectId) {
   if (error) { console.error('Failed to load install checklist:', error); return; }
   if (data && data.prospect_id !== prospectId) { console.error('Install checklist prospect mismatch — ignoring', data); return; }
   currentChecklist = data;
+  icEditing = false;
   renderInstallChecklist();
 }
 
@@ -2377,50 +2439,71 @@ function renderInstallChecklist() {
          <ul><li>Send the order contract and take the £200 deposit</li><li>Apply to the DNO and wait for approval</li><li>Book the install date and send it to the installs team</li><li>Book the trades and order the kit (the list depends on whether it is a solar or heat pump install)</li></ul>`;
     return;
   }
-  document.getElementById('ic-status').textContent = '';
   const tasks = installTasksFor(currentLead?.product);
+  const lock = icEditing ? '' : 'disabled';
   const typeRow = `<div class="ic-type">${escapeHtml((INSTALL_TYPES[currentLead?.product] || INSTALL_TYPES.solar).label)} install <span class="ic-type-hint">Change the job type in Details to switch the list</span></div>`;
   document.getElementById('ic-rows').innerHTML = typeRow + tasks.map(t => {
     const na = !!currentChecklist?.[`${t.key}_na`];
     return `
     <div class="ic-row ${na ? 'ic-na-active' : ''}" id="ic-row-${t.key}">
-      <label class="ic-check"><input type="checkbox" id="ic-done-${t.key}" ${currentChecklist?.[`${t.key}_done`] ? 'checked' : ''} ${na ? 'disabled' : ''}> ${escapeHtml(t.label)}</label>
-      <input type="text" id="ic-name-${t.key}" placeholder="${escapeHtml(t.placeholder)}" value="${escapeHtml(currentChecklist?.[`${t.key}_name`] || '')}" ${na ? 'disabled' : ''}>
-      <label class="ic-na"><input type="checkbox" id="ic-na-${t.key}" ${na ? 'checked' : ''}> N/A</label>
+      <label class="ic-check"><input type="checkbox" id="ic-done-${t.key}" ${currentChecklist?.[`${t.key}_done`] ? 'checked' : ''} ${na ? 'disabled' : lock}> ${escapeHtml(t.label)}</label>
+      <input type="text" id="ic-name-${t.key}" placeholder="${escapeHtml(t.placeholder)}" value="${escapeHtml(currentChecklist?.[`${t.key}_name`] || '')}" ${na ? 'disabled' : lock}>
+      <label class="ic-na"><input type="checkbox" id="ic-na-${t.key}" ${na ? 'checked' : ''} ${lock}> N/A</label>
       <span class="ic-meta" id="ic-meta-${t.key}"></span>
     </div>`;
   }).join('');
+  // N/A greys out that row's tick and name straight away (saved on Save).
   tasks.forEach(t => {
-    document.getElementById(`ic-done-${t.key}`).addEventListener('change', () => saveInstallTask(t.key));
-    document.getElementById(`ic-name-${t.key}`).addEventListener('change', () => saveInstallTask(t.key));
-    document.getElementById(`ic-na-${t.key}`).addEventListener('change', () => saveInstallTask(t.key));
+    document.getElementById(`ic-na-${t.key}`).addEventListener('change', e => {
+      const na = e.target.checked;
+      document.getElementById(`ic-done-${t.key}`).disabled = na;
+      document.getElementById(`ic-name-${t.key}`).disabled = na;
+      document.getElementById(`ic-row-${t.key}`).classList.toggle('ic-na-active', na);
+    });
   });
+  document.getElementById('ic-rows').classList.toggle('ic-locked', !icEditing);
+  document.getElementById('ic-edit-btn').style.display = icEditing ? 'none' : '';
+  document.getElementById('ic-save-btn').style.display = icEditing ? '' : 'none';
+  document.getElementById('ic-cancel-btn').style.display = icEditing ? '' : 'none';
   renderInstallChecklistProgress();
 }
 
-async function saveInstallTask(key) {
+document.getElementById('ic-edit-btn').addEventListener('click', () => {
+  if (!currentLead || blockedReadOnly()) return;
+  icEditing = true;
+  document.getElementById('ic-status').textContent = '';
+  renderInstallChecklist();
+});
+document.getElementById('ic-cancel-btn').addEventListener('click', () => {
+  icEditing = false;   // discard: redraw from the saved checklist
+  document.getElementById('ic-status').textContent = '';
+  renderInstallChecklist();
+});
+document.getElementById('ic-save-btn').addEventListener('click', saveInstallChecklist);
+
+async function saveInstallChecklist() {
   if (!currentLead || blockedReadOnly()) return;
   const prospectId = currentLead.id;
   const statusEl = document.getElementById('ic-status');
-  // N/A and Done are mutually exclusive — the Done checkbox is disabled
-  // in the DOM whenever N/A is ticked, so this just mirrors that into the
-  // saved payload rather than trusting a stale checked value.
-  const na = document.getElementById(`ic-na-${key}`).checked;
-  const done = na ? false : document.getElementById(`ic-done-${key}`).checked;
-  const name = document.getElementById(`ic-name-${key}`).value.trim();
-  const payload = {
-    prospect_id: prospectId,
-    [`${key}_done`]: done,
-    [`${key}_na`]: na,
-    [`${key}_name`]: name || null,
-  };
+  const payload = { prospect_id: prospectId };
+  installTasksFor(currentLead.product).forEach(({ key }) => {
+    // N/A and Done are mutually exclusive: N/A wins.
+    const na = document.getElementById(`ic-na-${key}`).checked;
+    payload[`${key}_na`] = na;
+    payload[`${key}_done`] = na ? false : document.getElementById(`ic-done-${key}`).checked;
+    payload[`${key}_name`] = document.getElementById(`ic-name-${key}`).value.trim() || null;
+  });
+  const btn = document.getElementById('ic-save-btn');
+  btn.disabled = true;
   statusEl.textContent = 'Saving…';
   const { data, error } = await db.from('install_checklists')
     .upsert(payload, { onConflict: 'prospect_id' })
     .select('*').single();
+  btn.disabled = false;
   if (!currentLead || currentLead.id !== prospectId) return;
   if (error) { statusEl.textContent = 'Failed to save: ' + error.message; return; }
   currentChecklist = data;
+  icEditing = false;
   renderInstallChecklist();
   statusEl.textContent = 'Saved';
 }
@@ -3005,7 +3088,7 @@ async function loadOptionDocuments(optionId) {
   if (!list) return;
   list.textContent = 'Loading…';
   const { data, error } = await db.from('lead_documents')
-    .select('id, prospect_id, file_name, storage_path, uploaded_by, uploaded_at')
+    .select('id, prospect_id, file_name, storage_path, uploaded_by, uploaded_at, category')
     .eq('quote_option_id', optionId)
     .is('deleted_at', null)
     .order('uploaded_at', { ascending: false });
@@ -3159,6 +3242,10 @@ function renderDocumentsList(rows, reloadContext) {
     <div class="doc-item">
       ${docMainHtml(p, reloadContext, i)}
       <div class="doc-actions">
+        <select class="qo-doc-type" title="What is this document?" data-doc-id="${escapeHtml(p.id)}" data-option-id="${escapeHtml(reloadContext)}" onchange="setOptionDocType(this)">
+          <option value="" ${p.category === 'contract' ? '' : 'selected'}>Quote and design</option>
+          <option value="contract" ${p.category === 'contract' ? 'selected' : ''}>Signed contract</option>
+        </select>
         <span class="doc-open-link" onclick="openDocViewer('${escapeHtml(reloadContext)}', ${i})">View</span>
         <span class="doc-remove-link" data-doc-id="${escapeHtml(p.id)}" data-reload-context="${escapeHtml(reloadContext)}" onclick="removeLeadDocument(this)">Remove</span>
       </div>
@@ -3236,7 +3323,11 @@ const DOC_CATEGORIES = [
   // because a lead can have several quotes. Kept so any row already typed
   // 'design' still shows under its own heading.
   { key: 'design',          label: 'Design and MCS estimate', leadUpload: false },
-  { key: 'contract',        label: 'Signed contract' },
+  // 'contract' is not offered at lead level any more either (Greg
+  // 2026-11-19): the signed contract lives in its quote option, marked
+  // with the type picker on that option's documents. Older lead-level
+  // contracts still show (and still count) under their own heading.
+  { key: 'contract',        label: 'Signed contract', leadUpload: false },
   { key: 'dno',             label: 'DNO application and notification' },
   { key: 'commissioning',   label: 'Commissioning records' },
   { key: 'mcs_certificate', label: 'MCS certificate' },
@@ -3283,14 +3374,20 @@ function renderGroupedDocuments(rows) {
   return parts.length ? parts.join('') : `<div class="doc-empty">No documents attached yet.</div>`;
 }
 
-// selected: { label, docCount } for the quote option marked Selected, or null.
+// selected: { label, docCount, hasContract } for the quote option marked Selected, or null.
 function renderPaperwork(rows, selected) {
   const box = document.getElementById('doc-paperwork');
   const stage = CONTACT_OUTCOME[currentLead?.latest_outcome]?.stage;
   if (typeof stage !== 'number' || stage < 4) { box.innerHTML = ''; return; }   // Won (stage 4) or later only
   const have = new Set(rows.map(r => r.category));
   const designOk = !!(selected && selected.docCount > 0) || have.has('design');
+  // Signed contract: in the selected quote (2026-11-19), or an older lead-level one.
+  const contractOk = !!selected?.hasContract || have.has('contract');
   const item = k => {
+    if (k === 'contract') {
+      return contractOk ? `<span class="ok">✓ Signed contract</span>`
+                        : `<span class="miss">✗ ${selected ? 'Signed contract in the selected quote' : 'Signed contract (no quote selected yet)'}</span>`;
+    }
     if (k === 'design') {
       const label = 'Design and MCS estimate in the selected quote';
       if (designOk) return `<span class="ok">✓ ${escapeHtml(label)}</span>`;
@@ -3299,7 +3396,7 @@ function renderPaperwork(rows, selected) {
     return have.has(k) ? `<span class="ok">✓ ${escapeHtml(DOC_CATEGORY_LABEL[k])}</span>`
                        : `<span class="miss">✗ ${escapeHtml(DOC_CATEGORY_LABEL[k])}</span>`;
   };
-  const done = MCS_PAPERWORK.filter(k => k === 'design' ? designOk : have.has(k)).length;
+  const done = MCS_PAPERWORK.filter(k => k === 'design' ? designOk : k === 'contract' ? contractOk : have.has(k)).length;
   box.innerHTML = `<div class="doc-paperwork">
     <div class="pw-h">MCS paperwork: ${done} of ${MCS_PAPERWORK.length}</div>
     <div class="pw-list">${MCS_PAPERWORK.map(item).join('')}</div>
@@ -3321,14 +3418,28 @@ function refreshPaperwork() {
       .select('id, label').eq('prospect_id', lead.id).eq('is_selected', true).is('deleted_at', null).limit(1);
     let selected = null;
     if (opts?.length) {
-      const { count } = await db.from('lead_documents')
-        .select('id', { count: 'exact', head: true })
+      const { data: odocs } = await db.from('lead_documents')
+        .select('category')
         .eq('quote_option_id', opts[0].id).is('deleted_at', null);
-      selected = { label: opts[0].label, docCount: count || 0 };
+      selected = { label: opts[0].label, docCount: (odocs || []).length,
+                   hasContract: (odocs || []).some(d => d.category === 'contract') };
     }
     if (currentLead?.id !== lead.id) return;
     renderPaperwork(leadDocRows, selected);
   }, 150);
+}
+
+// Quote-option documents: "Quote and design" (no category) or "Signed
+// contract" (category 'contract', counted by the MCS paperwork check).
+async function setOptionDocType(sel) {
+  const { data, error } = await db.from('lead_documents')
+    .update({ category: sel.value || null })
+    .eq('id', sel.dataset.docId)
+    .select('id');
+  if (error || !data?.length) {
+    alert("Couldn't change the type" + (error ? ': ' + error.message : ' - you may not have permission.'));
+  }
+  loadOptionDocuments(sel.dataset.optionId);
 }
 
 async function moveLeadDocument(sel) {
@@ -4189,7 +4300,9 @@ async function openFuelModal() {
   document.getElementById('fm-status').textContent = '';
   fuelModalInstallers = JSON.parse(JSON.stringify(fuelSettings.installers));
   renderFuelInstallerRows();
+  closeProductEditor();
   document.getElementById('fuel-modal-overlay').classList.add('open');
+  loadProducts();
 }
 function closeFuelModal() { document.getElementById('fuel-modal-overlay').classList.remove('open'); }
 document.getElementById('settings-btn').addEventListener('click', openFuelModal);
@@ -4229,6 +4342,139 @@ document.getElementById('fm-save-btn').addEventListener('click', async () => {
   closeFuelModal();
   showToast('Settings saved. Fuel changes apply to new quote options.');
 });
+
+// ── Products (migration 074, Greg 2026-11-19). Managers only (the whole
+// Settings modal is). Each product saves on its own. ──
+const PM_KINDS = { panel: 'Panel', inverter: 'Inverter', battery: 'Battery', heat_pump: 'Heat pump', other: 'Other' };
+let pmProducts = [];
+let pmEditing = null;   // product being edited, or {} for a new one
+async function loadProducts() {
+  const list = document.getElementById('pm-list');
+  const { data, error } = await db.from('products').select('*').order('kind').order('position').order('brand').order('model');
+  if (error) {
+    list.innerHTML = `<div class="quote-status" style="padding:10px">${/products/.test(error.message || '') && /exist|schema cache/i.test(error.message || '')
+      ? 'The product list isn\'t set up yet (migration 074).' : "Couldn't load products: " + escapeHtml(error.message)}</div>`;
+    pmProducts = [];
+    return;
+  }
+  pmProducts = data || [];
+  renderProductList();
+}
+function pmNum(v) { return v === null || v === undefined || v === '' ? null : Number(v); }
+function pmFacts(p) {
+  const bits = [];
+  const miss = t => `<span class="pm-miss">${t}</span>`;
+  if (p.kind === 'panel') {
+    if (p.watts != null) bits.push(`${p.watts}W`);
+    bits.push(p.product_warranty_years != null ? `${p.product_warranty_years} yr product` : miss('product warranty?'));
+    bits.push(p.performance_warranty_years != null ? `${p.performance_warranty_years} yr performance` : miss('performance warranty?'));
+  } else if (p.kind === 'inverter') {
+    if (p.kw != null) bits.push(`${p.kw}kW`);
+    bits.push(p.max_efficiency != null ? `${p.max_efficiency}% max` : miss('efficiency?'));
+    bits.push(p.product_warranty_years != null ? `${p.product_warranty_years} yr` : miss('warranty?'));
+  } else {
+    if (p.kwh != null) bits.push(`${p.kwh}kWh`);
+    if (p.kw != null) bits.push(`${p.kw}kW`);
+    if (p.max_efficiency != null) bits.push(`${p.max_efficiency}% max`);
+    bits.push(p.product_warranty_years != null ? `${p.product_warranty_years} yr` : miss('warranty?'));
+  }
+  bits.push(p.datasheet_url ? 'datasheet linked' : miss('no datasheet'));
+  return bits.join(' · ');
+}
+function renderProductList() {
+  const kind = document.getElementById('pm-kind').value;
+  const showRetired = document.getElementById('pm-show-retired').checked;
+  const rows = pmProducts.filter(p => p.kind === kind && (p.active || showRetired));
+  document.getElementById('pm-list').innerHTML = rows.map(p => `
+    <div class="pm-row ${p.active ? '' : 'retired'}">
+      <div>
+        <div class="pm-name">${escapeHtml([p.brand, p.model].filter(Boolean).join(' '))}${p.active ? '' : ' (retired)'}</div>
+        <div class="pm-facts">${pmFacts(p)}</div>
+      </div>
+      <span class="pm-edit-link" onclick="openProductEditor('${escapeHtml(p.id)}')">Edit</span>
+    </div>`).join('') || `<div class="quote-status" style="padding:10px">No ${escapeHtml(PM_KINDS[kind].toLowerCase())}s yet.</div>`;
+}
+function openProductEditor(id) {
+  const kind = document.getElementById('pm-kind').value;
+  const p = id ? pmProducts.find(x => x.id === id) : { kind, brand: '', model: '', aliases: [], active: true };
+  if (p) renderProductEditor({ ...p });
+}
+function renderProductEditor(p) {
+  pmEditing = p;
+  const v = x => escapeHtml(x === null || x === undefined ? '' : String(x));
+  const sizeField = { panel: ['watts', 'Watts'], inverter: ['kw', 'Rated kW'], battery: ['kwh', 'Usable kWh (per unit)'] }[p.kind];
+  const ed = document.getElementById('pm-editor');
+  ed.innerHTML = `
+    <div class="pm-grid">
+      <div><label for="pm-f-kind">Type</label><select id="pm-f-kind">${Object.entries(PM_KINDS).map(([k, l]) => `<option value="${k}" ${k === p.kind ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div><label for="pm-f-brand">Brand</label><input id="pm-f-brand" value="${v(p.brand)}"/></div>
+      <div class="full"><label for="pm-f-model">Name on proposal</label><input id="pm-f-model" value="${v(p.model)}"/></div>
+      <div class="full"><label for="pm-f-desc">Description (optional)</label><textarea id="pm-f-desc">${v(p.description)}</textarea></div>
+      <div class="full"><label for="pm-f-aliases">Other spellings (one per line)</label><textarea id="pm-f-aliases">${v((p.aliases || []).join('\n'))}</textarea></div>
+      ${sizeField ? `<div><label for="pm-f-size">${sizeField[1]}</label><input id="pm-f-size" type="number" step="any" min="0" value="${v(p[sizeField[0]])}"/></div>` : '<div></div>'}
+      <div><label for="pm-f-eff">Max efficiency %</label><input id="pm-f-eff" type="number" step="0.1" min="0" max="100" value="${v(p.max_efficiency)}"/></div>
+      <div><label for="pm-f-pw">Product warranty (years)</label><input id="pm-f-pw" type="number" step="1" min="0" value="${v(p.product_warranty_years)}"/></div>
+      <div><label for="pm-f-perf">Performance warranty (years, panels)</label><input id="pm-f-perf" type="number" step="1" min="0" value="${v(p.performance_warranty_years)}"/></div>
+      <div class="full"><label for="pm-f-url">Datasheet link (https://...)</label><input id="pm-f-url" value="${v(p.datasheet_url)}" placeholder="https://turbineenergyuk.co.uk/datasheets/..."/></div>
+      <div class="full"><label><input type="checkbox" id="pm-f-active" ${p.active ? 'checked' : ''} style="width:auto"/> Active (untick to retire)</label></div>
+    </div>
+    <div class="pm-editor-btns">
+      <span class="quote-status" id="pm-f-status"></span>
+      <button class="btn-secondary" type="button" onclick="closeProductEditor()">Cancel</button>
+      <button class="btn-primary" type="button" id="pm-f-save" onclick="saveProduct()">Save product</button>
+    </div>`;
+  ed.style.display = '';
+  // Changing the type redraws the form (keeping what was typed) so the size box matches.
+  document.getElementById('pm-f-kind').addEventListener('change', () => renderProductEditor({ ...pmEditing, ...collectProductForm() }));
+  ed.scrollIntoView({ block: 'nearest' });
+}
+function closeProductEditor() {
+  pmEditing = null;
+  const ed = document.getElementById('pm-editor');
+  ed.style.display = 'none'; ed.innerHTML = '';
+}
+function collectProductForm() {
+  const val = id => document.getElementById(id)?.value.trim() ?? '';
+  const kind = val('pm-f-kind');
+  const row = {
+    kind,
+    brand: val('pm-f-brand'),
+    model: val('pm-f-model'),
+    description: val('pm-f-desc') || null,
+    aliases: val('pm-f-aliases').split('\n').map(a => a.trim()).filter(Boolean),
+    max_efficiency: pmNum(val('pm-f-eff')),
+    product_warranty_years: pmNum(val('pm-f-pw')),
+    performance_warranty_years: pmNum(val('pm-f-perf')),
+    datasheet_url: val('pm-f-url') || null,
+    active: document.getElementById('pm-f-active')?.checked ?? true,
+  };
+  const sizeKey = { panel: 'watts', inverter: 'kw', battery: 'kwh' }[kind];
+  if (sizeKey && document.getElementById('pm-f-size')) row[sizeKey] = pmNum(val('pm-f-size'));
+  return row;
+}
+async function saveProduct() {
+  if (!isAdmin(currentUser)) return;
+  const status = document.getElementById('pm-f-status');
+  const row = collectProductForm();
+  if (!row.model) { status.textContent = 'Enter the name on the proposal.'; return; }
+  if (row.datasheet_url && !/^https:\/\//i.test(row.datasheet_url)) { status.textContent = 'The datasheet link must start with https://'; return; }
+  if (row.max_efficiency != null && !(row.max_efficiency > 0 && row.max_efficiency <= 100)) { status.textContent = 'Max efficiency must be between 0 and 100.'; return; }
+  const btn = document.getElementById('pm-f-save');
+  btn.disabled = true; status.textContent = 'Saving…';
+  const id = pmEditing?.id;
+  const { error } = id
+    ? await db.from('products').update(row).eq('id', id).select('id').single()
+    : await db.from('products').insert({ ...row, position: 1000 }).select('id').single();
+  btn.disabled = false;
+  if (error) { status.textContent = 'Failed to save: ' + error.message; return; }
+  closeProductEditor();
+  document.getElementById('pm-kind').value = row.kind;
+  await loadProducts();
+  showToast('Product saved.');
+}
+document.getElementById('pm-kind').addEventListener('change', () => { closeProductEditor(); renderProductList(); });
+document.getElementById('pm-show-retired').addEventListener('change', renderProductList);
+document.getElementById('pm-add-btn').addEventListener('click', () => openProductEditor(null));
 
 /* ── Boot ────────────────────────────────────────────────── */
 // Shared by boot() and the delete/restore-lead flows, below — a full
@@ -4273,6 +4519,8 @@ async function boot(user) {
   document.getElementById('show-deleted-leads-btn').style.display = isAdmin(user) ? '' : 'none';
   document.getElementById('lead-suppliers-btn').style.display = isAdmin(user) ? '' : 'none';
   document.getElementById('settings-btn').style.display = isAdmin(user) ? '' : 'none';
+  // Cost prices are managers only (migration 075, Greg 2026-11-19).
+  document.getElementById('nav-prices-link').style.display = isAdmin(user) ? '' : 'none';
   document.getElementById('wrap').style.display = 'block';
   await Promise.all([fetchLeadOrigins(), fetchFuelSettings()]);
   originFilterKeys().forEach(k => activeSourceFilters.add(k));
