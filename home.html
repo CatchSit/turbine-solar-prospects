@@ -1764,7 +1764,7 @@ document.getElementById('audit-person').addEventListener('change', renderAudit);
    ════════════════════════════════════════════════════════════ */
 const PROPOSAL_BASE = 'https://www.turbineenergyuk.co.uk/proposal/';
 const PROPOSAL_PAGES = { 1: 'Cover', 2: 'Barton Brook case study', 3: 'Their figures', 4: 'For their team', 5: 'Ways to pay & next step' };
-const PROPOSAL_CLICKS = { book_survey: 'Clicked Book a survey', call: 'Tapped the phone number', download_pdf: 'Downloaded the PDF', email_choices: 'Clicked Email us my choices' };
+const PROPOSAL_CLICKS = { book_survey: 'Clicked Book a survey', call: 'Tapped the phone number', download_pdf: 'Downloaded the PDF', email_choices: 'Clicked Email my choices' };
 // Custom pages (076) have their own page count; label them by number.
 const propPageLabels = (r, sm) => r.template === 'custom'
   ? Object.fromEntries(Object.keys(sm.pages).sort((a, b) => a - b).map(k => [k, 'Page ' + k]))
