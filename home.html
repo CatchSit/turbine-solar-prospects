@@ -206,6 +206,8 @@ tfoot td { border-top: 1px solid var(--borderH); border-bottom: 0; }
 .prop-form { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 16px; }
 .prop-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text2); }
 .prop-form label.wide, .prop-form .wide { grid-column: 1 / -1; }
+.prop-form select { padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font: inherit; font-size: 13px; color: var(--text); background: var(--surface); }
+.prop-form [hidden] { display: none !important; }
 .prop-form input { padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font: inherit; font-size: 13px; color: var(--text); background: var(--surface); }
 .prop-actions { display: flex; gap: 8px; align-items: center; }
 .prop-primary { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
@@ -417,15 +419,17 @@ tfoot td { border-top: 1px solid var(--borderH); border-bottom: 0; }
         <div><button class="refresh-btn" id="prop-new-btn" type="button">New proposal</button> <button class="refresh-btn" data-refresh="proposals">Refresh</button></div>
       </div>
       <div class="card" id="prop-new" hidden>
-        <div class="card-head"><h2>New care home proposal</h2><span class="hint">The starting figures can still be changed by the reader</span></div>
+        <div class="card-head"><h2>New proposal link</h2><span class="hint" id="prop-form-hint">The starting figures can still be changed by the reader</span></div>
         <div class="card-body">
           <form id="prop-form" class="prop-form" autocomplete="off">
-            <label class="wide">Care home name<input name="recipient_name" required maxlength="80" placeholder="e.g. Oakwood Care Home"></label>
+            <label>Type<select name="template" id="prop-template"><option value="care-home">Care home pitch</option><option value="custom">Customer&#8217;s own proposal page (upload)</option></select></label>
+            <label class="wide prop-custom" hidden>Proposal page (.html file)<input name="page_file" type="file" accept=".html,.htm,text/html"></label>
+            <label class="wide"><span id="prop-name-label">Care home name</span><input name="recipient_name" required maxlength="80" placeholder="e.g. Oakwood Care Home"></label>
             <label>Contact name<input name="contact_name" maxlength="80" placeholder="Optional"></label>
             <label>Contact email<input name="contact_email" type="email" maxlength="120" placeholder="Optional"></label>
-            <label>Annual electricity spend (£)<input name="annual_spend" type="number" min="10000" max="120000" step="1000" value="45000" required></label>
-            <label>Unit rate (p per kWh)<input name="unit_rate_p" type="number" min="18" max="40" step="1" value="26" required></label>
-            <label>Usable roof (m²)<input name="roof_m2" type="number" min="50" max="2000" step="25" value="600" required></label>
+            <label class="prop-carehome">Annual electricity spend (£)<input name="annual_spend" type="number" min="10000" max="120000" step="1000" value="45000" required></label>
+            <label class="prop-carehome">Unit rate (p per kWh)<input name="unit_rate_p" type="number" min="18" max="40" step="1" value="26" required></label>
+            <label class="prop-carehome">Usable roof (m²)<input name="roof_m2" type="number" min="50" max="2000" step="25" value="600" required></label>
             <label class="wide">Notes<input name="notes" maxlength="1000" placeholder="Optional, only you see this"></label>
             <div class="wide prop-actions"><button type="submit" class="refresh-btn prop-primary">Create link</button> <button type="button" class="refresh-btn" id="prop-cancel">Cancel</button> <span id="prop-form-msg" class="muted"></span></div>
           </form>
@@ -1760,7 +1764,20 @@ document.getElementById('audit-person').addEventListener('change', renderAudit);
    ════════════════════════════════════════════════════════════ */
 const PROPOSAL_BASE = 'https://www.turbineenergyuk.co.uk/proposal/';
 const PROPOSAL_PAGES = { 1: 'Cover', 2: 'Barton Brook case study', 3: 'Their figures', 4: 'For their team', 5: 'Ways to pay & next step' };
-const PROPOSAL_CLICKS = { book_survey: 'Clicked Book a survey', call: 'Tapped the phone number', download_pdf: 'Downloaded the PDF' };
+const PROPOSAL_CLICKS = { book_survey: 'Clicked Book a survey', call: 'Tapped the phone number', download_pdf: 'Downloaded the PDF', email_choices: 'Clicked Email us my choices' };
+// Custom pages (076) have their own page count; label them by number.
+const propPageLabels = (r, sm) => r.template === 'custom'
+  ? Object.fromEntries(Object.keys(sm.pages).sort((a, b) => a - b).map(k => [k, 'Page ' + k]))
+  : PROPOSAL_PAGES;
+const PROP_MAX_BYTES = 8000000;
+async function propReadFile(file) {
+  if (!file || !file.size) throw new Error('Choose the proposal page (.html file) first.');
+  if (!/\.html?$/i.test(file.name)) throw new Error("That isn't an .html file.");
+  if (file.size > PROP_MAX_BYTES) throw new Error('That file is too big (over 8 MB).');
+  const text = await file.text();
+  if (!/<html|<!doctype|<body|<meta/i.test(text.slice(0, 4000))) throw new Error("That doesn't look like a web page.");
+  return text;
+}
 let propRows = [];
 let propVisits = {};          // proposal_id → visits, newest first
 let propOpen = null;          // expanded proposal id
@@ -1800,7 +1817,7 @@ LOADERS.proposals = async function () {
   const body = document.getElementById('proposals-body');
   body.innerHTML = '<div class="loading">Loading…</div>';
   const [p, v] = await Promise.all([
-    db.from('sales_proposals').select('*').order('created_at', { ascending: false }).limit(500),
+    db.from('sales_proposals').select('id, code, template, recipient_name, contact_name, contact_email, notes, annual_spend, unit_rate_p, roof_m2, created_by_email, created_at, revoked_at').order('created_at', { ascending: false }).limit(500),
     db.from('proposal_visits').select('proposal_id, session_id, started_at, last_seen_at, active_seconds, pages, inputs, clicks, user_agent, viewport')
       .order('last_seen_at', { ascending: false }).limit(5000),
   ]);
@@ -1852,20 +1869,23 @@ function renderProposals() {
 function propDetailRow(r, sm) {
   const url = PROPOSAL_BASE + r.code;
   const max = Math.max(1, ...Object.values(sm.pages));
-  const bars = Object.keys(PROPOSAL_PAGES).map(k => `<span>${k}. ${PROPOSAL_PAGES[k]}</span>
+  const labels = propPageLabels(r, sm);
+  const bars = Object.keys(labels).map(k => `<span>${k}. ${escapeHtml(labels[k])}</span>
     <div class="prop-bar"><span style="width:${Math.round((sm.pages[k] || 0) / max * 100)}%"></span></div><span class="num">${propDuration(sm.pages[k] || 0)}</span>`).join('');
   const visits = sm.visits.map(x => `<tr>
     <td style="white-space:nowrap">${escapeHtml(fmtDateTime(x.started_at))}</td>
     <td>${escapeHtml(propDevice(x.user_agent))}</td>
     <td class="num">${propDuration(x.active_seconds)}</td>
-    <td>${x.inputs && x.inputs.changed ? `Changed figures: ${escapeHtml(money(x.inputs.spend))} spend, ${escapeHtml(String(x.inputs.rate))}p, ${escapeHtml(num(x.inputs.roof))} m²` : '<span class="muted">Kept the figures you sent</span>'}</td>
+    <td>${x.inputs && x.inputs.summary ? (x.inputs.changed ? 'Chose: ' : 'Kept as quoted: ') + escapeHtml(x.inputs.summary)
+      : x.inputs && x.inputs.changed ? `Changed figures: ${escapeHtml(money(x.inputs.spend))} spend, ${escapeHtml(String(x.inputs.rate))}p, ${escapeHtml(num(x.inputs.roof))} m²` : '<span class="muted">Kept the figures you sent</span>'}</td>
     <td>${(x.clicks || []).map(c => escapeHtml(PROPOSAL_CLICKS[c.what] || c.what)).join(', ') || '<span class="muted">—</span>'}</td></tr>`).join('');
   return `<tr class="prop-detail"><td colspan="6">
     <div class="prop-link"><code>${escapeHtml(url)}</code>
       <button class="refresh-btn" data-prop-copy="${escapeHtml(url)}">Copy link</button>
       <a class="refresh-btn" href="${escapeHtml(url)}?preview=1" target="_blank" rel="noopener">Preview (not recorded)</a>
+      ${r.template === 'custom' && !r.revoked_at ? `<label class="refresh-btn" style="cursor:pointer">Replace page<input type="file" accept=".html,.htm,text/html" data-prop-replace="${r.id}" hidden></label>` : ''}
       ${r.revoked_at ? `<span class="muted">Switched off ${escapeHtml(fmtDate(r.revoked_at))}</span>` : `<button class="refresh-btn" data-prop-revoke="${r.id}">Switch link off</button>`}</div>
-    <div class="muted" style="font-size:12px;margin-bottom:6px">Sent with ${escapeHtml(money(r.annual_spend))} spend, ${r.unit_rate_p}p, ${num(r.roof_m2)} m² roof${r.contact_email ? ' · ' + escapeHtml(r.contact_email) : ''}${r.notes ? ' · ' + escapeHtml(r.notes) : ''} · created by ${escapeHtml(r.created_by_email)}</div>
+    <div class="muted" style="font-size:12px;margin-bottom:6px">${r.template === 'custom' ? 'Customer&#8217;s own proposal page' : `Sent with ${escapeHtml(money(r.annual_spend))} spend, ${r.unit_rate_p}p, ${num(r.roof_m2)} m² roof`}${r.contact_email ? ' · ' + escapeHtml(r.contact_email) : ''}${r.notes ? ' · ' + escapeHtml(r.notes) : ''} · created by ${escapeHtml(r.created_by_email)}</div>
     ${sm.opens ? `<div style="font-weight:600;font-size:13px;margin-top:10px">Time on each page (all visits)</div><div class="prop-bars">${bars}</div>
       <table><thead><tr><th>Visit</th><th>Device</th><th class="num">Reading time</th><th>Figures</th><th>Clicks</th></tr></thead><tbody>${visits}</tbody></table>`
       : '<div class="muted" style="font-size:13px">Not opened yet. Visits appear here a few seconds after someone opens the link.</div>'}
@@ -1891,6 +1911,28 @@ document.getElementById('proposals-body').addEventListener('click', async e => {
   if (row) { propOpen = propOpen === row.dataset.id ? null : row.dataset.id; renderProposals(); }
 });
 
+document.getElementById('proposals-body').addEventListener('change', async e => {
+  const inp = e.target.closest('[data-prop-replace]');
+  if (!inp) return;
+  let html;
+  try { html = await propReadFile(inp.files[0]); } catch (err) { alert(err.message); inp.value = ''; return; }
+  if (!confirm(`Replace the page on this link with "${inp.files[0].name}"? Anyone opening the link from now on sees the new version.`)) { inp.value = ''; return; }
+  const { data, error } = await db.from('sales_proposals').update({ page_html: html }).eq('id', inp.dataset.propReplace).select('id');
+  if (error || !(data || []).length) { alert("Couldn't replace it: " + (error ? error.message : 'not allowed')); return; }
+  alert('Page replaced. The link stays the same.');
+  LOADERS.proposals();
+});
+function propSyncTemplate() {
+  const custom = document.getElementById('prop-template').value === 'custom';
+  document.querySelectorAll('#prop-form .prop-custom').forEach(el => { el.hidden = !custom; });
+  document.querySelectorAll('#prop-form .prop-carehome').forEach(el => { el.hidden = custom; });
+  document.getElementById('prop-name-label').textContent = custom ? 'Customer name' : 'Care home name';
+  document.querySelector('#prop-form [name=recipient_name]').placeholder = custom ? 'e.g. Andrea Lloyd' : 'e.g. Oakwood Care Home';
+  document.getElementById('prop-form-hint').textContent = custom
+    ? 'Upload the finished proposal page. You can replace it later and keep the same link'
+    : 'The starting figures can still be changed by the reader';
+}
+document.getElementById('prop-template').addEventListener('change', propSyncTemplate);
 document.getElementById('prop-new-btn').addEventListener('click', () => {
   document.getElementById('prop-new').hidden = false;
   document.getElementById('prop-form-msg').textContent = '';
@@ -1901,16 +1943,22 @@ document.getElementById('prop-form').addEventListener('submit', async e => {
   e.preventDefault();
   const f = new FormData(e.target), msg = document.getElementById('prop-form-msg');
   const clean = k => (f.get(k) || '').toString().trim() || null;
+  const template = f.get('template') === 'custom' ? 'custom' : 'care-home';
+  let pageHtml = null;
+  if (template === 'custom') {
+    try { pageHtml = await propReadFile(f.get('page_file')); } catch (err) { msg.textContent = err.message; return; }
+  }
   const row = {
-    code: propCode(), template: 'care-home',
+    code: propCode(), template, ...(pageHtml ? { page_html: pageHtml } : {}),
     recipient_name: clean('recipient_name'), contact_name: clean('contact_name'), contact_email: clean('contact_email'), notes: clean('notes'),
     annual_spend: +f.get('annual_spend'), unit_rate_p: +f.get('unit_rate_p'), roof_m2: +f.get('roof_m2'),
     created_by_email: currentUser.email.toLowerCase(),
   };
   msg.textContent = 'Creating…';
-  const { data, error } = await db.from('sales_proposals').insert(row).select().single();
+  const { data, error } = await db.from('sales_proposals').insert(row).select('id, code, recipient_name').single();
   if (error) { msg.textContent = 'Couldn\'t create it: ' + error.message; return; }
   e.target.reset();
+  propSyncTemplate();
   document.getElementById('prop-new').hidden = true;
   propOpen = data.id;
   await LOADERS.proposals();
