@@ -325,6 +325,8 @@ tbody tr:hover { background: var(--surface2); }
 .doc-paperwork .pw-list { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .doc-paperwork .ok { color: var(--accentDk); }
 .doc-paperwork .miss { color: var(--alert); }
+.doc-paperwork .pw-hies { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.doc-paperwork .pw-hies input { margin: 0; }
 .contact-log-item { padding: 10px 0; border-top: 1px solid var(--border); }
 .contact-log-item:first-child { border-top: none; }
 .contact-log-item .clog-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -2177,6 +2179,7 @@ function subscribeToLead(leadId) {
       const changedByOther = Object.values(INSTALL_TASK_DEFS).some(t => row[`${t.key}_updated_by`] && !isMe(row[`${t.key}_updated_by`]) && row[`${t.key}_updated_at`] !== currentChecklist?.[`${t.key}_updated_at`]);
       currentChecklist = row;
       renderInstallChecklist();
+      refreshPaperwork();
       if (changedByOther) showToast('Someone else just updated the install checklist.');
     })
     .on('postgres_changes', { event: 'INSERT', table: 'email_log', ...forLead }, ({ new: l }) => {
@@ -2398,6 +2401,7 @@ async function loadInstallChecklist(prospectId) {
   currentChecklist = data;
   icEditing = false;
   renderInstallChecklist();
+  refreshPaperwork();   // the HIES tick box lives on this row (077)
 }
 
 function installTaskMeta(task) {
@@ -3313,8 +3317,9 @@ async function restoreLeadDocument(docId, reloadContext) {
 
 /* ── Document categories (migration 069, Greg 2026-11-14) — from the MCS/
    HIES audit: job paperwork was only in the shared folder. Keys match the
-   database check constraint. Datasheets and Building Regs are deliberately
-   not categories (datasheets get linked from the proposal). Null = Other. */
+   database check constraint. Datasheets are deliberately not a category
+   (they get linked from the proposal). Building Control was added
+   2026-11-19 (migration 077). Null = Other. */
 const DOC_CATEGORIES = [
   { key: 'survey',          label: 'Site survey and photos' },
   { key: 'bills',           label: 'Bills and usage' },
@@ -3329,10 +3334,16 @@ const DOC_CATEGORIES = [
   // contracts still show (and still count) under their own heading.
   { key: 'contract',        label: 'Signed contract', leadUpload: false },
   { key: 'dno',             label: 'DNO application and notification' },
+  // Added by Greg 2026-11-19 (migration 077). Not in the MCS paperwork count.
+  { key: 'building_control', label: 'Building Control' },
+  { key: 'eic',             label: 'EIC Certification' },
   { key: 'commissioning',   label: 'Commissioning records' },
   { key: 'mcs_certificate', label: 'MCS certificate' },
   { key: 'handover',        label: 'Handover pack' },
-  { key: 'hies',            label: 'HIES registration and guarantee' },
+  // 'hies' is a tick box now, not an upload (Greg 2026-11-19, migration
+  // 077): we don't receive a document back. Older 'hies' uploads still
+  // show under their own heading and still count.
+  { key: 'hies',            label: 'HIES registration and guarantee', leadUpload: false },
   { key: 'invoices',        label: 'Invoices and payments' },
   { key: 'other',           label: 'Other' },
 ];
@@ -3383,7 +3394,16 @@ function renderPaperwork(rows, selected) {
   const designOk = !!(selected && selected.docCount > 0) || have.has('design');
   // Signed contract: in the selected quote (2026-11-19), or an older lead-level one.
   const contractOk = !!selected?.hasContract || have.has('contract');
+  // HIES: a tick box (077), or an older 'hies' upload.
+  const hiesOk = !!currentChecklist?.hies_done || have.has('hies');
   const item = k => {
+    if (k === 'hies') {
+      const by = currentChecklist?.hies_done && currentChecklist.hies_updated_by
+        ? ` title="Ticked by ${escapeHtml(repName(currentChecklist.hies_updated_by))}${currentChecklist.hies_updated_at ? ' on ' + new Date(currentChecklist.hies_updated_at).toLocaleDateString('en-GB') : ''}"` : '';
+      const fromUpload = have.has('hies') && !currentChecklist?.hies_done;
+      const dis = canEditLead(currentLead) && !fromUpload ? '' : ' disabled';
+      return `<label class="${hiesOk ? 'ok' : 'miss'} pw-hies"${by}><input type="checkbox" id="pw-hies"${hiesOk ? ' checked' : ''}${dis} onchange="setHiesRegistered(this)"> HIES registered</label>`;
+    }
     if (k === 'contract') {
       return contractOk ? `<span class="ok">✓ Signed contract</span>`
                         : `<span class="miss">✗ ${selected ? 'Signed contract in the selected quote' : 'Signed contract (no quote selected yet)'}</span>`;
@@ -3396,11 +3416,34 @@ function renderPaperwork(rows, selected) {
     return have.has(k) ? `<span class="ok">✓ ${escapeHtml(DOC_CATEGORY_LABEL[k])}</span>`
                        : `<span class="miss">✗ ${escapeHtml(DOC_CATEGORY_LABEL[k])}</span>`;
   };
-  const done = MCS_PAPERWORK.filter(k => k === 'design' ? designOk : k === 'contract' ? contractOk : have.has(k)).length;
+  const done = MCS_PAPERWORK.filter(k => k === 'design' ? designOk : k === 'contract' ? contractOk : k === 'hies' ? hiesOk : have.has(k)).length;
   box.innerHTML = `<div class="doc-paperwork">
     <div class="pw-h">MCS paperwork: ${done} of ${MCS_PAPERWORK.length}</div>
     <div class="pw-list">${MCS_PAPERWORK.map(item).join('')}</div>
   </div>`;
+}
+
+// "HIES registered" tick box in the MCS paperwork box (migration 077).
+// Saved straight away on install_checklists; unticking asks first, since
+// stray clicks were the reason the Install checklist got an Edit button.
+async function setHiesRegistered(box) {
+  const lead = currentLead;
+  if (!lead || blockedReadOnly()) { box.checked = !box.checked; return; }
+  const on = box.checked;
+  if (!on && !confirm('Untick "HIES registered" for this job?')) { box.checked = true; return; }
+  box.disabled = true;
+  const { data, error } = await db.from('install_checklists')
+    .upsert({ prospect_id: lead.id, hies_done: on }, { onConflict: 'prospect_id' })
+    .select('*').single();
+  if (currentLead?.id !== lead.id) return;
+  if (error) {
+    box.checked = !on; box.disabled = false;
+    alert("Couldn't save HIES registered: " + error.message);
+    return;
+  }
+  currentChecklist = data;
+  renderInstallChecklist();
+  refreshPaperwork();
 }
 
 // Lead-level rows from the last loadLeadDocuments, so a quote-option change
