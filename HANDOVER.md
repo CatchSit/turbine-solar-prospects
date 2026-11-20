@@ -1,5 +1,7 @@
 # Turbine Energy — Solar Prospect Map — Handover
 
+> **2026-11-20: Create proposal button is blue (`.btn-blue`), lead Prev/Next buttons removed (Greg).** `updatePrevNextButtons` / `stepLead` left as harmless no-ops.
+
 > **2026-11-19: Create proposal button + Install checklist Edit/Save + signed contract in the quote option (LIVE, pushed 19 Nov).**
 > - **Create proposal** (lead header, hidden on view-only leads): opens `turbine-proposals://lead/<id>`. The Proposal Generator (release after 2026-11-19) registers that link and opens on its home page with the lead picked. Pushed before the app release (Greg, 19 Nov): the button does nothing on a PC until that PC has opened a release dated after 2026-11-19.
 > - **Install checklist**: greyed out until **Edit**, then **Save** / **Cancel**. Save upserts every row at once; the 044 trigger only stamps "Updated by" on rows that changed. Before this, every tick/name autosaved, and stray clicks changed it (Greg).

@@ -237,6 +237,10 @@ tbody tr:hover { background: var(--surface2); }
 .quote-status { font-size: 11.5px; color: var(--text3); }
 .btn-primary { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: 13px; font-weight: 500; }
 .btn-primary:disabled { opacity: .6; cursor: default; }
+/* Create proposal (Greg, 2026-11-20): blue so it stands out from Log contact. */
+.btn-blue { background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: 13px; font-weight: 500; }
+.btn-blue:hover:not(:disabled) { background: #1d4ed8; }
+.btn-blue:disabled { opacity: .6; cursor: default; }
 .btn-secondary { background: var(--surface2); color: var(--text2); border: none; border-radius: 8px; padding: 8px 16px; font-size: 13px; font-weight: 500; }
 .ic-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .ic-progress { font-size: 12px; font-weight: 500; padding: 4px 10px; border-radius: 100px; background: var(--surface2); color: var(--text2); white-space: nowrap; }
@@ -574,9 +578,7 @@ tbody tr:hover { background: var(--surface2); }
         <span id="lead-pills" class="lh-pills"></span>
         <span class="lh-contact" id="lead-contact-links"></span>
         <div class="lh-actions">
-          <button class="btn-ghost" type="button" id="lead-prev-btn" title="Previous lead in your list">‹ Prev</button>
-          <button class="btn-ghost" type="button" id="lead-next-btn" title="Next lead in your list">Next ›</button>
-          <button class="btn-ghost" type="button" id="create-proposal-btn" title="Opens the Proposal Generator on this PC with this customer filled in">Create proposal</button>
+          <button class="btn-blue" type="button" id="create-proposal-btn" title="Opens the Proposal Generator on this PC with this customer filled in">Create proposal</button>
           <button class="btn-primary" type="button" id="log-contact-btn">Log contact</button>
         </div>
       </div>
@@ -1719,10 +1721,15 @@ function openLeadDetail(lead) {
 
 /* ── Prev / Next through the leads table's current filtered order ── */
 let visibleLeadIds = [];
+// The Prev / Next buttons were removed (Greg, 2026-11-20); kept as a
+// harmless no-op so nothing that still calls it breaks.
 function updatePrevNextButtons() {
+  const prev = document.getElementById('lead-prev-btn');
+  const next = document.getElementById('lead-next-btn');
+  if (!prev || !next) return;
   const i = currentLead ? visibleLeadIds.indexOf(currentLead.id) : -1;
-  document.getElementById('lead-prev-btn').disabled = i <= 0;
-  document.getElementById('lead-next-btn').disabled = i === -1 || i >= visibleLeadIds.length - 1;
+  prev.disabled = i <= 0;
+  next.disabled = i === -1 || i >= visibleLeadIds.length - 1;
 }
 function stepLead(delta) {
   const i = currentLead ? visibleLeadIds.indexOf(currentLead.id) : -1;
@@ -1730,8 +1737,6 @@ function stepLead(delta) {
   const target = allLeads.find(l => l.id === visibleLeadIds[i + delta]);
   if (target) openLeadDetail(target);
 }
-document.getElementById('lead-prev-btn').addEventListener('click', () => stepLead(-1));
-document.getElementById('lead-next-btn').addEventListener('click', () => stepLead(1));
 
 /* ── Stage bar + Next step (leadProgress(), shared/contact-outcome-config.js) ── */
 function renderProgress() {
