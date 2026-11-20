@@ -224,6 +224,11 @@ tfoot td { border-top: 1px solid var(--borderH); border-bottom: 0; }
 .prop-tag.open { background: var(--accentDim); color: var(--accentDk); }
 .prop-tag.hot { background: #fdefcc; color: #7a5200; }
 .prop-tag.off { background: var(--alertSoft); color: var(--alert); }
+.prop-tag.shared { background: #e0ecff; color: #1d4ed8; }
+.prop-bars { grid-template-columns: 190px 1fr 60px 70px; }
+.prop-hist { font-size: 12px; line-height: 1.5; }
+.prop-hist .t { color: var(--text2); margin-right: 6px; }
+.prop-flag { font-size: 11px; color: #1d4ed8; }
 .prop-new-link { margin-top: 12px; padding: 12px 14px; border-radius: 8px; background: var(--accentDim); font-size: 13px; }
 </style>
 </head>
@@ -1764,7 +1769,43 @@ document.getElementById('audit-person').addEventListener('change', renderAudit);
    ════════════════════════════════════════════════════════════ */
 const PROPOSAL_BASE = 'https://www.turbineenergyuk.co.uk/proposal/';
 const PROPOSAL_PAGES = { 1: 'Cover', 2: 'Barton Brook case study', 3: 'Their figures', 4: 'For their team', 5: 'Ways to pay & next step' };
-const PROPOSAL_CLICKS = { book_survey: 'Clicked Book a survey', call: 'Tapped the phone number', download_pdf: 'Downloaded the PDF', email_choices: 'Clicked Email my choices' };
+const PROPOSAL_CLICKS = { book_survey: 'Clicked Book a survey', call: 'Tapped the phone number', download_pdf: 'Downloaded the PDF', email_choices: 'Clicked Email my choices',
+  email: 'Tapped the email address', whatsapp: 'Tapped WhatsApp' };
+// 078 (2026-11-20): pages also send "datasheet:<name>", "doc:<name>",
+// "link:<name>" and "faq:<question>".
+const PROPOSAL_CLICK_PREFIX = { datasheet: 'Opened datasheet: ', doc: 'Opened ', link: 'Opened link: ', faq: 'Opened FAQ: ' };
+function propClickLabel(what) {
+  what = String(what || '');
+  if (PROPOSAL_CLICKS[what]) return PROPOSAL_CLICKS[what];
+  const i = what.indexOf(':');
+  const pre = i > 0 ? PROPOSAL_CLICK_PREFIX[what.slice(0, i)] : null;
+  return pre ? pre + what.slice(i + 1) : what;
+}
+// What the reader had chosen at one moment (078 "changes" entries).
+function propInputsText(inp) {
+  if (!inp) return '';
+  if (inp.summary) return inp.summary;
+  const bits = [];
+  if (inp.spend != null) bits.push(money(inp.spend) + ' spend');
+  if (inp.rate != null) bits.push(inp.rate + 'p');
+  if (inp.roof != null) bits.push(num(inp.roof) + ' m²');
+  return bits.join(', ');
+}
+function propTime(iso) { return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); }
+// Rough area from the request headers (078 "geo"); blank if none was given.
+function propWhere(x) {
+  const g = x.geo || {};
+  const tail = g.country && g.country !== 'GB' ? ', ' + g.country : '';
+  if (g.city) return g.city + tail;
+  if (g.region) return g.region + tail;
+  if (g.country) return g.country === 'GB' ? 'UK' : g.country;
+  return '';
+}
+// Same kind of device and the same screen size = probably the same device.
+function propDeviceKey(x) {
+  const m = /^(\d+)x(\d+)$/.exec(x.viewport || '');
+  return propDevice(x.user_agent) + (m ? ' ' + Math.min(+m[1], +m[2]) : '');
+}
 // Custom pages (076) have their own page count; label them by number.
 const propPageLabels = (r, sm) => r.template === 'custom'
   ? Object.fromEntries(Object.keys(sm.pages).sort((a, b) => a - b).map(k => [k, 'Page ' + k]))
@@ -1802,25 +1843,34 @@ function propDevice(ua) {
 }
 function propSummary(id) {
   const v = propVisits[id] || [];
-  const pages = {}; let active = 0; const clicks = new Set(); const devices = new Set();
+  const pages = {}, scroll = {}; let active = 0; const clicks = new Set(); const devices = new Set();
   v.forEach(x => {
     active += x.active_seconds || 0;
     Object.entries(x.pages || {}).forEach(([k, s]) => { pages[k] = (pages[k] || 0) + s; });
+    Object.entries(x.scroll || {}).forEach(([k, s]) => { scroll[k] = Math.max(scroll[k] || 0, s); });
     (x.clicks || []).forEach(c => clicks.add(c.what));
     devices.add(propDevice(x.user_agent));
   });
   const tried = v.find(x => x.inputs && x.inputs.changed);
-  return { visits: v, opens: v.length, active, pages, clicks, devices, tried, first: v[v.length - 1], last: v[0] };
+  // "Probably shared" (078): a visit from a different device AND a different
+  // network from the first visit, i.e. most likely someone else.
+  const first = v[v.length - 1];
+  const sharedVisits = new Set(first ? v.filter(x => x !== first && x.net && first.net
+    && x.net !== first.net && propDeviceKey(x) !== propDeviceKey(first)) : []);
+  return { visits: v, opens: v.length, active, pages, scroll, clicks, devices, tried, sharedVisits, first, last: v[0] };
 }
 
 LOADERS.proposals = async function () {
   const body = document.getElementById('proposals-body');
   body.innerHTML = '<div class="loading">Loading…</div>';
-  const [p, v] = await Promise.all([
+  const VISIT_COLS = 'proposal_id, session_id, started_at, last_seen_at, active_seconds, pages, inputs, clicks, user_agent, viewport';
+  const visits = cols => db.from('proposal_visits').select(cols).order('last_seen_at', { ascending: false }).limit(5000);
+  let [p, v] = await Promise.all([
     db.from('sales_proposals').select('id, code, template, recipient_name, contact_name, contact_email, notes, annual_spend, unit_rate_p, roof_m2, created_by_email, created_at, revoked_at').order('created_at', { ascending: false }).limit(500),
-    db.from('proposal_visits').select('proposal_id, session_id, started_at, last_seen_at, active_seconds, pages, inputs, clicks, user_agent, viewport')
-      .order('last_seen_at', { ascending: false }).limit(5000),
+    visits(VISIT_COLS + ', changes, scroll, net, geo'),
   ]);
+  // Until migration 078 is run the extra columns don't exist yet.
+  if (v.error && /changes|scroll|net|geo/.test(v.error.message || '')) v = await visits(VISIT_COLS);
   if (p.error || v.error) {
     const msg = (p.error || v.error).message;
     body.innerHTML = errorHtml(/sales_proposals|proposal_visits/.test(msg) && /exist|schema cache/.test(msg)
@@ -1852,9 +1902,11 @@ function renderProposals() {
       : sm.clicks.has('book_survey') ? '<span class="prop-tag hot">Clicked Book a survey</span>'
       : sm.opens ? `<span class="prop-tag open">Opened ${sm.opens === 1 ? 'once' : sm.opens + ' times'}</span>`
       : '<span class="prop-tag">Not opened yet</span>';
+    const sharedTag = !r.revoked_at && sm.sharedVisits.size
+      ? ' <span class="prop-tag shared" title="Opened on a different device on a different network: most likely someone else, e.g. a partner">Probably shared</span>' : '';
     const main = `<tr class="prop-row" data-id="${r.id}">
       <td><b>${escapeHtml(r.recipient_name)}</b>${r.contact_name ? `<div class="muted">${escapeHtml(r.contact_name)}</div>` : ''}</td>
-      <td>${tag}</td>
+      <td>${tag}${sharedTag}</td>
       <td style="white-space:nowrap">${sm.last ? escapeHtml(fmtDateTime(sm.last.last_seen_at)) : '<span class="muted">—</span>'}</td>
       <td class="num">${sm.opens ? propDuration(sm.active) : '<span class="muted">—</span>'}</td>
       <td class="num">${sm.devices.size || '<span class="muted">—</span>'}</td>
@@ -1870,15 +1922,25 @@ function propDetailRow(r, sm) {
   const url = PROPOSAL_BASE + r.code;
   const max = Math.max(1, ...Object.values(sm.pages));
   const labels = propPageLabels(r, sm);
+  const hasScroll = Object.keys(sm.scroll).length > 0;
   const bars = Object.keys(labels).map(k => `<span>${k}. ${escapeHtml(labels[k])}</span>
-    <div class="prop-bar"><span style="width:${Math.round((sm.pages[k] || 0) / max * 100)}%"></span></div><span class="num">${propDuration(sm.pages[k] || 0)}</span>`).join('');
+    <div class="prop-bar"><span style="width:${Math.round((sm.pages[k] || 0) / max * 100)}%"></span></div><span class="num">${propDuration(sm.pages[k] || 0)}</span>
+    <span class="num muted" title="Furthest they scrolled down this page">${hasScroll ? (sm.scroll[k] != null ? 'read ' + sm.scroll[k] + '%' : '—') : ''}</span>`).join('');
+  const figures = x => {
+    const ch = x.changes || [];
+    if (ch.length > 1) {   // they changed something: every step, oldest first
+      return '<div class="prop-hist">' + ch.map((c, i) => `<div><span class="t">${escapeHtml(propTime(c.at))}</span>${i === 0 ? 'Opened with: ' : 'Changed to: '}${escapeHtml(propInputsText(c.inputs))}</div>`).join('') + '</div>';
+    }
+    return x.inputs && x.inputs.summary ? (x.inputs.changed ? 'Chose: ' : 'Kept as quoted: ') + escapeHtml(x.inputs.summary)
+      : x.inputs && x.inputs.changed ? `Changed figures: ${escapeHtml(money(x.inputs.spend))} spend, ${escapeHtml(String(x.inputs.rate))}p, ${escapeHtml(num(x.inputs.roof))} m²` : '<span class="muted">Kept the figures you sent</span>';
+  };
   const visits = sm.visits.map(x => `<tr>
-    <td style="white-space:nowrap">${escapeHtml(fmtDateTime(x.started_at))}</td>
+    <td style="white-space:nowrap">${escapeHtml(fmtDateTime(x.started_at))}${sm.sharedVisits.has(x) ? '<div class="prop-flag">Different device and network</div>' : ''}</td>
     <td>${escapeHtml(propDevice(x.user_agent))}</td>
+    <td>${escapeHtml(propWhere(x)) || '<span class="muted">—</span>'}</td>
     <td class="num">${propDuration(x.active_seconds)}</td>
-    <td>${x.inputs && x.inputs.summary ? (x.inputs.changed ? 'Chose: ' : 'Kept as quoted: ') + escapeHtml(x.inputs.summary)
-      : x.inputs && x.inputs.changed ? `Changed figures: ${escapeHtml(money(x.inputs.spend))} spend, ${escapeHtml(String(x.inputs.rate))}p, ${escapeHtml(num(x.inputs.roof))} m²` : '<span class="muted">Kept the figures you sent</span>'}</td>
-    <td>${(x.clicks || []).map(c => escapeHtml(PROPOSAL_CLICKS[c.what] || c.what)).join(', ') || '<span class="muted">—</span>'}</td></tr>`).join('');
+    <td>${figures(x)}</td>
+    <td>${(x.clicks || []).map(c => escapeHtml(propClickLabel(c.what))).join(', ') || '<span class="muted">—</span>'}</td></tr>`).join('');
   return `<tr class="prop-detail"><td colspan="6">
     <div class="prop-link"><code>${escapeHtml(url)}</code>
       <button class="refresh-btn" data-prop-copy="${escapeHtml(url)}">Copy link</button>
@@ -1887,7 +1949,7 @@ function propDetailRow(r, sm) {
       ${r.revoked_at ? `<span class="muted">Switched off ${escapeHtml(fmtDate(r.revoked_at))}</span>` : `<button class="refresh-btn" data-prop-revoke="${r.id}">Switch link off</button>`}</div>
     <div class="muted" style="font-size:12px;margin-bottom:6px">${r.template === 'custom' ? 'Customer&#8217;s own proposal page' : `Sent with ${escapeHtml(money(r.annual_spend))} spend, ${r.unit_rate_p}p, ${num(r.roof_m2)} m² roof`}${r.contact_email ? ' · ' + escapeHtml(r.contact_email) : ''}${r.notes ? ' · ' + escapeHtml(r.notes) : ''} · created by ${escapeHtml(r.created_by_email)}</div>
     ${sm.opens ? `<div style="font-weight:600;font-size:13px;margin-top:10px">Time on each page (all visits)</div><div class="prop-bars">${bars}</div>
-      <table><thead><tr><th>Visit</th><th>Device</th><th class="num">Reading time</th><th>Figures</th><th>Clicks</th></tr></thead><tbody>${visits}</tbody></table>`
+      <table><thead><tr><th>Visit</th><th>Device</th><th title="Rough area from the internet connection, not GPS. Often wrong on mobile data.">Area (rough)</th><th class="num">Reading time</th><th>Figures</th><th>Clicks</th></tr></thead><tbody>${visits}</tbody></table>`
       : '<div class="muted" style="font-size:13px">Not opened yet. Visits appear here a few seconds after someone opens the link.</div>'}
   </td></tr>`;
 }

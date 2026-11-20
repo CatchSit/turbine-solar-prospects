@@ -1365,7 +1365,7 @@ const CAL_INSTALLED = ['Completed', 'Job Closed'];
 const CAL_TASK_NAMES = { scaffold: 'Scaffold', electrician: 'Electrician', roofer: 'Roofer', plumber: 'Plumber', kit: 'Kit' };
 const CAL_CACHE_MS = 30000;
 let calWeekOffset = 0;            // 0 = last week to the week after next
-let calData = null;               // { at, dates: {id: 'YYYY-MM-DD'}, checklists: {id: row} }
+let calData = null;               // { at, dates: {id: 'YYYY-MM-DD'}, surveys: {id: 'YYYY-MM-DD'}, checklists: {id: row} }
 let calLoading = false;
 
 function calDayKey(d) {
@@ -1379,21 +1379,28 @@ function calMonday(d) {
 
 async function fetchCalendarData() {
   const ids = allLeads.map(l => l.id);
-  const dates = {}, checklists = {};
+  const dates = {}, surveys = {}, checklists = {};
   if (ids.length) {
-    const [logs, lists] = await Promise.all([
+    const [logs, lists, surveyLogs] = await Promise.all([
       db.from('prospect_contacts').select('prospect_id, follow_up_date, contacted_at')
         .eq('outcome', 'Scheduled for Install').in('prospect_id', ids)
         .order('contacted_at', { ascending: false }),
       db.from('install_checklists').select('*').in('prospect_id', ids),
+      // Surveys on the calendar too (Greg 2026-11-20): the date given with
+      // the latest "Survey booked" entry.
+      db.from('prospect_contacts').select('prospect_id, follow_up_date, contacted_at')
+        .eq('outcome', 'Survey Booked').in('prospect_id', ids)
+        .order('contacted_at', { ascending: false }),
     ]);
     if (logs.error) console.error('Failed to load install dates:', logs.error);
     if (lists.error) console.error('Failed to load install checklists:', lists.error);
+    if (surveyLogs.error) console.error('Failed to load survey dates:', surveyLogs.error);
     (logs.data || []).forEach(r => { if (r.follow_up_date && !(r.prospect_id in dates)) dates[r.prospect_id] = r.follow_up_date; });
+    (surveyLogs.data || []).forEach(r => { if (r.follow_up_date && !(r.prospect_id in surveys)) surveys[r.prospect_id] = r.follow_up_date; });
     (lists.data || []).forEach(r => { checklists[r.prospect_id] = r; });
   }
   allLeads.forEach(l => { if (!dates[l.id] && l.install_scheduled_date) dates[l.id] = l.install_scheduled_date; });
-  return { at: Date.now(), dates, checklists };
+  return { at: Date.now(), dates, surveys, checklists };
 }
 
 function calTasksHtml(checklist, product) {
@@ -1427,6 +1434,26 @@ function calCardHtml(d, dateKey, todayKey) {
     <div class="bc-name">${escapeHtml(d.customer_name || 'Unnamed lead')}</div>
     <div class="bc-meta">${meta}</div>
     ${installed ? '' : calTasksHtml(checklist, d.product)}
+    ${flag}
+  </button>`;
+}
+
+// A survey on the calendar: teal like the "Survey booked" stage.
+function calSurveyCardHtml(d, dateKey, todayKey) {
+  const surveyCfg = CONTACT_OUTCOME['Survey Booked'];
+  const color = surveyCfg?.color || '#2a9d9d';
+  const stage = CONTACT_OUTCOME[d.latest_outcome]?.stage;
+  const stillBooked = d.latest_outcome === 'Survey Booked';
+  let flag = '';
+  if (!stillBooked && typeof stage === 'number' && stage >= 3) flag = '<div class="cal-flag ok">✔ Survey done</div>';
+  else if (stillBooked && dateKey < todayKey) flag = '<div class="cal-flag late">Date passed, survey not marked done</div>';
+  const typeCfg = LEAD_TYPE[d.lead_type];
+  const meta = [d.postcode ? escapeHtml(d.postcode) : '', typeCfg ? escapeHtml(typeCfg.label) : '',
+    d.assigned_to_email ? escapeHtml(repName(d.assigned_to_email)) : ''].filter(Boolean).map(m => `<span>${m}</span>`).join('');
+  return `<button type="button" class="board-card cal-card" data-id="${escapeHtml(d.id)}" style="--card-color:${color}">
+    <div class="bc-outcome"><span class="tag-dot" style="background:${color}"></span>Survey</div>
+    <div class="bc-name">${escapeHtml(d.customer_name || 'Unnamed lead')}</div>
+    <div class="bc-meta">${meta}</div>
     ${flag}
   </button>`;
 }
@@ -1465,12 +1492,16 @@ async function renderLeadsCalendar(leads) {
   }));
   const firstKey = weeks[0][0].key, lastKey = weeks[3][6].key;
 
-  const byDay = {};
+  const byDay = {};   // key -> [{ d, kind: 'install' | 'survey' }]
+  const put = (key, d, kind) => {
+    if (!key || key < firstKey || key > lastKey) return;
+    (byDay[key] = byDay[key] || []).push({ d, kind });
+  };
   leads.forEach(d => {
-    const key = calData.dates[d.id];
     const closed = typeof CONTACT_OUTCOME[d.latest_outcome]?.stage === 'string';   // cancelled / lost / not now
-    if (!key || closed || key < firstKey || key > lastKey) return;
-    (byDay[key] = byDay[key] || []).push(d);
+    if (closed) return;
+    put(calData.surveys?.[d.id], d, 'survey');
+    put(calData.dates[d.id], d, 'install');
   });
   const shown = [];
   const weekNames = calWeekOffset === 0 ? ['Last week', 'This week', 'Next week', 'Week after'] : null;
@@ -1481,10 +1512,10 @@ async function renderLeadsCalendar(leads) {
       <div class="cal-week-label">${weekNames ? weekNames[w] : 'Week of'}<small>${fmt(days[0].day, { day: 'numeric', month: 'short' })}</small></div>
       ${days.map(({ day, key }, i) => {
         const items = byDay[key] || [];
-        items.forEach(d => shown.push(d.id));
+        items.forEach(({ d }) => { if (!shown.includes(d.id)) shown.push(d.id); });
         return `<div class="cal-day${i >= 5 ? ' weekend' : ''}${key === todayKey ? ' today' : ''}">
           <div class="cal-day-h">${fmt(day, { weekday: 'short', day: 'numeric' })}${key === todayKey ? ' · Today' : ''}</div>
-          ${items.map(d => calCardHtml(d, key, todayKey)).join('')}
+          ${items.map(({ d, kind }) => kind === 'survey' ? calSurveyCardHtml(d, key, todayKey) : calCardHtml(d, key, todayKey)).join('')}
         </div>`;
       }).join('')}
     </div>`).join('');
@@ -1497,13 +1528,13 @@ async function renderLeadsCalendar(leads) {
   el.innerHTML = `<div class="cal-wrap">
     <div>
       <div class="cal-nav">
-        <span class="cal-range">Installs · ${escapeHtml(rangeText)}</span>
+        <span class="cal-range">Installs and surveys · ${escapeHtml(rangeText)}</span>
         <button class="btn-secondary" type="button" data-cal-move="-1">‹ Earlier</button>
         <button class="btn-secondary" type="button" data-cal-move="0" ${calWeekOffset === 0 ? 'disabled' : ''}>Today</button>
         <button class="btn-secondary" type="button" data-cal-move="1">Later ›</button>
       </div>
       <div class="cal-scroll">${weeksHtml}</div>
-      ${shown.length ? '' : '<div class="board-empty">No installs booked in these four weeks.</div>'}
+      ${shown.length ? '' : '<div class="board-empty">No installs or surveys booked in these four weeks.</div>'}
     </div>
     <section class="cal-side">
       <div class="board-col-h">Needs an install date<span class="board-col-count">${unscheduled.length}</span></div>
