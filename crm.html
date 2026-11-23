@@ -164,6 +164,37 @@ tbody tr:hover { background: var(--surface2); }
 .sec-docs { --sec-color: #6f5b94; --sec-soft: #e2dcec; }
 .sec-install { --sec-color: #2a9d9d; --sec-soft: #d9f0ef; }
 .sec-install.locked .sec-b { opacity: .7; }
+/* Handover + Complaints (migration 079, Greg 2026-11-23) */
+.sec-handover { --sec-color: #3b7dd8; --sec-soft: #dce7f7; }
+.sec-handover.locked .sec-b { opacity: .7; }
+.sec-complaints { --sec-color: #c2410c; --sec-soft: #fde7dc; }
+.ho-status { font-size: 13px; margin-bottom: 10px; }
+.ho-status .ok { color: var(--accentDk); font-weight: 600; }
+.ho-tick { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; cursor: pointer; }
+.quote-field label.ho-tick { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); margin: 0; }
+.quote-field label.ho-tick input { width: auto; flex: 0 0 auto; margin: 0; padding: 0; accent-color: var(--accent); }
+.ho-grid .quote-field:has(> label.ho-tick) { align-self: end; padding-bottom: 8px; }
+.ho-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px 14px; }
+.ho-grid .quote-field textarea, .cp-form textarea { width: 100%; min-height: 54px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 13px; background: var(--surface2); color: var(--text); resize: vertical; }
+.ho-grid .wide { grid-column: 1 / -1; }
+.ho-grid input:disabled, .ho-grid textarea:disabled { opacity: .75; }
+.ho-group { margin: 8px 0 4px; font-size: 11.5px; font-weight: 700; color: var(--text2); text-transform: uppercase; letter-spacing: .03em; }
+.ho-doc { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 3px 0; }
+.ho-doc .muted { color: var(--text3); font-size: 11.5px; }
+.ho-missing { margin-top: 8px; font-size: 12.5px; color: var(--alert); }
+.ho-build { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.cp-item { border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; margin-bottom: 8px; font-size: 13px; }
+.cp-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; color: var(--text2); }
+.cp-pill { padding: 1px 8px; border-radius: 100px; font-size: 11px; font-weight: 600; }
+.cp-pill.open { background: #fde7dc; color: #c2410c; }
+.cp-pill.done { background: var(--accentDim); color: var(--accentDk); }
+.cp-text { margin-top: 5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cp-sub { margin-top: 4px; font-size: 12px; color: var(--text2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.cp-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px 14px; margin-bottom: 12px; padding: 10px; border: 1px dashed var(--border); border-radius: 8px; }
+.cp-form .wide { grid-column: 1 / -1; }
+.cp-form select, .ho-upload-cat { padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 13px; background: var(--surface2); color: var(--text); width: 100%; }
+.vuln-pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 100px; background: #fde2e2; color: #b42318; font-size: 12px; font-weight: 600; }
+#ld-form textarea { width: 100%; min-height: 50px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 13px; background: var(--surface2); color: var(--text); resize: vertical; }
 .fields { margin: 0; }
 .fields .f { display: grid; grid-template-columns: 96px 1fr; gap: 8px; padding: 7px 0; border-bottom: 1px dashed var(--border); font-size: 13px; align-items: baseline; }
 .fields .f:last-child { border-bottom: 0; }
@@ -496,9 +527,10 @@ tbody tr:hover { background: var(--surface2); }
    (migration 071, Greg 2026-11-17), so the upload controls are not hidden. */
 .readonly-banner { margin: 10px 0 0; padding: 8px 12px; border-radius: 8px; background: #fef3c7; color: #92400e; font-size: 13px; font-weight: 500; }
 #detail-view.lead-readonly :is(#log-contact-btn, #create-proposal-btn, #ic-edit-btn, .qo-doc-type, .composer, #details-edit-btn, #add-quote-option-btn,
+  #ho-edit-btn, #ho-upload-row, #ho-build-btn,
   #ih-send-btn, .doc-remove-link, .doc-cat-move,
   .row-action-link, .email-due-actions, [id^="qo-save-"], [id^="qo-cancel-"], .qo-detail-row .btn-secondary) { display: none !important; }
-#detail-view.lead-readonly :is(#install-unlocked, .qo-detail-row) :is(input:not(.doc-file-input), select, textarea) { pointer-events: none; opacity: .7; }
+#detail-view.lead-readonly :is(#install-unlocked, .qo-detail-row, #ho-unlocked) :is(input:not(.doc-file-input), select, textarea) { pointer-events: none; opacity: .7; }
 </style>
 </head>
 <body>
@@ -611,6 +643,10 @@ tbody tr:hover { background: var(--surface2); }
               <div class="quote-field"><label>Contact number</label><input type="tel" id="ld-phone"/></div>
               <div class="quote-field"><label>Email address</label><input type="email" id="ld-email"/></div>
               <div class="quote-field"><label>Type</label><div class="outcome-chips" id="ld-type-chips"></div></div>
+              <div class="quote-field">
+                <label class="ho-tick"><input type="checkbox" id="ld-vulnerable"> Vulnerable customer</label>
+                <textarea id="ld-vulnerable-notes" maxlength="1000" placeholder="What should the team know? e.g. hard of hearing, call a family member first"></textarea>
+              </div>
               <div class="quote-field"><label>Assigned to</label><div class="outcome-chips" id="ld-assigned-chips"></div></div>
               <div class="quote-field">
                 <label>Lead origin</label>
@@ -731,6 +767,53 @@ tbody tr:hover { background: var(--surface2); }
               </div>
             </div>
           </div>
+        </section>
+
+        <section class="sec sec-handover" id="handover-sec">
+          <div class="sec-h">
+            <span class="sec-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></span>
+            <h3>Handover</h3>
+            <span class="ic-progress" id="ho-progress"></span>
+          </div>
+          <div class="sec-b">
+            <div id="ho-locked" class="lock-msg"></div>
+            <div id="ho-unlocked">
+              <div class="ho-status" id="ho-status"></div>
+              <label class="ho-tick"><input type="checkbox" id="ho-dno"> DNO copy sent to the customer</label>
+              <span class="quote-status" id="ho-dno-meta"></span>
+              <h4 class="sub-h" style="margin-top:16px">Handover details</h4>
+              <div id="ho-details"></div>
+              <div class="ic-actions">
+                <button class="btn-secondary" type="button" id="ho-edit-btn">Edit</button>
+                <button class="btn-secondary" type="button" id="ho-cancel-btn" style="display:none">Cancel</button>
+                <button class="btn-primary" type="button" id="ho-save-btn" style="display:none">Save</button>
+              </div>
+              <div class="quote-status" id="ho-details-status" style="margin-top:6px"></div>
+              <h4 class="sub-h" style="margin-top:18px">What goes in the pack</h4>
+              <div class="quote-status" style="margin-bottom:6px">Documents already on this lead and in the selected quote are added automatically. Untick anything the customer shouldn't get. Upload anything else here, e.g. manuals and warranty certificates.</div>
+              <div id="ho-pack"></div>
+              <div class="doc-upload" id="ho-upload-row" style="margin-top:10px">
+                <select class="doc-category-select" id="ho-upload-cat" title="What is this document?"></select>
+                <input type="file" accept="application/pdf,image/jpeg,image/png,image/heic,.doc,.docx,video/quicktime,video/mp4,.mov,.mp4" class="doc-file-input" id="ho-file-input" multiple>
+                <button type="button" class="doc-upload-btn" id="ho-upload-btn">Upload</button>
+              </div>
+              <div class="doc-upload-status" id="ho-upload-status"></div>
+              <div class="ho-build">
+                <button class="btn-blue" type="button" id="ho-build-btn">Build handover pack</button>
+                <span class="quote-status" id="ho-build-status"></span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="sec sec-complaints" id="complaints-sec">
+          <div class="sec-h">
+            <span class="sec-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12z"/><path d="M12 8v4M12 16h.01"/></svg></span>
+            <h3>Complaints</h3>
+            <span class="sec-count" id="complaints-count"></span>
+            <button class="sec-act" type="button" id="complaint-add-btn">+ Log complaint</button>
+          </div>
+          <div class="sec-b"><div id="complaints-body"></div></div>
         </section>
       </div>
     </div>
@@ -1050,7 +1133,7 @@ function originOptionsHtml(currentId) {
 }
 
 /* ── Leads table ─────────────────────────────────────────── */
-const LEAD_COLUMNS = 'id, customer_name, lead_type, product, contact_phone, contact_email, address, postcode, created_at, install_hub_job_id, sent_to_install_hub_at, sent_to_install_hub_by_email, assigned_to_email, lead_channel, lead_origin_id, lead_cost, deleted_at, install_scheduled_date, road_miles_from_office, road_miles_postcode';
+const LEAD_COLUMNS = 'id, customer_name, lead_type, product, contact_phone, contact_email, address, postcode, created_at, install_hub_job_id, sent_to_install_hub_at, sent_to_install_hub_by_email, assigned_to_email, lead_channel, lead_origin_id, lead_cost, deleted_at, install_scheduled_date, road_miles_from_office, road_miles_postcode, vulnerable, vulnerable_notes';
 
 /* ── Several people on one lead (2026-10-12): no locking. A save only goes
    through if the fields being saved still hold the values this page
@@ -1650,6 +1733,7 @@ function populateLeadFields(lead) {
     typeCfg ? pillHtml(typeCfg.color, leadJobLabel(lead)) : '',
     pillHtml(originColor(originKey), `Origin: ${originLabel(originKey)}`, 'Where this lead came from'),
     pillHtml(ASSIGNED_CHIP_COLOR[lead.assigned_to_email || ''] || '#94a3b8', lead.assigned_to_email ? `Assigned: ${repName(lead.assigned_to_email)}` : 'Unassigned'),
+    lead.vulnerable ? `<span class="vuln-pill" title="${escapeHtml(lead.vulnerable_notes || 'Vulnerable customer')}">Vulnerable customer</span>` : '',
   ].join('');
   document.getElementById('lead-contact-links').innerHTML = [
     lead.contact_phone ? `<span>☎ <a href="tel:${escapeHtml(lead.contact_phone.replace(/\s+/g, ''))}">${escapeHtml(lead.contact_phone)}</a></span>` : '',
@@ -1667,6 +1751,7 @@ function populateLeadFields(lead) {
     row('Type', escapeHtml(leadJobLabel(lead))),
     row('Origin', escapeHtml(originLabel(originKey)) + cost),
     row('Assigned', escapeHtml(lead.assigned_to_email ? repName(lead.assigned_to_email) : '')),
+    lead.vulnerable ? row('Vulnerable', `<span class="vuln-pill">Yes</span>${lead.vulnerable_notes ? ' ' + escapeHtml(lead.vulnerable_notes) : ''}`) : '',
   ].join('');
   document.getElementById('lead-added-meta').textContent = `Added ${formatShortDate(lead.created_at)}`;
   const allText = [lead.customer_name, lead.address, lead.postcode, lead.contact_phone, lead.contact_email].map(v => (v || '').trim()).filter(Boolean).join('\n');
@@ -1681,6 +1766,8 @@ function populateLeadFields(lead) {
   document.getElementById('ld-postcode').value = lead.postcode || '';
   document.getElementById('ld-phone').value = lead.contact_phone || '';
   document.getElementById('ld-email').value = lead.contact_email || '';
+  document.getElementById('ld-vulnerable').checked = !!lead.vulnerable;
+  document.getElementById('ld-vulnerable-notes').value = lead.vulnerable_notes || '';
   selectedEditLeadType = lead.lead_type || null;
   selectedEditProduct = lead.product || 'solar';
   document.querySelectorAll('#ld-type-chips .outcome-chip').forEach(c => {
@@ -1748,6 +1835,12 @@ function openLeadDetail(lead) {
   currentChecklist = null;
   renderInstallChecklist();
   loadInstallChecklist(lead.id);
+  currentHandover = null; hoEditing = false; hoQuoteDocs = []; hoQuoteLabel = '';
+  renderHandover();
+  loadHandover(lead.id);
+  leadComplaints = []; complaintForm = null;
+  renderComplaints();
+  loadComplaints(lead.id);
 }
 
 /* ── Prev / Next through the leads table's current filtered order ── */
@@ -2356,6 +2449,8 @@ document.getElementById('details-save-btn').addEventListener('click', async () =
     lead_type: selectedEditLeadType,
     product: selectedEditProduct,
     assigned_to_email: selectedEditAssignedTo || null,
+    vulnerable: document.getElementById('ld-vulnerable').checked,
+    vulnerable_notes: document.getElementById('ld-vulnerable-notes').value.trim() || null,
   };
   const newOrigin = document.getElementById('ld-origin').value || null;
   const originChanged = isAdmin(currentUser) && newOrigin !== (currentLead.lead_origin_id || null);
@@ -2363,7 +2458,7 @@ document.getElementById('details-save-btn').addEventListener('click', async () =
   // Conditional on the fields still holding what this page loaded, so a
   // newer change by someone else isn't overwritten. lead_cost is set by the
   // database from the supplier (049), so read it back.
-  const DETAIL_FIELDS = ['customer_name', 'address', 'postcode', 'contact_phone', 'contact_email', 'lead_type', 'product', 'assigned_to_email', 'lead_origin_id'];
+  const DETAIL_FIELDS = ['customer_name', 'address', 'postcode', 'contact_phone', 'contact_email', 'lead_type', 'product', 'assigned_to_email', 'lead_origin_id', 'vulnerable', 'vulnerable_notes'];
   lastOwnLeadSaveAt = Date.now();
   const { data: savedRows, error } = await whereUnchanged(
     db.from('prospects').update(updates).eq('id', currentLead.id), currentLead, DETAIL_FIELDS,
@@ -3380,6 +3475,10 @@ const DOC_CATEGORIES = [
   // 077): we don't receive a document back. Older 'hies' uploads still
   // show under their own heading and still count.
   { key: 'hies',            label: 'HIES registration and guarantee', leadUpload: false },
+  // For the handover pack (migration 079, Greg 2026-11-23).
+  { key: 'manuals',         label: 'Manuals and guides' },
+  { key: 'warranties',      label: 'Warranty certificates' },
+  { key: 'install_photos',  label: 'Installation photos' },
   { key: 'invoices',        label: 'Invoices and payments' },
   { key: 'other',           label: 'Other' },
 ];
@@ -3482,6 +3581,378 @@ async function setHiesRegistered(box) {
   refreshPaperwork();
 }
 
+/* ── Handover (migration 079, Greg 2026-11-23) ─────────────────────────
+   One "handovers" row per job: the handover details, a "DNO copy sent to
+   the customer" tick, which documents to leave out of the pack, and when
+   the pack was marked as sent. The pack = the lead's documents in the
+   handover types plus the selected quote's documents (signed contract,
+   design and MCS estimate), so nothing is uploaded twice. "Build handover
+   pack" zips them in the browser with a summary page for the customer;
+   the zip is downloaded and emailed by hand. Customer passwords are never
+   stored here (Greg's choice): only the app and the login email. */
+const HANDOVER_DOC_CATS = ['mcs_certificate', 'commissioning', 'eic', 'building_control', 'dno', 'hies', 'warranties', 'manuals', 'handover', 'install_photos'];
+const HANDOVER_NEEDED = ['mcs_certificate', 'commissioning', 'eic', 'dno'];
+const HANDOVER_UPLOAD_CATS = ['manuals', 'warranties', 'install_photos', 'mcs_certificate', 'commissioning', 'eic', 'building_control', 'dno', 'handover'];
+const HANDOVER_QUOTE_GROUP = 'Your quote and design', HANDOVER_CONTRACT_GROUP = 'Signed contract';
+const HANDOVER_EMAIL_LIMIT = 20 * 1024 * 1024;
+let currentHandover = null, hoEditing = false, hoQuoteDocs = [], hoQuoteLabel = '';
+
+(function fillHandoverUploadSelect() {
+  const sel = document.getElementById('ho-upload-cat');
+  sel.innerHTML = `<option value="">Choose type…</option>` +
+    HANDOVER_UPLOAD_CATS.map(k => `<option value="${k}">${escapeHtml(DOC_CATEGORY_LABEL[k] || k)}</option>`).join('');
+})();
+
+async function loadHandover(prospectId) {
+  const { data, error } = await db.from('handovers').select('*').eq('prospect_id', prospectId).maybeSingle();
+  if (!currentLead || currentLead.id !== prospectId) return;
+  if (error) { console.error('Failed to load handover:', error); return; }
+  currentHandover = data || null;
+  hoEditing = false;
+  renderHandover();
+}
+
+function handoverPackDocs() {
+  const groups = [];
+  const add = (group, d) => {
+    let g = groups.find(x => x.name === group);
+    if (!g) { g = { name: group, docs: [] }; groups.push(g); }
+    g.docs.push(d);
+  };
+  hoQuoteDocs.filter(d => d.category !== 'contract').forEach(d => add(HANDOVER_QUOTE_GROUP, d));
+  hoQuoteDocs.filter(d => d.category === 'contract').forEach(d => add(HANDOVER_CONTRACT_GROUP, d));
+  (leadDocRows || []).filter(d => d.category === 'contract').forEach(d => add(HANDOVER_CONTRACT_GROUP, d));
+  HANDOVER_DOC_CATS.forEach(k => (leadDocRows || []).filter(d => d.category === k).forEach(d => add(DOC_CATEGORY_LABEL[k], d)));
+  return groups;
+}
+function hoExcluded() { return new Set(currentHandover?.pack_excluded || []); }
+function hoMb(bytes) { return (bytes / 1024 / 1024).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0) + ' MB'; }
+
+function renderHandover() {
+  const sec = document.getElementById('handover-sec');
+  if (!sec) return;
+  const unlocked = typeof installUnlocked === 'function' && installUnlocked();
+  const closed = !!currentLead && typeof CONTACT_OUTCOME[currentLead.latest_outcome]?.stage === 'string';
+  sec.classList.toggle('locked', !unlocked);
+  document.getElementById('ho-unlocked').style.display = unlocked ? '' : 'none';
+  const lockedEl = document.getElementById('ho-locked');
+  lockedEl.style.display = unlocked ? 'none' : '';
+  const prog = document.getElementById('ho-progress');
+  if (!unlocked) {
+    prog.textContent = 'Locked';
+    prog.classList.remove('all-done');
+    lockedEl.innerHTML = closed ? '<span>This lead is closed, so there is no handover.</span>'
+      : '<span>Unlocks when the quote is accepted. After the install, collect the certificates here and build the handover pack for the customer.</span>';
+    return;
+  }
+  const h = currentHandover || {};
+  const sent = !!h.pack_sent_at;
+  prog.textContent = sent ? 'Pack sent' : 'Not sent';
+  prog.classList.toggle('all-done', sent);
+  document.getElementById('ho-status').innerHTML = sent
+    ? `<span class="ok">✔ Handover pack sent</span> ${escapeHtml(formatShortDate(h.pack_sent_at))}${h.pack_sent_by ? ' by ' + escapeHtml(repName(h.pack_sent_by)) : ''}`
+    : '<span class="muted">Handover pack not sent yet.</span>';
+
+  const canEdit = canEditLead(currentLead);
+  const dno = document.getElementById('ho-dno');
+  dno.checked = !!h.dno_copy_sent;
+  dno.disabled = !canEdit;
+  document.getElementById('ho-dno-meta').textContent = h.dno_copy_sent && h.dno_copy_sent_by
+    ? `Ticked by ${repName(h.dno_copy_sent_by)}${h.dno_copy_sent_at ? ' on ' + formatShortDate(h.dno_copy_sent_at) : ''}` : '';
+
+  if (!hoEditing) renderHandoverDetails();
+
+  const ex = hoExcluded();
+  const groups = handoverPackDocs();
+  const have = new Set((leadDocRows || []).map(d => d.category));
+  const missing = HANDOVER_NEEDED.filter(k => !have.has(k)).map(k => DOC_CATEGORY_LABEL[k]);
+  if (!hoQuoteDocs.some(d => d.category === 'contract') && !have.has('contract')) missing.unshift('Signed contract (in the selected quote)');
+  let bytes = 0, count = 0;
+  groups.forEach(g => g.docs.forEach(d => { if (!ex.has(d.id)) { bytes += d.file_size_bytes || 0; count++; } }));
+  document.getElementById('ho-pack').innerHTML = (groups.length ? groups.map(g => `
+    <div class="ho-group">${escapeHtml(g.name)}</div>
+    ${g.docs.map(d => `<label class="ho-doc"><input type="checkbox" class="ho-inc" data-id="${escapeHtml(d.id)}" ${ex.has(d.id) ? '' : 'checked'} ${canEdit ? '' : 'disabled'}>
+      <span>${escapeHtml(d.file_name)}</span>${d.file_size_bytes ? `<span class="muted">${hoMb(d.file_size_bytes)}</span>` : ''}</label>`).join('')}`).join('')
+    : '<div class="doc-empty">Nothing for the pack yet. Upload the certificates and paperwork below, or in Documents.</div>')
+    + (missing.length ? `<div class="ho-missing">Not uploaded yet: ${missing.map(escapeHtml).join(', ')}</div>` : '');
+  const buildStatus = document.getElementById('ho-build-status');
+  if (!buildStatus.dataset.busy) {
+    buildStatus.textContent = count ? `${count} document${count === 1 ? '' : 's'}, about ${hoMb(bytes)}${bytes > HANDOVER_EMAIL_LIMIT ? '. Too big for most email: share it with a OneDrive link instead.' : ''}` : '';
+  }
+}
+
+function renderHandoverDetails() {
+  const h = currentHandover || {};
+  const dis = hoEditing ? '' : 'disabled';
+  const v = x => escapeHtml(x || '');
+  document.getElementById('ho-details').innerHTML = `<div class="ho-grid">
+    <div class="quote-field"><label>Handover date</label><input type="date" id="ho-date" value="${v(h.handover_date)}" ${dis}></div>
+    <div class="quote-field"><label>Handed over by</label><input type="text" id="ho-by" maxlength="80" value="${v(h.handed_over_by)}" ${dis}></div>
+    <div class="quote-field"><label>Monitoring app</label><input type="text" id="ho-app" maxlength="120" placeholder="e.g. mySigen, SOFAR Monitor" value="${v(h.monitoring_app)}" ${dis}></div>
+    <div class="quote-field"><label>Customer's app login email</label><input type="email" id="ho-login" maxlength="160" value="${v(h.customer_login_email)}" ${dis}></div>
+    <div class="quote-field"><label class="ho-tick"><input type="checkbox" id="ho-login-given" ${h.login_given ? 'checked' : ''} ${dis}> Customer has their app login</label></div>
+    <div class="quote-field"><label class="ho-tick"><input type="checkbox" id="ho-warr" ${h.warranties_registered ? 'checked' : ''} ${dis}> Warranties registered</label></div>
+    <div class="quote-field wide"><label>Warranty registration references</label><input type="text" id="ho-warr-refs" maxlength="1000" value="${v(h.warranty_refs)}" ${dis}></div>
+    <div class="quote-field wide"><label>Internal notes (not put in the pack)</label><textarea id="ho-notes" maxlength="2000" ${dis}>${v(h.notes)}</textarea></div>
+  </div>`;
+  document.getElementById('ho-edit-btn').style.display = hoEditing ? 'none' : '';
+  document.getElementById('ho-cancel-btn').style.display = hoEditing ? '' : 'none';
+  document.getElementById('ho-save-btn').style.display = hoEditing ? '' : 'none';
+}
+
+async function saveHandover(fields) {
+  const lead = currentLead;
+  if (!lead || blockedReadOnly()) return null;
+  const { data, error } = await db.from('handovers')
+    .upsert({ prospect_id: lead.id, ...fields }, { onConflict: 'prospect_id' })
+    .select('*').single();
+  if (currentLead?.id !== lead.id) return null;
+  if (error) { alert("Couldn't save the handover: " + error.message); return null; }
+  currentHandover = data;
+  return data;
+}
+
+document.getElementById('ho-edit-btn').addEventListener('click', () => {
+  if (blockedReadOnly()) return;
+  hoEditing = true;
+  renderHandoverDetails();
+  const by = document.getElementById('ho-by');
+  if (!by.value && currentUser) by.value = getUserName(currentUser);
+  document.getElementById('ho-details-status').textContent = '';
+});
+document.getElementById('ho-cancel-btn').addEventListener('click', () => { hoEditing = false; renderHandoverDetails(); });
+document.getElementById('ho-save-btn').addEventListener('click', async () => {
+  const val = id => document.getElementById(id).value.trim() || null;
+  const btn = document.getElementById('ho-save-btn');
+  btn.disabled = true;
+  const saved = await saveHandover({
+    handover_date: val('ho-date'), handed_over_by: val('ho-by'), monitoring_app: val('ho-app'),
+    customer_login_email: val('ho-login'), login_given: document.getElementById('ho-login-given').checked,
+    warranties_registered: document.getElementById('ho-warr').checked, warranty_refs: val('ho-warr-refs'), notes: val('ho-notes'),
+  });
+  btn.disabled = false;
+  if (!saved) return;
+  hoEditing = false;
+  renderHandover();
+  document.getElementById('ho-details-status').textContent = 'Saved';
+});
+document.getElementById('ho-dno').addEventListener('change', async e => {
+  const box = e.target, on = box.checked;
+  if (!on && !confirm('Untick "DNO copy sent to the customer"?')) { box.checked = true; return; }
+  box.disabled = true;
+  const saved = await saveHandover({ dno_copy_sent: on });
+  box.disabled = false;
+  if (!saved) { box.checked = !on; return; }
+  renderHandover();
+});
+document.getElementById('ho-pack').addEventListener('change', async e => {
+  const box = e.target.closest('.ho-inc');
+  if (!box) return;
+  const ex = hoExcluded();
+  if (box.checked) ex.delete(box.dataset.id); else ex.add(box.dataset.id);
+  box.disabled = true;
+  const saved = await saveHandover({ pack_excluded: [...ex] });
+  box.disabled = false;
+  if (!saved) box.checked = !box.checked;
+  renderHandover();
+});
+document.getElementById('ho-upload-btn').addEventListener('click', async () => {
+  if (!currentLead) return;
+  const prospectId = currentLead.id;
+  const catSel = document.getElementById('ho-upload-cat');
+  const statusEl = document.getElementById('ho-upload-status');
+  if (!catSel.value) { statusEl.textContent = 'Choose what type of document it is first.'; statusEl.classList.add('error'); catSel.focus(); return; }
+  await uploadDocuments({
+    prospectId, category: catSel.value,
+    fileInput: document.getElementById('ho-file-input'), statusEl,
+    btn: document.getElementById('ho-upload-btn'),
+    reload: () => loadLeadDocuments(prospectId),
+  });
+});
+
+let jsZipPromise = null;
+function loadJsZip() {
+  if (window.JSZip) return Promise.resolve(window.JSZip);
+  if (!jsZipPromise) {
+    jsZipPromise = new Promise((resolve, reject) => {
+      const sc = document.createElement('script');
+      sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+      sc.onload = () => resolve(window.JSZip);
+      sc.onerror = () => { jsZipPromise = null; reject(new Error("Couldn't load the zip tool. Check the internet connection and try again.")); };
+      document.head.appendChild(sc);
+    });
+  }
+  return jsZipPromise;
+}
+
+function handoverSummaryHtml(lead, h, groups) {
+  const e = escapeHtml;
+  const row = (l, v) => v ? `<tr><th>${e(l)}</th><td>${e(v)}</td></tr>` : '';
+  const date = h.handover_date ? new Date(h.handover_date + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your handover pack</title>
+<style>body{font-family:Segoe UI,Arial,sans-serif;color:#1f2a24;max-width:760px;margin:32px auto;padding:0 18px;line-height:1.5}
+h1{font-size:24px;margin:0 0 4px}h2{font-size:16px;margin:26px 0 8px;color:#1f8a52}.sub{color:#5b6660;margin:0 0 18px}
+table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #e3e8e5;vertical-align:top;font-size:14px}th{width:38%;color:#5b6660;font-weight:500}
+ul{padding-left:20px}li{margin:3px 0}.foot{margin-top:30px;font-size:13px;color:#5b6660;border-top:1px solid #e3e8e5;padding-top:12px}</style></head><body>
+<h1>Your handover pack</h1>
+<p class="sub">Turbine Energy · prepared for ${e(lead.customer_name || '')}</p>
+<table>
+${row('Customer', lead.customer_name)}${row('Address', [lead.address, lead.postcode].filter(Boolean).join(', '))}
+${row('Your system', hoQuoteLabel)}${row('Handover date', date)}${row('Handed over by', h.handed_over_by)}
+${row('Monitoring app', h.monitoring_app)}${row('Your app login email', h.customer_login_email)}
+${row('Warranties registered', h.warranties_registered ? 'Yes' : '')}${row('Warranty references', h.warranty_refs)}
+</table>
+<h2>What's in this pack</h2>
+<ul>${groups.map(g => `<li><b>${e(g.name)}</b>: ${g.docs.map(d => e(d.file_name)).join(', ')}</li>`).join('')}</ul>
+<p>Please keep this pack safe. You may need the MCS certificate and the electrical certificate if you sell your home, claim on a warranty, or apply for an export tariff.</p>
+<div class="foot">Turbine Energy · Wader Lodge, Back Lane, Cusworth, Doncaster DN5 7TR · 01302 898508 · Office hours Monday to Friday, 8:30 to 17:30. TrustMark registered.</div>
+</body></html>`;
+}
+
+document.getElementById('ho-build-btn').addEventListener('click', async () => {
+  const lead = currentLead;
+  if (!lead || blockedReadOnly()) return;
+  const statusEl = document.getElementById('ho-build-status');
+  const ex = hoExcluded();
+  const groups = handoverPackDocs().map(g => ({ name: g.name, docs: g.docs.filter(d => !ex.has(d.id)) })).filter(g => g.docs.length);
+  const docs = groups.flatMap(g => g.docs);
+  if (!docs.length) { alert('Nothing is ticked for the pack yet.'); return; }
+  const bytes = docs.reduce((t, d) => t + (d.file_size_bytes || 0), 0);
+  if (!confirm(`Build the handover pack: ${docs.length} document${docs.length === 1 ? '' : 's'}, about ${hoMb(bytes)}?` +
+    (bytes > HANDOVER_EMAIL_LIMIT ? '\n\nThat is too big for most email. Save the zip to OneDrive and send the customer a link instead.' : ''))) return;
+  const btn = document.getElementById('ho-build-btn');
+  btn.disabled = true; statusEl.dataset.busy = '1';
+  try {
+    statusEl.textContent = 'Preparing…';
+    const JSZip = await loadJsZip();
+    const { data: urls, error } = await db.storage.from('proposals').createSignedUrls(docs.map(d => d.storage_path), 600);
+    if (error || !urls) throw new Error(error?.message || 'Could not get the files.');
+    const zip = new JSZip();
+    const used = new Set();
+    let n = 0;
+    for (const [gi, g] of groups.entries()) {
+      const folder = `${String(gi + 1).padStart(2, '0')} ${g.name}`;
+      for (const d of g.docs) {
+        n++;
+        statusEl.textContent = `Adding ${n} of ${docs.length}: ${d.file_name}`;
+        const u = urls[docs.indexOf(d)]?.signedUrl;
+        if (!u) throw new Error(`Could not get ${d.file_name}.`);
+        const resp = await fetch(u);
+        if (!resp.ok) throw new Error(`Could not download ${d.file_name}.`);
+        let name = `${folder}/${d.file_name}`, k = 2;
+        while (used.has(name)) name = `${folder}/(${k++}) ${d.file_name}`;
+        used.add(name);
+        zip.file(name, await resp.blob());
+      }
+    }
+    zip.file('00 Read me first - handover summary.html', handoverSummaryHtml(lead, currentHandover || {}, groups));
+    statusEl.textContent = 'Zipping…';
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const safe = (lead.customer_name || 'Customer').replace(/[^A-Za-z0-9 .'&-]+/g, ' ').trim().slice(0, 60) || 'Customer';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `Handover pack - ${safe}.zip`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    delete statusEl.dataset.busy;
+    statusEl.textContent = `Downloaded "Handover pack - ${safe}.zip" (${hoMb(blob.size)}).`;
+    if (currentLead?.id === lead.id && confirm('The zip has downloaded. Mark the handover pack as sent to the customer?\n\nPress OK once you have emailed it (or press Cancel and mark it later by building it again).')) {
+      const saved = await saveHandover({ pack_sent_at: new Date().toISOString() });
+      if (saved) renderHandover();
+    }
+  } catch (err) {
+    delete statusEl.dataset.busy;
+    statusEl.textContent = "Couldn't build the pack: " + (err.message || err);
+  } finally {
+    btn.disabled = false;
+    delete statusEl.dataset.busy;
+  }
+});
+
+/* ── Complaints log (migration 079, Greg 2026-11-23) ───────────────────
+   Anyone at Turbine can log a complaint on any lead; the person who logged
+   it, anyone who can edit the lead, or a manager can update it. Entries
+   are never deleted. Manager Home > Complaints lists them all. */
+const COMPLAINT_VIA = { phone: 'Phone', email: 'Email', letter: 'Letter', in_person: 'In person', review: 'Online review', other: 'Other' };
+let leadComplaints = [], complaintForm = null;   // complaintForm: null | 'new' | complaint id
+
+async function loadComplaints(prospectId) {
+  const { data, error } = await db.from('complaints').select('*').eq('prospect_id', prospectId)
+    .order('received_on', { ascending: false }).order('created_at', { ascending: false });
+  if (!currentLead || currentLead.id !== prospectId) return;
+  if (error) { console.error('Failed to load complaints:', error); document.getElementById('complaints-body').innerHTML = '<div class="doc-empty">Couldn\u2019t load complaints.</div>'; return; }
+  leadComplaints = data || [];
+  renderComplaints();
+}
+function canEditComplaint(c) { return isAdmin(currentUser) || isMe(c.created_by_email) || canEditLead(currentLead); }
+function complaintDate(d) { return d ? new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''; }
+
+function complaintFormHtml(c) {
+  c = c || {};
+  const v = x => escapeHtml(x || '');
+  const today = new Date().toISOString().slice(0, 10);
+  return `<div class="cp-form" id="cp-form">
+    <div class="quote-field"><label>Received on <span class="required">*</span></label><input type="date" id="cp-received" value="${v(c.received_on || today)}"></div>
+    <div class="quote-field"><label>How it came in</label><select id="cp-via">${Object.entries(COMPLAINT_VIA).map(([k, l]) => `<option value="${k}" ${(c.received_via || 'phone') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    <div class="quote-field"><label>Handled by</label><input type="text" id="cp-handled" maxlength="80" value="${v(c.handled_by || (currentUser ? getUserName(currentUser) : ''))}"></div>
+    <div class="quote-field wide"><label>What the complaint is about <span class="required">*</span></label><textarea id="cp-details" maxlength="4000">${v(c.details)}</textarea></div>
+    <div class="quote-field wide"><label>Action taken</label><textarea id="cp-action" maxlength="4000">${v(c.action_taken)}</textarea></div>
+    <div class="quote-field wide"><label>Outcome</label><textarea id="cp-outcome" maxlength="2000">${v(c.outcome)}</textarea></div>
+    <div class="quote-field"><label>Resolved on (leave blank while open)</label><input type="date" id="cp-resolved" value="${v(c.resolved_on)}"></div>
+    <div class="form-btns wide"><button class="btn-secondary" type="button" id="cp-cancel">Cancel</button><button class="btn-primary" type="button" id="cp-save">Save</button></div>
+  </div>`;
+}
+
+function renderComplaints() {
+  const body = document.getElementById('complaints-body');
+  if (!body) return;
+  const open = leadComplaints.filter(c => !c.resolved_on).length;
+  document.getElementById('complaints-count').textContent = leadComplaints.length ? (open ? `${open} open` : `${leadComplaints.length} resolved`) : '';
+  const items = leadComplaints.map(c => complaintForm === c.id ? complaintFormHtml(c) : `<div class="cp-item">
+      <div class="cp-top"><span class="cp-pill ${c.resolved_on ? 'done' : 'open'}">${c.resolved_on ? 'Resolved ' + escapeHtml(complaintDate(c.resolved_on)) : 'Open'}</span>
+        <span>Received ${escapeHtml(complaintDate(c.received_on))} by ${escapeHtml((COMPLAINT_VIA[c.received_via] || c.received_via).toLowerCase())}</span>
+        ${c.handled_by ? `<span>· handled by ${escapeHtml(c.handled_by)}</span>` : ''}
+        ${canEditComplaint(c) ? `<button class="sec-act" type="button" data-cp-edit="${escapeHtml(c.id)}">Edit</button>` : ''}</div>
+      <div class="cp-text">${escapeHtml(c.details)}</div>
+      ${c.action_taken ? `<div class="cp-sub"><b>Action:</b> ${escapeHtml(c.action_taken)}</div>` : ''}
+      ${c.outcome ? `<div class="cp-sub"><b>Outcome:</b> ${escapeHtml(c.outcome)}</div>` : ''}
+    </div>`).join('');
+  body.innerHTML = (complaintForm === 'new' ? complaintFormHtml(null) : '') + (items ||
+    (complaintForm === 'new' ? '' : '<div class="doc-empty">No complaints logged. If the customer complains by any route, log it here with + Log complaint.</div>'));
+}
+
+document.getElementById('complaint-add-btn').addEventListener('click', () => {
+  if (!currentLead) return;
+  complaintForm = 'new';
+  renderComplaints();
+  document.getElementById('cp-details')?.focus();
+});
+document.getElementById('complaints-body').addEventListener('click', async e => {
+  const edit = e.target.closest('[data-cp-edit]');
+  if (edit) { complaintForm = edit.dataset.cpEdit; renderComplaints(); return; }
+  if (e.target.id === 'cp-cancel') { complaintForm = null; renderComplaints(); return; }
+  if (e.target.id !== 'cp-save') return;
+  const lead = currentLead;
+  if (!lead) return;
+  const val = id => document.getElementById(id).value.trim() || null;
+  const row = {
+    received_on: val('cp-received'), received_via: document.getElementById('cp-via').value,
+    details: val('cp-details'), action_taken: val('cp-action'), outcome: val('cp-outcome'),
+    resolved_on: val('cp-resolved'), handled_by: val('cp-handled'),
+  };
+  if (!row.received_on || !row.details) { alert('Please give the date it was received and what the complaint is about.'); return; }
+  const btn = e.target; btn.disabled = true;
+  const q = complaintForm === 'new'
+    ? db.from('complaints').insert({ prospect_id: lead.id, ...row })
+    : db.from('complaints').update(row).eq('id', complaintForm);
+  const { error } = await q;
+  btn.disabled = false;
+  if (error) { alert("Couldn't save the complaint: " + error.message); return; }
+  complaintForm = null;
+  if (currentLead?.id === lead.id) loadComplaints(lead.id);
+});
+
 // Lead-level rows from the last loadLeadDocuments, so a quote-option change
 // can redraw the paperwork box without reloading the whole list.
 let leadDocRows = [];
@@ -3492,19 +3963,23 @@ function refreshPaperwork() {
     const lead = currentLead;
     if (!lead) return;
     const stage = CONTACT_OUTCOME[lead.latest_outcome]?.stage;
-    if (typeof stage !== 'number' || stage < 4) { renderPaperwork(leadDocRows, null); return; }
+    if (typeof stage !== 'number' || stage < 4) { hoQuoteDocs = []; hoQuoteLabel = ''; renderPaperwork(leadDocRows, null); renderHandover(); return; }
     const { data: opts } = await db.from('quote_options')
       .select('id, label').eq('prospect_id', lead.id).eq('is_selected', true).is('deleted_at', null).limit(1);
-    let selected = null;
+    let selected = null, odocs_cache = [];
     if (opts?.length) {
       const { data: odocs } = await db.from('lead_documents')
-        .select('category')
-        .eq('quote_option_id', opts[0].id).is('deleted_at', null);
+        .select('id, file_name, storage_path, uploaded_at, category, file_size_bytes')
+        .eq('quote_option_id', opts[0].id).is('deleted_at', null).order('uploaded_at', { ascending: true });
+      odocs_cache = odocs || [];
       selected = { label: opts[0].label, docCount: (odocs || []).length,
                    hasContract: (odocs || []).some(d => d.category === 'contract') };
     }
     if (currentLead?.id !== lead.id) return;
+    hoQuoteDocs = opts?.length ? (odocs_cache || []) : [];
+    hoQuoteLabel = opts?.length ? (opts[0].label || '') : '';
     renderPaperwork(leadDocRows, selected);
+    renderHandover();
   }, 150);
 }
 
@@ -3539,7 +4014,7 @@ async function loadLeadDocuments(prospectId) {
   // General documents only — anything tied to a specific quote option
   // (quote_option_id not null) shows in that option's own card instead.
   const { data, error } = await db.from('lead_documents')
-    .select('id, file_name, storage_path, uploaded_by, uploaded_at, category')
+    .select('id, file_name, storage_path, uploaded_by, uploaded_at, category, file_size_bytes')
     .eq('prospect_id', prospectId)
     .is('quote_option_id', null)
     .is('deleted_at', null)
@@ -3549,6 +4024,7 @@ async function loadLeadDocuments(prospectId) {
   list.innerHTML = renderGroupedDocuments(data || []);
   leadDocRows = data || [];
   refreshPaperwork();
+  renderHandover();
 }
 
 async function loadDeletedLeadDocuments(prospectId) {

@@ -275,6 +275,7 @@ tfoot td { border-top: 1px solid var(--borderH); border-bottom: 0; }
     <button class="rail-btn" data-section="activity">Team activity</button>
     <button class="rail-btn" data-section="marketing">Marketing &amp; analytics</button>
     <button class="rail-btn" data-section="proposals">Proposals</button>
+    <button class="rail-btn" data-section="complaints">Complaints</button>
     <button class="rail-btn" data-section="api">API usage &amp; quotas</button>
     <button class="rail-btn" data-section="health">System health</button>
     <button class="rail-btn" data-section="tools">Tools</button>
@@ -443,6 +444,17 @@ tfoot td { border-top: 1px solid var(--borderH); border-bottom: 0; }
       <div id="proposals-body"><div class="loading">Loading…</div></div>
     </section>
 
+    <section class="section" id="sec-complaints">
+      <div class="section-head">
+        <div>
+          <h1>Complaints</h1>
+          <p>Every complaint logged on a lead in the CRM (Complaints section), open ones first. This is the complaints log MCS and HIES can ask to see. Entries can't be deleted.</p>
+        </div>
+        <div><button class="refresh-btn" id="cp-csv-btn" type="button">Download CSV</button> <button class="refresh-btn" data-refresh="complaints">Refresh</button></div>
+      </div>
+      <div id="complaints-body"><div class="loading">Loading…</div></div>
+    </section>
+
     <section class="section" id="sec-audit">
       <div class="section-head">
         <div>
@@ -576,7 +588,7 @@ function logSignInOnce(user) {
 }
 
 /* ── Section switching ──────────────────────────────────── */
-const SECTIONS = ['pipeline', 'activity', 'marketing', 'proposals', 'api', 'health', 'tools', 'audit'];
+const SECTIONS = ['pipeline', 'activity', 'marketing', 'proposals', 'complaints', 'api', 'health', 'tools', 'audit'];
 const LOADERS = {};          // filled in below, one per section
 const loaded = new Set();    // sections loaded at least once this page load
 const viewed = new Set();    // sections audit-logged this page load
@@ -1761,6 +1773,76 @@ function renderAudit() {
     <tbody>${tableRows || '<tr><td colspan="4" class="empty">No activity yet.</td></tr>'}</tbody></table></div>`;
 }
 document.getElementById('audit-person').addEventListener('change', renderAudit);
+
+/* ════════════════════════════════════════════════════════════
+   COMPLAINTS (migration 079, Greg 2026-11-23). Logged on a lead in the
+   CRM; listed here for MCS / HIES audits. Read only on this page.
+   ════════════════════════════════════════════════════════════ */
+const CP_VIA = { phone: 'Phone', email: 'Email', letter: 'Letter', in_person: 'In person', review: 'Online review', other: 'Other' };
+let cpRows = [], cpNames = {};
+function cpDate(d) { return d ? new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''; }
+function cpDays(a, b) { return Math.max(0, Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 864e5)); }
+
+LOADERS.complaints = async function () {
+  const body = document.getElementById('complaints-body');
+  body.innerHTML = '<div class="loading">Loading…</div>';
+  const { data, error } = await db.from('complaints').select('*').order('received_on', { ascending: false }).limit(2000);
+  if (error) {
+    body.innerHTML = errorHtml(/complaints/.test(error.message || '') && /exist|schema cache/.test(error.message || '')
+      ? 'Complaints aren\'t set up yet: migration 079_handover_complaints_vulnerable.sql needs running in Supabase.' : 'Couldn\'t load complaints: ' + error.message);
+    return;
+  }
+  cpRows = data || [];
+  const ids = [...new Set(cpRows.map(r => r.prospect_id))];
+  cpNames = {};
+  if (ids.length) {
+    const { data: leads } = await db.from('prospects').select('id, customer_name, postcode').in('id', ids);
+    (leads || []).forEach(l => { cpNames[l.id] = l; });
+  }
+  renderComplaintsLog();
+};
+
+function renderComplaintsLog() {
+  const body = document.getElementById('complaints-body');
+  const open = cpRows.filter(r => !r.resolved_on);
+  const done = cpRows.filter(r => r.resolved_on);
+  const avg = done.length ? Math.round(done.reduce((t, r) => t + cpDays(r.received_on, r.resolved_on), 0) / done.length) : null;
+  const yearStart = new Date().getFullYear() + '-01-01';
+  const tiles = `<div class="tiles">
+    <div class="tile"><div class="tile-label">Open</div><div class="tile-value">${num(open.length)}</div><div class="tile-sub">not resolved yet</div></div>
+    <div class="tile"><div class="tile-label">Resolved</div><div class="tile-value">${num(done.length)}</div><div class="tile-sub">all time</div></div>
+    <div class="tile"><div class="tile-label">Average time to resolve</div><div class="tile-value">${avg == null ? '—' : num(avg) + (avg === 1 ? ' day' : ' days')}</div><div class="tile-sub">received to resolved</div></div>
+    <div class="tile"><div class="tile-label">Logged this year</div><div class="tile-value">${num(cpRows.filter(r => r.received_on >= yearStart).length)}</div><div class="tile-sub">since 1 January</div></div>
+  </div>`;
+  const rows = [...open, ...done].map(r => {
+    const lead = cpNames[r.prospect_id];
+    return `<tr>
+      <td style="white-space:nowrap">${escapeHtml(cpDate(r.received_on))}</td>
+      <td><a href="crm.html?lead=${encodeURIComponent(r.prospect_id)}">${escapeHtml(lead?.customer_name || 'Lead')}</a>${lead?.postcode ? `<div class="muted">${escapeHtml(lead.postcode)}</div>` : ''}</td>
+      <td>${escapeHtml(CP_VIA[r.received_via] || r.received_via)}</td>
+      <td style="white-space:pre-wrap;max-width:320px">${escapeHtml(r.details)}</td>
+      <td style="white-space:pre-wrap;max-width:280px">${r.action_taken ? escapeHtml(r.action_taken) : '<span class="muted">—</span>'}${r.outcome ? `<div class="muted">Outcome: ${escapeHtml(r.outcome)}</div>` : ''}</td>
+      <td style="white-space:nowrap">${r.resolved_on ? `<span class="prop-tag open">Resolved ${escapeHtml(cpDate(r.resolved_on))}</span>` : '<span class="prop-tag hot">Open</span>'}</td>
+      <td>${escapeHtml(r.handled_by || '')}</td></tr>`;
+  }).join('');
+  body.innerHTML = tiles + `<div class="card"><div class="card-head"><h2>Complaints log</h2><span class="hint">Log or update a complaint from the customer's lead in the CRM</span></div>
+    <table><thead><tr><th>Received</th><th>Customer</th><th>How</th><th>What about</th><th>Action and outcome</th><th>Status</th><th>Handled by</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="7" class="empty">No complaints logged.</td></tr>'}</tbody></table></div>`;
+}
+
+document.getElementById('cp-csv-btn').addEventListener('click', () => {
+  if (!cpRows.length) { alert('No complaints to download.'); return; }
+  const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const head = ['Received', 'Customer', 'Postcode', 'How received', 'What about', 'Action taken', 'Outcome', 'Resolved', 'Handled by', 'Logged by'];
+  const lines = [head.map(q).join(',')].concat(cpRows.map(r => [r.received_on, cpNames[r.prospect_id]?.customer_name, cpNames[r.prospect_id]?.postcode,
+    CP_VIA[r.received_via] || r.received_via, r.details, r.action_taken, r.outcome, r.resolved_on, r.handled_by, r.created_by_email].map(q).join(',')));
+  const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `Turbine complaints log ${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+});
 
 /* ════════════════════════════════════════════════════════════
    PROPOSALS (migration 054, 2026-10-21). Personalised proposal links served
