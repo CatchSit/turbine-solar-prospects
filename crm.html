@@ -458,6 +458,15 @@ tbody tr:hover { background: var(--surface2); }
 .pm-facts { font-size: 12px; color: var(--text3); margin-top: 2px; }
 .pm-facts .pm-miss { color: #b45309; }
 .pm-edit-link { font-size: 12.5px; color: var(--accentDk); cursor: pointer; }
+/* Datasheet check (Greg 2026-11-23): see which datasheet each product links to. */
+.pm-ds-summary { font-size: 12.5px; margin: 0 0 8px; color: var(--text2); }
+.pm-ds-summary b { color: var(--text); }
+.pm-ds-summary .pm-miss { color: #b45309; font-weight: 600; }
+.pm-facts a.pm-ds { color: var(--accentDk); text-decoration: none; border-bottom: 1px dotted currentColor; }
+.pm-facts a.pm-ds:hover { border-bottom-style: solid; }
+.pm-url-row { display: flex; gap: 8px; align-items: center; }
+.pm-url-row input { flex: 1; }
+.pm-url-row a { font-size: 12.5px; color: var(--accentDk); white-space: nowrap; }
 .pm-editor { border: 1px solid var(--accent); border-radius: 8px; padding: 12px; margin-top: 10px; }
 .pm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
 .pm-grid .full { grid-column: 1 / -1; }
@@ -982,8 +991,10 @@ tbody tr:hover { background: var(--surface2); }
           <option value="heat_pump">Heat pumps</option><option value="other">Other</option>
         </select>
         <label><input type="checkbox" id="pm-show-retired"/> Show retired</label>
+        <label><input type="checkbox" id="pm-missing-only"/> Missing datasheet only</label>
         <button class="btn-secondary" type="button" id="pm-add-btn">Add product</button>
       </div>
+      <div class="pm-ds-summary" id="pm-ds-summary"></div>
       <div class="pm-list" id="pm-list"><div class="quote-status" style="padding:10px">Loading…</div></div>
       <div class="pm-editor" id="pm-editor" style="display:none"></div>
       </section>
@@ -4933,13 +4944,26 @@ function pmFacts(p) {
     if (p.max_efficiency != null) bits.push(`${p.max_efficiency}% max`);
     bits.push(p.product_warranty_years != null ? `${p.product_warranty_years} yr` : miss('warranty?'));
   }
-  bits.push(p.datasheet_url ? 'datasheet linked' : miss('no datasheet'));
+  bits.push(p.datasheet_url
+    ? `<a class="pm-ds" href="${escapeHtml(p.datasheet_url)}" target="_blank" rel="noopener" title="Open the datasheet the proposal links to">Datasheet: ${escapeHtml(pmDatasheetName(p.datasheet_url))}</a>`
+    : miss('no datasheet'));
   return bits.join(' · ');
+}
+// The file name at the end of a datasheet link, for checking it is the right one.
+function pmDatasheetName(url) {
+  try { return decodeURIComponent(new URL(url).pathname.split('/').pop()) || url; } catch (e) { return url; }
 }
 function renderProductList() {
   const kind = document.getElementById('pm-kind').value;
   const showRetired = document.getElementById('pm-show-retired').checked;
-  const rows = pmProducts.filter(p => p.kind === kind && (p.active || showRetired));
+  const missingOnly = document.getElementById('pm-missing-only').checked;
+  const live = pmProducts.filter(p => p.active);
+  const missing = live.filter(p => !p.datasheet_url);
+  document.getElementById('pm-ds-summary').innerHTML = live.length
+    ? `Datasheets: <b>${live.length - missing.length} of ${live.length}</b> active products linked` +
+      (missing.length ? ` · <span class="pm-miss">${missing.length} missing</span> (${escapeHtml(missing.map(p => [p.brand, p.model].filter(Boolean).join(' ')).join('; '))})` : ' · all linked')
+    : '';
+  const rows = pmProducts.filter(p => p.kind === kind && (p.active || showRetired) && (!missingOnly || !p.datasheet_url));
   document.getElementById('pm-list').innerHTML = rows.map(p => `
     <div class="pm-row ${p.active ? '' : 'retired'}">
       <div>
@@ -4970,7 +4994,7 @@ function renderProductEditor(p) {
       <div><label for="pm-f-eff">Max efficiency %</label><input id="pm-f-eff" type="number" step="0.1" min="0" max="100" value="${v(p.max_efficiency)}"/></div>
       <div><label for="pm-f-pw">Product warranty (years)</label><input id="pm-f-pw" type="number" step="1" min="0" value="${v(p.product_warranty_years)}"/></div>
       <div><label for="pm-f-perf">Performance warranty (years, panels)</label><input id="pm-f-perf" type="number" step="1" min="0" value="${v(p.performance_warranty_years)}"/></div>
-      <div class="full"><label for="pm-f-url">Datasheet link (https://...)</label><input id="pm-f-url" value="${v(p.datasheet_url)}" placeholder="https://turbineenergyuk.co.uk/datasheets/..."/></div>
+      <div class="full"><label for="pm-f-url">Datasheet link (https://...)</label><div class="pm-url-row"><input id="pm-f-url" value="${v(p.datasheet_url)}" placeholder="https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/..."/><a href="#" onclick="const u=document.getElementById('pm-f-url').value.trim(); if (u.toLowerCase().startsWith('https://')) window.open(u, '_blank', 'noopener'); else alert('Paste a link starting with https:// first.'); return false;">Open</a></div></div>
       <div class="full"><label><input type="checkbox" id="pm-f-active" ${p.active ? 'checked' : ''} style="width:auto"/> Active (untick to retire)</label></div>
     </div>
     <div class="pm-editor-btns">
@@ -5029,6 +5053,7 @@ async function saveProduct() {
 }
 document.getElementById('pm-kind').addEventListener('change', () => { closeProductEditor(); renderProductList(); });
 document.getElementById('pm-show-retired').addEventListener('change', renderProductList);
+document.getElementById('pm-missing-only').addEventListener('change', renderProductList);
 document.getElementById('pm-add-btn').addEventListener('click', () => openProductEditor(null));
 
 /* ── Boot ────────────────────────────────────────────────── */

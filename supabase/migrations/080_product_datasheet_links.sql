@@ -1,0 +1,41 @@
+-- Datasheet links for the product list (Greg, 2026-11-23). PDFs uploaded to the website media library.
+-- Longi, Aiko 3S, Jinko 460 and EcoFlow Ocean 2 use the supplier sheets from Greg's Datasheets folder (media 1365-1369).
+update products p set datasheet_url = v.url
+from (values
+  ('4deaf23e-66a8-47a0-ad42-ab23ccca1537'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/SigenStor-BAT-6.0-10.0-datasheet.pdf'),
+  ('8e4dc8dc-30d3-4ca3-98d9-4566341e9064'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Sofar-BTS-5K-battery-datasheet.pdf'),
+  ('fe2c447f-39b6-433b-8e08-fff26bb2de46'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Sofar-BTS-5K-battery-datasheet.pdf'),
+  ('3025a53f-b173-459a-8745-26698989f1d7'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Sofar-CBS5000-battery-datasheet.pdf'),
+  ('3b3f8f16-f3de-4bf7-ba67-70e623ee13f6'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Sofar-CBS8000-battery-cabinet-datasheet.pdf'),
+  ('f0a974b7-c961-4e20-9470-7352616f1473'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/EcoFlow-OCEAN-2-Plus-single-phase-6-12kW-and-5kWh-battery-datasheet.pdf'),
+  ('af66509a-a69e-47bb-9115-4f401c26e0b6'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/EcoFlow-PowerOcean-single-phase-datasheet.pdf'),
+  ('9a85079d-c130-4732-976c-e29fe8e83563'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Fox-ESS-EVO-10-datasheet.pdf'),
+  ('a0949209-3262-4977-991c-612b28e296c7'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Sofar-PowerAll-single-phase-3-6kW-datasheet.pdf'),
+  ('15032696-4d66-4f2e-943c-2d185833bac6'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Sofar-PowerAll-single-phase-3-6kW-datasheet.pdf'),
+  ('fb309087-8529-474c-968b-fff27a8dee1a'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Sofar-PowerAll-single-phase-3-6kW-datasheet.pdf'),
+  ('5a39570b-96fa-48c1-b6e8-22a1787d4436'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Sofar-HYD-40-60K-T1-three-phase-hybrid-datasheet.pdf'),
+  ('3407ee7f-8083-4aee-b761-936535faed03'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Sofar-HYD-40-60K-T1-three-phase-hybrid-datasheet.pdf'),
+  ('93fae7d2-0bc6-4a2d-b8d0-c95f89eff24e'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Sofar-100-125KTLX-G4-datasheet.pdf'),
+  ('7e145b22-f5af-4a8f-803c-c649550aaeea'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Sofar-100-125KTLX-G4-datasheet.pdf'),
+  ('8c2db7fc-fbec-4fe6-b6b3-52f4821984d2'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Sigen-Energy-Controller-single-phase-3-6kW-datasheet.pdf'),
+  ('3ec382bb-d85b-43b4-b5c4-6decab0cb5da'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Sigen-Energy-Controller-single-phase-3-6kW-datasheet.pdf'),
+  ('195de7b9-2c52-4241-a2cf-42c8fdbf81ea'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Sigen-Energy-Controller-single-phase-3-6kW-datasheet.pdf'),
+  ('ba63d402-5530-4143-ad97-bc0f5f29d741'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Sigen-Energy-Controller-single-phase-8-12kW-datasheet.pdf'),
+  ('8e7199e4-2158-4cbf-9700-3dce1478832f'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Sigen-Energy-Controller-single-phase-3-6kW-datasheet.pdf'),
+  ('a84981fc-136a-470b-9b51-9f1f83517d2f'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/EcoFlow-OCEAN-2-Plus-single-phase-6-12kW-and-5kWh-battery-datasheet.pdf'),
+  ('9c581fc5-4b6d-4d13-8513-98d27f78e546'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/EcoFlow-OCEAN-2-Plus-single-phase-6-12kW-and-5kWh-battery-datasheet.pdf'),
+  ('1773e348-0c15-49d8-ae44-141904119dcf'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/EcoFlow-PowerOcean-single-phase-datasheet.pdf'),
+  ('b33f7a2c-606c-4e23-b790-cbf67a66f715'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Fox-ESS-EVO-10-datasheet.pdf'),
+  ('fd929036-0a7e-4b14-b2d3-a22f9601d480'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Jinko-Tiger-Neo-3.0-470W-All-Black-Dual-Glass-datasheet.pdf'),
+  ('1ca40a57-60b3-471b-a27b-40734aea9c98'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Jinko-Tiger-Neo-3.0-460-485W-48QL6-DB-All-Black-datasheet.pdf'),
+  ('757ebd06-22b3-4dca-86e6-678f2e5873de'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Longi-Hi-MO-X10-LR7-54HVB-475-500W-All-Black-datasheet.pdf'),
+  ('02e3e3a9-9586-4c53-9226-504250f87418'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Longi-Hi-MO-X10-LR7-54HVB-475-500W-All-Black-datasheet.pdf'),
+  ('d8a12900-5ff2-451d-a5a7-37d42e691c97'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Canadian-Solar-TOPHiKu6-CS6.2-48TD-All-Black-datasheet.pdf'),
+  ('9a478dfd-357c-4f9b-bab8-2ff7a914ad67'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Aiko-Neostar-3S-480-495W-All-Black-datasheet.pdf'),
+  ('39259247-c8ca-4494-b51e-64fb39be9bcb'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Aiko-Neostar-3S-Plus-530-540W-Dual-Glass-datasheet.pdf'),
+  ('83d356a0-fdda-4654-b07b-ab50304faa25'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Aiko-Neostar-3S-Plus-530-540W-Dual-Glass-datasheet.pdf'),
+  ('4dfd2e8a-6ff3-43f1-b66d-e8d50fc642fb'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Aiko-Neostar-3P-Plus-540W-Dual-Glass-datasheet.pdf'),
+  ('d8f9d886-6c05-4995-9343-ab2c9bc20bb4'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Aiko-Neostar-2S-Plus-510W-Dual-Glass-datasheet.pdf'),
+  ('aabbe7f7-fa17-4a9d-9539-64d1b62e81a2'::uuid, 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2026/11/Aiko-Neostar-2S-Plus-510W-Dual-Glass-datasheet.pdf')
+) as v(id, url)
+where p.id = v.id;
