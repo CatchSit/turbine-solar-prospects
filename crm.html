@@ -117,15 +117,13 @@ tbody tr:hover { background: var(--surface2); }
 @media (max-width: 900px) { .cal-wrap { grid-template-columns: minmax(0, 1fr); } }
 
 /* ── Lead detail view (redesign 2026-10-12): sticky header + stage bar +
-   next step, then three fixed zones, each section with its own colour. ── */
+   next step, then a customer strip and two columns, each section with its own colour. ── */
 #back-btn { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; color: var(--text2); }
 #back-btn:hover { background: var(--surface2); color: var(--text); }
 .lead-head { position: sticky; top: 56px; z-index: 50; background: var(--surface); border: 1px solid var(--border); border-radius: 12px 12px 0 0; padding: 14px 20px 0; }
 .lh-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .lh-name { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
 .lh-pills { display: flex; gap: 6px; flex-wrap: wrap; }
-.lh-contact { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--text2); }
-.lh-contact a { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 .lh-actions { margin-left: auto; display: flex; gap: 8px; }
 .btn-ghost { background: none; border: 1px solid var(--border); color: var(--text2); border-radius: 8px; padding: 7px 12px; font-size: 12.5px; font-weight: 500; }
 .btn-ghost:hover:not(:disabled) { background: var(--surface2); color: var(--text); }
@@ -144,10 +142,19 @@ tbody tr:hover { background: var(--surface2); }
 .ns-due.overdue { color: var(--alert); font-weight: 600; }
 .ns-due.today { color: var(--warn); font-weight: 600; }
 .ns-status { margin-left: auto; }
-.zones { display: grid; grid-template-columns: minmax(260px, 320px) minmax(0, 1fr) minmax(0, 1.2fr); gap: 16px; padding-top: 16px; align-items: start; }
+/* Customer is a full-width strip, then two columns: Activity with Handover
+   under it, and Quotes, Documents, Install, Complaints (Greg 2026-11-25). */
+.zones { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 16px; padding-top: 16px; align-items: start; }
+.zone-customer { grid-column: 1 / -1; }
 .zone { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-@media (max-width: 1200px) { .zones { grid-template-columns: 1fr 1fr; } .zone-customer { grid-column: 1 / -1; } }
-@media (max-width: 760px) { .zones { grid-template-columns: 1fr; } .lh-actions { margin-left: 0; } .lead-head { position: static; } }
+.cust-row { display: flex; align-items: center; gap: 18px; }
+.cust-row .fields { flex: 1; min-width: 0; }
+.cust-acts { display: flex; align-items: center; gap: 6px; flex-shrink: 0; padding-left: 14px; border-left: 1px solid var(--border); font-size: 12.5px; }
+.cust-acts #lead-map-link { color: var(--accent); font-weight: 600; padding: 4px 6px; }
+.cust-acts .sec-act, .cust-acts .sec-act.copy-all { margin-left: 0; white-space: nowrap; }
+.cust-acts .btn-link-danger { margin: 0; padding: 4px 6px; font-size: 12.5px; }
+@media (max-width: 900px) { .zones { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 760px) { .cust-row { flex-direction: column; align-items: stretch; } .cust-acts { padding: 8px 0 0; border-left: 0; border-top: 1px solid var(--border); flex-wrap: wrap; } .lh-actions { margin-left: 0; } .lead-head { position: static; } }
 .sec { background: var(--surface); border: 1px solid var(--border); border-top: 3px solid var(--sec-color); border-radius: 12px; }
 .sec-h { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
 .sec-h h3 { font-size: 15px; font-weight: 700; }
@@ -195,11 +202,11 @@ tbody tr:hover { background: var(--surface2); }
 .cp-form select, .ho-upload-cat { padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 13px; background: var(--surface2); color: var(--text); width: 100%; }
 .vuln-pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 100px; background: #fde2e2; color: #b42318; font-size: 12px; font-weight: 600; }
 #ld-form textarea { width: 100%; min-height: 50px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 13px; background: var(--surface2); color: var(--text); resize: vertical; }
-.fields { margin: 0; }
-.fields .f { display: grid; grid-template-columns: 96px 1fr; gap: 8px; padding: 7px 0; border-bottom: 1px dashed var(--border); font-size: 13px; align-items: baseline; }
-.fields .f:last-child { border-bottom: 0; }
-.fields dt { color: var(--text3); font-size: 12px; }
+.fields { margin: 0; display: flex; flex-wrap: wrap; gap: 8px 26px; }
+.fields .f { font-size: 13px; min-width: 0; max-width: 100%; }
+.fields dt { color: var(--text3); font-size: 12px; margin-bottom: 2px; }
 .fields dd { margin: 0; font-weight: 500; overflow-wrap: anywhere; }
+.fields dd a { color: inherit; text-decoration: none; border-bottom: 1px dotted currentColor; }
 .fields dd .muted { color: var(--text3); font-weight: 400; font-size: 11.5px; }
 /* "Copy all" in the Customer header (2026-10-16), like the copy button on
    a code block. Per-field buttons were tried and removed at the user's
@@ -208,11 +215,12 @@ tbody tr:hover { background: var(--surface2); }
 .sec-act.copy-all svg { width: 13px; height: 13px; }
 .sec-act.copy-all + .sec-act { margin-left: 0; }
 .sec-act.copy-all.copied { color: var(--accent); }
+#ld-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 4px 20px; align-items: start; }
+#ld-form .form-btns { grid-column: 1 / -1; }
 #ld-form .quote-field { margin-bottom: 10px; }
 #ld-form select { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 13px; background: var(--surface2); color: var(--text); }
 .field-help { font-size: 11.5px; color: var(--text3); margin-top: 4px; }
 .form-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
-.cust-foot { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding-top: 12px; margin-top: 6px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text3); }
 .btn-link-danger { background: none; border: none; padding: 0; margin-top: 12px; color: var(--alert); font-size: 12px; font-weight: 500; }
 .composer { border: 1px dashed var(--border); border-radius: 10px; padding: 12px; background: var(--surface2); display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 12.5px; color: var(--text2); }
 .timeline { list-style: none; margin: 14px 0 0; padding: 0; position: relative; }
@@ -646,7 +654,7 @@ tbody tr:hover { background: var(--surface2); }
 
   <div id="detail-view" style="display:none">
     <!-- Lead page layout (agreed with the user 2026-10-12 from a mockup):
-         sticky header + stage bar + next step, then three fixed zones —
+         sticky header + stage bar + next step, then a customer strip and two columns —
          Customer / Activity / Quotes, Documents, Install — so every lead
          reads the same way for new staff. -->
     <div class="lead-head">
@@ -654,7 +662,6 @@ tbody tr:hover { background: var(--surface2); }
         <button id="back-btn" type="button">← Leads</button>
         <h2 class="lh-name" id="lead-name">—</h2>
         <span id="lead-pills" class="lh-pills"></span>
-        <span class="lh-contact" id="lead-contact-links"></span>
         <div class="lh-actions">
           <button class="btn-blue" type="button" id="create-proposal-btn" title="Opens the Proposal Generator on this PC with this customer filled in">Create proposal</button>
           <button class="btn-primary" type="button" id="log-contact-btn">Log contact</button>
@@ -674,14 +681,16 @@ tbody tr:hover { background: var(--surface2); }
     <div class="zones">
       <div class="zone zone-customer">
         <section class="sec sec-customer">
-          <div class="sec-h">
-            <span class="sec-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg></span>
-            <h3>Customer</h3>
-            <button class="sec-act copy-all" type="button" id="details-copy-btn" title="Copy name, address, postcode, phone and email"></button>
-            <button class="sec-act" type="button" id="details-edit-btn">Edit</button>
-          </div>
           <div class="sec-b">
-            <dl class="fields" id="ld-view"></dl>
+            <div class="cust-row">
+              <dl class="fields" id="ld-view"></dl>
+              <div class="cust-acts">
+                <a id="lead-map-link" href="#">Map</a>
+                <button class="sec-act copy-all" type="button" id="details-copy-btn" title="Copy name, address, postcode, phone and email"></button>
+                <button class="sec-act" type="button" id="details-edit-btn">Edit</button>
+                <button class="btn-link-danger" type="button" id="details-delete-btn" style="display:none" title="Delete lead">Delete</button>
+              </div>
+            </div>
             <div id="ld-form" style="display:none">
               <div class="quote-field"><label>Customer name</label><input type="text" id="ld-name"/></div>
               <div class="quote-field"><label>Address</label><input type="text" id="ld-address"/></div>
@@ -704,11 +713,6 @@ tbody tr:hover { background: var(--surface2); }
                 <button class="btn-primary" type="button" id="details-save-btn">Save</button>
               </div>
             </div>
-            <div class="cust-foot">
-              <a id="lead-map-link" href="#">View on map →</a>
-              <span id="lead-added-meta"></span>
-            </div>
-            <button class="btn-link-danger" type="button" id="details-delete-btn" style="display:none">Delete lead</button>
           </div>
         </section>
       </div>
@@ -728,6 +732,43 @@ tbody tr:hover { background: var(--surface2); }
               <button class="log-contact-btn" type="button" id="log-contact-btn-2">Log contact</button>
             </div>
             <div class="timeline-scroll"><ul class="timeline" id="activity-list"></ul></div>
+          </div>
+        </section>
+
+        <section class="sec sec-handover" id="handover-sec">
+          <div class="sec-h">
+            <span class="sec-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></span>
+            <h3>Handover</h3>
+            <span class="ic-progress" id="ho-progress"></span>
+          </div>
+          <div class="sec-b">
+            <div id="ho-locked" class="lock-msg"></div>
+            <div id="ho-unlocked">
+              <div class="ho-status" id="ho-status"></div>
+              <label class="ho-tick"><input type="checkbox" id="ho-dno"> DNO copy sent to the customer</label>
+              <span class="quote-status" id="ho-dno-meta"></span>
+              <h4 class="sub-h" style="margin-top:16px">Handover details</h4>
+              <div id="ho-details"></div>
+              <div class="ic-actions">
+                <button class="btn-secondary" type="button" id="ho-edit-btn">Edit</button>
+                <button class="btn-secondary" type="button" id="ho-cancel-btn" style="display:none">Cancel</button>
+                <button class="btn-primary" type="button" id="ho-save-btn" style="display:none">Save</button>
+              </div>
+              <div class="quote-status" id="ho-details-status" style="margin-top:6px"></div>
+              <h4 class="sub-h" style="margin-top:18px">What goes in the pack</h4>
+              <div class="quote-status" style="margin-bottom:6px">Documents already on this lead and in the selected quote are added automatically. Untick anything the customer shouldn't get. Upload anything else here, e.g. manuals and warranty certificates.</div>
+              <div id="ho-pack"></div>
+              <div class="doc-upload" id="ho-upload-row" style="margin-top:10px">
+                <select class="doc-category-select" id="ho-upload-cat" title="What is this document?"></select>
+                <input type="file" accept="application/pdf,image/jpeg,image/png,image/heic,.doc,.docx,video/quicktime,video/mp4,.mov,.mp4" class="doc-file-input" id="ho-file-input" multiple>
+                <button type="button" class="doc-upload-btn" id="ho-upload-btn">Upload</button>
+              </div>
+              <div class="doc-upload-status" id="ho-upload-status"></div>
+              <div class="ho-build">
+                <button class="btn-blue" type="button" id="ho-build-btn">Build handover pack</button>
+                <span class="quote-status" id="ho-build-status"></span>
+              </div>
+            </div>
           </div>
         </section>
       </div>
@@ -810,43 +851,6 @@ tbody tr:hover { background: var(--surface2); }
                   <button class="btn-primary" type="button" id="ic-save-btn" style="display:none">Save</button>
                 </div>
                 <div class="quote-status" id="ic-status" style="margin-top:6px"></div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section class="sec sec-handover" id="handover-sec">
-          <div class="sec-h">
-            <span class="sec-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></span>
-            <h3>Handover</h3>
-            <span class="ic-progress" id="ho-progress"></span>
-          </div>
-          <div class="sec-b">
-            <div id="ho-locked" class="lock-msg"></div>
-            <div id="ho-unlocked">
-              <div class="ho-status" id="ho-status"></div>
-              <label class="ho-tick"><input type="checkbox" id="ho-dno"> DNO copy sent to the customer</label>
-              <span class="quote-status" id="ho-dno-meta"></span>
-              <h4 class="sub-h" style="margin-top:16px">Handover details</h4>
-              <div id="ho-details"></div>
-              <div class="ic-actions">
-                <button class="btn-secondary" type="button" id="ho-edit-btn">Edit</button>
-                <button class="btn-secondary" type="button" id="ho-cancel-btn" style="display:none">Cancel</button>
-                <button class="btn-primary" type="button" id="ho-save-btn" style="display:none">Save</button>
-              </div>
-              <div class="quote-status" id="ho-details-status" style="margin-top:6px"></div>
-              <h4 class="sub-h" style="margin-top:18px">What goes in the pack</h4>
-              <div class="quote-status" style="margin-bottom:6px">Documents already on this lead and in the selected quote are added automatically. Untick anything the customer shouldn't get. Upload anything else here, e.g. manuals and warranty certificates.</div>
-              <div id="ho-pack"></div>
-              <div class="doc-upload" id="ho-upload-row" style="margin-top:10px">
-                <select class="doc-category-select" id="ho-upload-cat" title="What is this document?"></select>
-                <input type="file" accept="application/pdf,image/jpeg,image/png,image/heic,.doc,.docx,video/quicktime,video/mp4,.mov,.mp4" class="doc-file-input" id="ho-file-input" multiple>
-                <button type="button" class="doc-upload-btn" id="ho-upload-btn">Upload</button>
-              </div>
-              <div class="doc-upload-status" id="ho-upload-status"></div>
-              <div class="ho-build">
-                <button class="btn-blue" type="button" id="ho-build-btn">Build handover pack</button>
-                <span class="quote-status" id="ho-build-status"></span>
               </div>
             </div>
           </div>
@@ -2031,31 +2035,19 @@ function populateLeadFields(lead) {
   const originKey = leadOriginKey(lead);
   document.getElementById('lead-pills').innerHTML = [
     typeCfg ? pillHtml(typeCfg.color, leadJobLabel(lead)) : '',
-    pillHtml(originColor(originKey), `Origin: ${originLabel(originKey)}`, 'Where this lead came from'),
+    pillHtml(originColor(originKey), `Origin: ${originLabel(originKey)}${lead.lead_cost != null ? ` · £${Number(lead.lead_cost).toLocaleString('en-GB', { minimumFractionDigits: 2 }).replace(/\.00$/, '')}` : ''}`, 'Where this lead came from, and what it cost'),
     pillHtml(ASSIGNED_CHIP_COLOR[lead.assigned_to_email || ''] || '#94a3b8', lead.assigned_to_email ? `Assigned: ${repName(lead.assigned_to_email)}` : 'Unassigned'),
-    lead.vulnerable ? `<span class="vuln-pill" title="${escapeHtml(lead.vulnerable_notes || 'Vulnerable customer')}">Vulnerable customer</span>` : '',
+    lead.vulnerable ? `<span class="vuln-pill">${lead.vulnerable_notes ? 'Vulnerable: ' + escapeHtml(lead.vulnerable_notes) : 'Vulnerable customer'}</span>` : '',
   ].join('');
-  document.getElementById('lead-contact-links').innerHTML = [
-    lead.contact_phone ? `<span>☎ <a href="tel:${escapeHtml(lead.contact_phone.replace(/\s+/g, ''))}">${escapeHtml(lead.contact_phone)}</a></span>` : '',
-    lead.contact_email ? `<span>✉ <a href="mailto:${escapeHtml(lead.contact_email)}">${escapeHtml(lead.contact_email)}</a></span>` : '',
-  ].join('');
-
-  const cost = lead.lead_cost != null ? ` <span class="muted">· £${Number(lead.lead_cost).toLocaleString('en-GB', { minimumFractionDigits: 2 })} per lead</span>` : '';
   const row = (label, value) => `<div class="f"><dt>${label}</dt><dd>${value || '<span class="muted">Not set</span>'}</dd></div>`;
   document.getElementById('ld-view').innerHTML = [
-    row('Name', escapeHtml(lead.customer_name || '')),
     row('Address', escapeHtml(lead.address || '')),
     row('Postcode', escapeHtml(lead.postcode || '')),
-    row('Phone', escapeHtml(lead.contact_phone || '')),
-    row('Email', escapeHtml(lead.contact_email || '')),
-    row('Type', escapeHtml(leadJobLabel(lead))),
+    row('Phone', lead.contact_phone ? `<a href="tel:${escapeHtml(lead.contact_phone.replace(/\s+/g, ''))}">${escapeHtml(lead.contact_phone)}</a>` : ''),
+    row('Email', lead.contact_email ? `<a href="mailto:${escapeHtml(lead.contact_email)}">${escapeHtml(lead.contact_email)}</a>` : ''),
     // The job's reference on commission claims and invoices: the start of the lead's own id.
     row('Job ref', escapeHtml(commissionJobRef(lead.id))),
-    row('Origin', escapeHtml(originLabel(originKey)) + cost),
-    row('Assigned', escapeHtml(lead.assigned_to_email ? repName(lead.assigned_to_email) : '')),
-    lead.vulnerable ? row('Vulnerable', `<span class="vuln-pill">Yes</span>${lead.vulnerable_notes ? ' ' + escapeHtml(lead.vulnerable_notes) : ''}`) : '',
   ].join('');
-  document.getElementById('lead-added-meta').textContent = `Added ${formatShortDate(lead.created_at)}`;
   const allText = [lead.customer_name, lead.address, lead.postcode, lead.contact_phone, lead.contact_email].map(v => (v || '').trim()).filter(Boolean).join('\n');
   const copyAll = document.getElementById('details-copy-btn');
   copyAll.dataset.copy = allText;
@@ -2726,6 +2718,7 @@ document.getElementById('create-proposal-btn').addEventListener('click', () => {
 });
 
 function setDetailsEditing(editing) {
+  document.querySelector('.cust-row').style.display = editing ? 'none' : '';
   document.getElementById('ld-view').style.display = editing ? 'none' : '';
   document.getElementById('ld-form').style.display = editing ? '' : 'none';
   document.getElementById('details-edit-btn').style.display = editing ? 'none' : '';
@@ -3024,7 +3017,7 @@ document.getElementById('details-delete-btn').addEventListener('click', async ()
   const { error } = await db.from('prospects')
     .update({ deleted_at: new Date().toISOString(), deleted_by_email: currentUser?.email || null })
     .eq('id', currentLead.id);
-  btn.disabled = false; btn.textContent = 'Delete lead';
+  btn.disabled = false; btn.textContent = 'Delete';
   if (error) { alert('Failed to delete: ' + error.message); return; }
 
   unsubscribeFromLead();
