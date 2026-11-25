@@ -219,6 +219,8 @@ tbody tr:hover { background: var(--surface2); }
 .timeline::before { content: ""; position: absolute; left: 11px; top: 6px; bottom: 6px; width: 2px; background: var(--border); }
 .timeline li { position: relative; padding: 0 0 16px 34px; }
 .timeline li:last-child { padding-bottom: 0; }
+/* Activity list scrolls inside the lead instead of growing forever (Greg 2026-11-23). */
+.timeline-scroll { max-height: 520px; overflow-y: auto; padding-right: 6px; overscroll-behavior: contain; }
 .tl-dot { position: absolute; left: 5px; top: 4px; width: 14px; height: 14px; border-radius: 50%; border: 3px solid var(--surface); background: var(--text3); }
 .tl-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .tl-kind { font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--text3); }
@@ -690,7 +692,7 @@ tbody tr:hover { background: var(--surface2); }
               <span>Spoke to them, or tried to? Log it here and the next step updates itself.</span>
               <button class="log-contact-btn" type="button" id="log-contact-btn-2">Log contact</button>
             </div>
-            <ul class="timeline" id="activity-list"></ul>
+            <div class="timeline-scroll"><ul class="timeline" id="activity-list"></ul></div>
           </div>
         </section>
       </div>
