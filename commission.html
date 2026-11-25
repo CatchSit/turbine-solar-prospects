@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Turbine Energy: My commission</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg: #f8f9fa; --surface: #ffffff; --surface2: #eef1ec;
+  --border: rgba(17,24,39,0.12); --text: #111827; --text2: #6b7280; --text3: #737a86;
+  --accent: #2ba45e; --accentDim: rgba(43,164,94,0.12); --accentDk: #1f8a52;
+  --warn: #8a5a14; --warnSoft: #f3e3cb; --alert: #8c3a2f; --alertSoft: #f0d3ce;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.45; }
+a { color: var(--accentDk); text-decoration: none; }
+button, input, textarea { font-family: inherit; font-size: inherit; }
+button { cursor: pointer; }
+#top-nav { background: var(--surface); border-bottom: 1px solid var(--border); min-height: 56px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 24px; position: sticky; top: 0; z-index: 60; }
+.nav-brand { font-weight: 600; font-size: 15px; }
+.nav-brand-sub { font-size: 11.5px; color: var(--text3); margin-left: 6px; }
+.nav-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.nav-link, #sign-out-btn { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; color: var(--text2); }
+.nav-link:hover, #sign-out-btn:hover { background: var(--surface2); color: var(--text); }
+#wrap { max-width: 1080px; margin: 0 auto; padding: 24px 16px 60px; display: none; }
+h1 { font-size: 22px; letter-spacing: -0.01em; }
+.sub { font-size: 13px; color: var(--text2); margin: 4px 0 18px; max-width: 720px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 13px 16px; }
+.tile label { display: block; font-size: 12px; color: var(--text2); }
+.tile strong { font-size: 20px; font-variant-numeric: tabular-nums; }
+.tile div { font-size: 11.5px; color: var(--text3); }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 18px; overflow: hidden; }
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 13px 16px; border-bottom: 1px solid var(--border); }
+.card-head h2 { font-size: 14px; }
+.card-head span { font-size: 12px; color: var(--text3); }
+.card-body { padding: 14px 16px; }
+.row { display: grid; grid-template-columns: 28px minmax(0, 2.2fr) minmax(0, 1.1fr) minmax(0, 1.6fr) 100px; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); align-items: start; }
+.row:last-child { border-bottom: 0; }
+label.row.pick { cursor: pointer; }
+label.row.pick:hover { background: var(--surface2); }
+.row.sel { background: var(--accentDim); }
+.row.claim { grid-template-columns: 110px minmax(0, 1.3fr) minmax(0, 2fr) 100px auto; }
+.row input[type=checkbox], .tick input { width: 18px; height: 18px; accent-color: var(--accentDk); flex-shrink: 0; }
+.name { font-weight: 600; overflow-wrap: anywhere; }
+.muted { color: var(--text2); font-size: 12.5px; overflow-wrap: anywhere; }
+.amt { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
+.state { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 500; }
+.state i { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.group { padding: 9px 16px 5px; font-size: 12px; font-weight: 600; color: var(--text2); background: #fbfcfb; border-bottom: 1px solid var(--border); }
+.foot { padding: 14px 16px; background: var(--surface2); display: flex; align-items: center; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap; border-bottom: 1px solid var(--border); }
+.foot strong { font-size: 17px; font-variant-numeric: tabular-nums; }
+.tick { display: flex; gap: 9px; align-items: flex-start; font-size: 13px; cursor: pointer; flex: 1 1 300px; }
+.btn { border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 8px; padding: 8px 15px; font-size: 13px; }
+.btn:hover { background: var(--surface2); }
+.btn.primary { background: var(--accentDk); border-color: var(--accentDk); color: #fff; font-weight: 600; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.small { padding: 5px 11px; font-size: 12.5px; }
+.banner { border-radius: 10px; padding: 11px 14px; font-size: 13px; margin-bottom: 14px; background: var(--warnSoft); color: var(--warn); }
+.banner.bad { background: var(--alertSoft); color: var(--alert); }
+.banner.good { background: var(--accentDim); color: #17693e; }
+.field { margin-bottom: 12px; }
+.field label { display: block; font-size: 12.5px; font-weight: 500; margin-bottom: 4px; }
+.field input, .field textarea { width: 100%; max-width: 440px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--surface); color: var(--text); }
+.field textarea { min-height: 84px; resize: vertical; }
+.help { font-size: 12px; color: var(--text2); margin-top: 3px; }
+.empty { padding: 26px 16px; text-align: center; color: var(--text2); }
+.details-view { white-space: pre-line; font-size: 13.5px; }
+
+/* ── The invoice or payroll statement ── */
+.bar { max-width: 794px; margin: 0 auto 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.bar .sp { flex: 1; }
+.paper { background: #fff; border: 1px solid var(--border); box-shadow: 0 6px 24px rgba(17,24,39,.08); max-width: 794px; margin: 0 auto; padding: 52px 56px; position: relative; }
+.paper .voided { border: 2px solid var(--alert); color: var(--alert); font-weight: 700; display: inline-block; padding: 3px 12px; border-radius: 6px; margin-bottom: 14px; }
+.ph { display: flex; justify-content: space-between; gap: 30px; margin-bottom: 30px; }
+.ph h2 { font-size: 28px; letter-spacing: -0.02em; line-height: 1.15; }
+.kv { font-size: 13px; text-align: right; white-space: nowrap; }
+.kv b { font-weight: 600; margin-right: 6px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 26px; font-size: 13px; }
+.two h3, .notes h3 { font-size: 11.5px; color: var(--text3); font-weight: 600; margin-bottom: 5px; }
+.addr { white-space: pre-line; overflow-wrap: anywhere; }
+.paper table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.paper th { text-align: left; font-weight: 600; font-size: 12.5px; padding: 9px 6px; border-bottom: 2px solid #111827; }
+.paper td { padding: 9px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.paper tr { break-inside: avoid; }
+.paper td.amt { font-weight: 400; }
+.paper th.amt { text-align: right; }
+.paper .tot { display: flex; justify-content: flex-end; margin-top: 12px; }
+.paper .tot > div { display: flex; justify-content: space-between; gap: 40px; border-top: 2px solid #111827; padding: 9px 6px; font-weight: 700; font-size: 16px; min-width: 270px; }
+.notes { margin-top: 28px; border-top: 1px solid var(--border); padding-top: 14px; font-size: 12.5px; color: var(--text2); display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+
+@media (max-width: 700px) {
+  #top-nav { padding: 8px 14px; }
+  .nav-brand-sub { display: none; }
+  .row, .row.claim { grid-template-columns: 28px minmax(0, 1fr) auto; gap: 4px 10px; }
+  .row.claim { grid-template-columns: minmax(0, 1fr) auto; }
+  .row > .c-date, .row > .c-state { grid-column: 2 / -1; }
+  .row > .amt { grid-column: 3; grid-row: 1; }
+  .row.claim > .c-date, .row.claim > .c-state, .row.claim > .c-act { grid-column: 1 / -1; }
+  .row.claim > .amt { grid-column: 2; }
+  .paper { padding: 28px 18px; }
+  .ph, .two, .notes { display: block; }
+  .ph > *, .two > *, .notes > * { margin-bottom: 16px; }
+  .kv { text-align: left; white-space: normal; }
+  .foot .btn { width: 100%; }
+}
+@media print {
+  #top-nav, .bar { display: none !important; }
+  body { background: #fff; }
+  #wrap { max-width: none; padding: 0; }
+  .paper { border: 0; box-shadow: none; padding: 0; max-width: none; }
+  .ph, .two, .notes { display: grid; grid-template-columns: 1fr 1fr; }
+  .kv { text-align: right; }
+  @page { size: A4; margin: 18mm; }
+}
+</style>
+</head>
+<body>
+
+<div id="top-nav">
+  <div><span class="nav-brand">Turbine Energy</span><span class="nav-brand-sub">My commission</span></div>
+  <div class="nav-right">
+    <a class="nav-link" href="crm.html">CRM</a>
+    <a class="nav-link" href="index.html">Map</a>
+    <a class="nav-link" id="nav-home-link" href="home.html" style="display:none">Home</a>
+    <button id="sign-out-btn">Sign out</button>
+  </div>
+</div>
+
+<div id="wrap"></div>
+
+<script src="shared/escape-html.js"></script>
+<script src="shared/manager-config.js"></script>
+<script src="shared/contact-outcome-config.js"></script>
+<script src="shared/rep-config.js"></script>
+<script src="shared/commission-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+
+/* ── Supabase ────────────────────────────────────────────── */
+const { createClient } = supabase;
+const db = createClient(
+  'https://gkvropheqktytghmiwgp.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdrdnJvcGhlcWt0eXRnaG1pd2dwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5Mjg2NjAsImV4cCI6MjEwMTUwNDY2MH0.swu4sPPi2X9fS-DQEh-cW-ypWZqbWNHXLnGHaKWMxI8'
+);
+
+/* ── My commission (migration 084, Greg 2026-11-25) ──
+   The database works out which jobs can be claimed and for how much. This
+   page only sends which jobs were ticked. A manager approves the form
+   (Manager Home > Commission), which makes the invoice or payroll statement. */
+let currentUser = null;
+let jobs = [], claims = [], me = null;
+let picked = new Set();
+let editingDetails = false;
+let notice = null;
+
+const wrap = document.getElementById('wrap');
+const money = v => '£' + Number(v || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtDate = d => d ? new Date(String(d).length === 10 ? d + 'T12:00:00' : d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Europe/London' }) : '';
+const sum = (list, f) => Math.round(list.reduce((t, x) => t + Number(f(x) || 0), 0) * 100) / 100;
+const stateTag = s => `<span class="state"><i style="background:${s.color}"></i>${escapeHtml(s.label)}</span>`;
+const notSetUp = e => /schema cache|does not exist|PGRST20[25]|42P01|42883/.test(`${e?.code || ''} ${e?.message || ''}`);
+const NOT_SET_UP = 'Commission claims aren\'t switched on yet. A manager needs to run migration 084_commission_claims.sql in Supabase.';
+
+async function load() {
+  const [j, c, p] = await Promise.all([
+    db.rpc('commission_my_jobs'),
+    db.from('commission_claims').select('*, commission_claim_lines(job_ref, customer_name, amount)').eq('email', currentUser.email.toLowerCase()).order('submitted_at', { ascending: false }),
+    db.from('commission_people').select('pay_type, full_name, address').eq('email', currentUser.email.toLowerCase()).maybeSingle(),
+  ]);
+  const error = j.error || c.error || p.error;
+  if (error) throw error;
+  jobs = j.data || []; claims = c.data || []; me = p.data || null;
+  const ready = new Set(jobs.filter(x => x.state === 'ready').map(x => x.prospect_id));
+  picked = new Set([...picked].filter(id => ready.has(id)));
+}
+
+function jobRow(j) {
+  const ready = j.state === 'ready', sel = ready && picked.has(j.prospect_id);
+  const note = j.state === 'blocked' ? COMMISSION_BLOCK_REASON[j.reason] || 'Ask a manager'
+    : j.state === 'not_earned' ? 'Earned once the customer has paid'
+    : j.doc_no || '';
+  const tag = ready ? 'label' : 'div';
+  return `<${tag} class="row ${ready ? 'pick' : ''} ${sel ? 'sel' : ''}">
+    <span>${ready ? `<input type="checkbox" data-job="${escapeHtml(j.prospect_id)}" ${sel ? 'checked' : ''} aria-label="Claim ${escapeHtml(j.customer_name)}">` : ''}</span>
+    <span><span class="name">${escapeHtml(j.customer_name)}</span>${j.outward_code ? `, ${escapeHtml(j.outward_code)}` : ''}<br><span class="muted">${escapeHtml(j.job_ref)} · ${escapeHtml(j.job_type || '')}</span></span>
+    <span class="c-date muted">${j.paid_logged_at ? `Customer paid ${fmtDate(j.paid_logged_at)}` : ''}</span>
+    <span class="c-state">${stateTag(COMMISSION_STATE[j.state])}${note ? `<br><span class="muted">${escapeHtml(note)}</span>` : ''}</span>
+    <span class="amt">${j.amount != null ? money(j.amount) : ''}</span>
+  </${tag}>`;
+}
+
+function claimRow(c) {
+  const lines = c.commission_claim_lines || [];
+  const s = COMMISSION_CLAIM_STATE[c.status];
+  const note = c.status === 'paid' ? `${fmtDate(c.paid_on)}${c.paid_ref ? ` · ${c.paid_ref}` : ''}`
+    : c.closed_reason ? c.closed_reason : c.status === 'approved' ? `Approved ${fmtDate(c.approved_at)}` : '';
+  return `<div class="row claim">
+    <span class="name">${escapeHtml(c.doc_no || 'Not numbered yet')}</span>
+    <span class="c-date muted">Sent in ${fmtDate(c.submitted_at)}<br>${lines.map(l => escapeHtml(l.customer_name)).join(', ')}</span>
+    <span class="c-state">${stateTag(s)}${note ? `<br><span class="muted">${escapeHtml(note)}</span>` : ''}</span>
+    <span class="amt">${money(c.total)}</span>
+    <span class="c-act">${c.doc_no ? `<a class="btn small" href="commission.html?doc=${encodeURIComponent(c.id)}">${c.doc_kind === 'statement' ? 'View statement' : 'View invoice'}</a>` : ''}</span>
+  </div>`;
+}
+
+function detailsCard() {
+  const has = me?.full_name && me?.address;
+  const type = me?.pay_type ? COMMISSION_TYPE[me.pay_type] : null;
+  const typeText = type
+    ? `${type}. ${me.pay_type === 'self_employed' ? 'Approved claims become an invoice to Turbine.' : 'Approved claims become a statement for payroll.'}`
+    : 'Not set yet. A manager needs to set this before a claim can be approved.';
+  if (has && !editingDetails) {
+    return `<div class="card"><div class="card-head"><h2>My details</h2><button class="btn small" id="edit-details">Edit</button></div>
+      <div class="card-body"><div class="details-view"><strong>${escapeHtml(me.full_name)}</strong>\n${escapeHtml(me.address)}</div><div class="help" style="margin-top:8px">${escapeHtml(typeText)}</div></div></div>`;
+  }
+  return `<div class="card"><div class="card-head"><h2>My details</h2><span>Only you and managers can see these</span></div>
+    <div class="card-body">
+      <div class="field"><label for="d-name">Full name</label><input id="d-name" maxlength="120" autocomplete="name" value="${escapeHtml(me?.full_name || '')}"/><div class="help">If you trade under a business name, put that too, e.g. Sam Smith trading as Smith Solar.</div></div>
+      <div class="field"><label for="d-address">Address</label><textarea id="d-address" maxlength="400" autocomplete="street-address">${escapeHtml(me?.address || '')}</textarea><div class="help">Shown on your invoice or statement. Don't put bank details here.</div></div>
+      <div class="help" style="margin-bottom:12px">${escapeHtml(typeText)}</div>
+      <button class="btn primary" id="save-details">Save details</button> ${has ? '<button class="btn" id="cancel-details">Cancel</button>' : ''}
+    </div></div>`;
+}
+
+function render() {
+  document.title = 'Turbine Energy: My commission';
+  const by = s => jobs.filter(j => j.state === s);
+  const ready = by('ready'), sel = ready.filter(j => picked.has(j.prospect_id));
+  const total = sum(sel, j => j.amount);
+  const tile = (label, list) => `<div class="tile"><label>${label}</label><strong>${money(sum(list, j => j.amount))}</strong><div>${list.length} job${list.length === 1 ? '' : 's'}</div></div>`;
+  const group = (title, list) => list.length ? `<div class="group">${title}</div>${list.map(jobRow).join('')}` : '';
+  // The send-in bar sits right under the jobs it's about.
+  const foot = ready.length ? `<div class="foot"><div>${sel.length} job${sel.length === 1 ? '' : 's'} ticked &nbsp; <strong>${money(total)}</strong></div>
+        <label class="tick"><input type="checkbox" id="confirm"><span>This is my claim. I've checked the jobs and amounts.</span></label>
+        <button class="btn primary" id="submit" disabled>Send in claim</button></div>` : '';
+  wrap.innerHTML = `<h1>My commission</h1>
+    <p class="sub">Commission is earned when the customer has paid. Tick the jobs you want to claim and send them in. A manager approves the claim, then your ${me?.pay_type === 'employed' ? 'payroll statement' : 'invoice'} appears here. You only see your own jobs.</p>
+    ${notice ? `<div class="banner ${notice.kind}" role="status">${escapeHtml(notice.text)}</div>` : ''}
+    ${!(me?.full_name && me?.address) ? '<div class="banner">Fill in your name and address below. A claim can\'t be approved without them.</div>' : ''}
+    <div class="tiles">${tile('Not earned yet', by('not_earned'))}${tile('Ready to claim', ready)}${tile('Waiting for approval', by('submitted'))}${tile('Approved, to pay', by('approved'))}${tile('Paid', by('paid'))}</div>
+    <div class="card"><div class="card-head"><h2>My jobs</h2><span>Amounts are set by a manager</span></div>
+      ${jobs.length ? group('Ready to claim', ready) + foot + group('Need something from a manager', by('blocked')) + group('Not earned yet', by('not_earned')) + group('On a claim', jobs.filter(j => ['submitted', 'approved', 'paid'].includes(j.state)))
+        : '<div class="empty">No won jobs have commission set against you yet.</div>'}
+    </div>
+    <div class="card"><div class="card-head"><h2>My claims</h2></div>${claims.length ? claims.map(claimRow).join('') : '<div class="empty">Nothing sent in yet.</div>'}</div>
+    ${detailsCard()}`;
+
+  const btn = document.getElementById('submit'), tick = document.getElementById('confirm');
+  if (tick) tick.addEventListener('change', () => { btn.disabled = !(tick.checked && sel.length); });
+  wrap.querySelectorAll('[data-job]').forEach(b => b.addEventListener('change', () => {
+    b.checked ? picked.add(b.dataset.job) : picked.delete(b.dataset.job);
+    notice = null; render();
+    wrap.querySelector(`[data-job="${CSS.escape(b.dataset.job)}"]`)?.focus();
+  }));
+  btn?.addEventListener('click', () => submitClaim(sel, total, btn));
+  document.getElementById('edit-details')?.addEventListener('click', () => { editingDetails = true; render(); document.getElementById('d-name').focus(); });
+  document.getElementById('cancel-details')?.addEventListener('click', () => { editingDetails = false; render(); });
+  document.getElementById('save-details')?.addEventListener('click', saveDetails);
+}
+
+async function submitClaim(sel, total, btn) {
+  btn.disabled = true; btn.textContent = 'Sending…';
+  const { error } = await db.rpc('commission_submit', { p_prospect_ids: sel.map(j => j.prospect_id), p_confirmed: true, p_expected_total: total });
+  notice = error ? { kind: 'bad', text: error.message }
+    : { kind: 'good', text: `Claim for ${money(total)} sent in. It's now waiting for a manager to approve it.` };
+  if (!error) picked.clear();
+  await refresh();
+  scrollTo(0, 0);
+}
+
+async function saveDetails() {
+  const btn = document.getElementById('save-details');
+  const name = document.getElementById('d-name').value, address = document.getElementById('d-address').value;
+  btn.disabled = true; btn.textContent = 'Saving…';
+  const { error } = await db.rpc('commission_save_details', { p_name: name, p_address: address });
+  if (error) { btn.disabled = false; btn.textContent = 'Save details'; alert(error.message); return; }
+  editingDetails = false;
+  notice = { kind: 'good', text: 'Details saved.' };
+  await refresh();
+}
+
+async function refresh() {
+  try { await load(); render(); }
+  catch (e) { showProblem(e); }
+}
+
+function showProblem(e) {
+  console.error(e);
+  wrap.innerHTML = `<div class="card"><div class="empty">${escapeHtml(notSetUp(e) ? NOT_SET_UP : 'Couldn\'t load commission: ' + (e?.message || e))}</div></div>`;
+}
+
+/* ── The document: frozen when the claim was approved ── */
+function documentHtml(c) {
+  const st = c.doc_kind === 'statement';
+  const lines = [...(c.commission_claim_lines || [])].sort((a, b) => a.paid_logged_at < b.paid_logged_at ? -1 : 1);
+  const rows = lines.map(l => `<tr><td><strong>${escapeHtml(l.customer_name)}</strong>${l.outward_code ? `, ${escapeHtml(l.outward_code)}` : ''}<br><span class="muted">${escapeHtml(l.job_ref)} · ${escapeHtml(l.job_type || '')}</span></td><td>${fmtDate(l.paid_logged_at)}</td><td class="amt">${money(l.amount)}</td></tr>`).join('');
+  return `<div class="paper">${c.status === 'void' ? '<div class="voided">VOID</div>' : ''}
+    <div class="ph"><h2>${st ? 'Commission statement for payroll' : 'Invoice'}</h2><div class="kv"><div><b>${st ? 'Statement number' : 'Invoice number'}</b>${escapeHtml(c.doc_no)}</div><div><b>Date</b>${fmtDate(c.doc_date)}</div></div></div>
+    <div class="two"><div><h3>${st ? 'Employee' : 'From'}</h3><strong>${escapeHtml(c.from_name)}</strong><div class="addr">${escapeHtml(c.from_address)}\n${escapeHtml(c.from_email)}</div></div>
+      <div><h3>${st ? 'Employer' : 'To'}</h3><div class="addr">${escapeHtml(c.to_details)}</div></div></div>
+    <table><thead><tr><th>Sales commission for</th><th>Customer paid</th><th class="amt">Amount</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="tot"><div><span>${st ? 'Total commission' : 'Total due'}</span><span>${money(c.total)}</span></div></div>
+    <div class="notes">${c.vat_note ? `<div><h3>VAT</h3>${escapeHtml(c.vat_note)}</div>` : `<div><h3>About this statement</h3>This is not an invoice. The total is before payroll deductions.</div>`}<div><h3>Payment</h3>${escapeHtml(c.payment_note)}</div></div></div>`;
+}
+
+async function showDocument(id) {
+  const { data: c, error } = await db.from('commission_claims').select('*, commission_claim_lines(*)').eq('id', id).maybeSingle();
+  if (error) return showProblem(error);
+  if (!c || !c.doc_no) {
+    wrap.innerHTML = '<div class="card"><div class="empty">That document isn\'t available. <a href="commission.html">Back to my commission</a></div></div>';
+    return;
+  }
+  const mine = c.email === currentUser.email.toLowerCase();
+  document.title = `${c.doc_no} ${c.from_name}`;   // the PDF's file name
+  wrap.innerHTML = `<div class="bar"><a class="btn" href="${mine ? 'commission.html' : 'home.html'}">${mine ? 'Back to my commission' : 'Back to Manager Home'}</a><span class="sp"></span>${stateTag(COMMISSION_CLAIM_STATE[c.status])}<button class="btn primary" id="print">Print or save as PDF</button></div>${documentHtml(c)}`;
+  document.getElementById('print').addEventListener('click', () => window.print());
+}
+
+/* ── Boot ── */
+async function boot(user) {
+  currentUser = user;
+  document.getElementById('nav-home-link').style.display = isAdmin(user) ? '' : 'none';
+  wrap.style.display = 'block';
+  if (!user.email?.toLowerCase().endsWith('@turbineenergyuk.co.uk')) {
+    wrap.innerHTML = '<div class="card"><div class="empty">Sign in with your Turbine account to see your commission.</div></div>';
+    return;
+  }
+  wrap.innerHTML = '<div class="empty">Loading…</div>';
+  const doc = new URLSearchParams(location.search).get('doc');
+  if (doc) await showDocument(doc); else await refresh();
+}
+
+document.getElementById('sign-out-btn').addEventListener('click', async () => { await db.auth.signOut(); location.href = 'index.html'; });
+
+db.auth.getSession().then(({ data: { session } }) => {
+  if (session?.user) boot(session.user);
+  else location.href = 'index.html';
+});
+
+</script>
+</body>
+</html>

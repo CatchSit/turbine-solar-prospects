@@ -153,9 +153,31 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .won-table td.job { white-space: normal; min-width: 230px; }
 .job-line { max-width: 270px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text3); }
 .to-assign { color: #a8650f; }
+.dot-inline { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; }
 .sub-card table th:first-child, .sub-card table td:first-child { padding-left: 0; }
 tfoot td { border-top: 1px solid var(--borderH); border-bottom: 0; }
 .neg { color: var(--alert); }
+
+/* Commission */
+.cc-badge { display: inline-block; min-width: 18px; text-align: center; background: var(--warning); color: #3b2a00; border-radius: 100px; font-size: 11px; font-weight: 600; padding: 1px 5px; margin-left: 4px; }
+.cc-badge[hidden] { display: none; }
+.cc-group { font-size: 14px; font-weight: 600; margin: 4px 0 10px; }
+.cc-claim td { white-space: normal; }
+.cc-foot { padding: 12px 18px; border-top: 1px solid var(--border); }
+.cc-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12.5px; }
+.cc-actions input { font: inherit; border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; }
+.cc-btn { display: inline-block; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 8px; padding: 6px 13px; font-size: 12.5px; }
+.cc-btn:hover { background: var(--surface2); text-decoration: none; }
+.cc-btn.primary { background: var(--accentDk); border-color: var(--accentDk); color: #fff; font-weight: 600; }
+.cc-btn.danger { color: var(--alert); }
+.cc-btn:disabled { opacity: .45; cursor: default; }
+.cc-flag { font-size: 12.5px; color: #7a5200; background: #fdefcc; border-radius: 6px; padding: 4px 9px; margin: 4px 0; display: table; }
+.cc-flag.stop { background: var(--alertSoft); color: #8c3a2f; }
+.cc-history { font-size: 12px; color: var(--text2); margin-top: 8px; }
+.cc-history summary { cursor: pointer; }
+.cc-history ul { margin: 4px 0 0 18px; }
+#commission-body select { font: inherit; border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; background: var(--surface); }
+#commission-body .won-table { border-top: 0; }
 .prep { display: inline-flex; align-items: center; gap: 6px; }
 .prep .status-icon { width: 16px; height: 16px; font-size: 9px; margin-top: 0; flex-shrink: 0; }
 .group-title { font-size: 15px; font-weight: 600; margin: 6px 0 12px; }
@@ -265,6 +287,7 @@ tfoot td { border-top: 1px solid var(--borderH); border-bottom: 0; }
     <a class="nav-link" href="index.html">Map</a>
     <a class="nav-link" href="crm.html">CRM</a>
     <a class="nav-link" href="prices.html">Prices</a>
+    <a class="nav-link" href="commission.html">My commission</a>
     <button id="sign-out-btn">Sign out</button>
   </div>
 </div>
@@ -272,6 +295,7 @@ tfoot td { border-top: 1px solid var(--borderH); border-bottom: 0; }
 <div id="app">
   <nav id="rail" aria-label="Sections">
     <button class="rail-btn" data-section="pipeline">Pipeline</button>
+    <button class="rail-btn" data-section="commission">Commission <span class="cc-badge" id="cc-badge" hidden></span></button>
     <button class="rail-btn" data-section="activity">Team activity</button>
     <button class="rail-btn" data-section="marketing">Marketing &amp; analytics</button>
     <button class="rail-btn" data-section="proposals">Proposals</button>
@@ -444,6 +468,17 @@ tfoot td { border-top: 1px solid var(--borderH); border-bottom: 0; }
       <div id="proposals-body"><div class="loading">Loading…</div></div>
     </section>
 
+    <section class="section" id="sec-commission">
+      <div class="section-head">
+        <div>
+          <h1>Commission</h1>
+          <p>People send in their own claims from My commission, once the customer has paid. Approving one makes the invoice (self-employed) or payroll statement (employed). Nobody can approve, void or mark paid their own.</p>
+        </div>
+        <div><span class="stamp" id="commission-stamp"></span><button class="refresh-btn" data-refresh="commission">Refresh</button></div>
+      </div>
+      <div id="commission-body"><div class="loading">Loading…</div></div>
+    </section>
+
     <section class="section" id="sec-complaints">
       <div class="section-head">
         <div>
@@ -476,6 +511,7 @@ tfoot td { border-top: 1px solid var(--borderH); border-bottom: 0; }
 <script src="shared/escape-html.js"></script>
 <script src="shared/contact-outcome-config.js"></script>
 <script src="shared/rep-config.js"></script>
+<script src="shared/commission-config.js"></script>
 <script src="shared/grant-area-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
@@ -537,6 +573,7 @@ async function onSession(user) {
   logSignInOnce(user);
   showSection(initialSection());
   refreshGadsReminder();
+  refreshCommissionBadge();
 }
 
 document.getElementById('ms-btn').addEventListener('click', async () => {
@@ -588,7 +625,7 @@ function logSignInOnce(user) {
 }
 
 /* ── Section switching ──────────────────────────────────── */
-const SECTIONS = ['pipeline', 'activity', 'marketing', 'proposals', 'complaints', 'api', 'health', 'tools', 'audit'];
+const SECTIONS = ['pipeline', 'commission', 'activity', 'marketing', 'proposals', 'complaints', 'api', 'health', 'tools', 'audit'];
 const LOADERS = {};          // filled in below, one per section
 const loaded = new Set();    // sections loaded at least once this page load
 const viewed = new Set();    // sections audit-logged this page load
@@ -703,7 +740,7 @@ const QUOTE_COST_FIELDS = ['kit_price', 'scaffold_price', 'electrical_cost', 'ro
   'fuel_cost', 'commission_cost', 'heat_loss_epc_cost', 'plumbing_cost'];
 
 async function loadPipelineData() {
-  const [manual, contacts, options, checklists, enquiries, commissions] = await Promise.all([
+  const [manual, contacts, options, checklists, enquiries, commissions, claimLines] = await Promise.all([
     fetchAll(() => db.from('prospects').select(LEAD_COLUMNS).eq('source', 'manual').is('deleted_at', null).order('id')),
     fetchAll(() => db.from('prospect_contacts').select('prospect_id, outcome, contacted_at, follow_up_date').is('deleted_at', null).order('contacted_at', { ascending: false })),
     fetchAll(() => db.from('quote_options').select(`id, prospect_id, label, quote_price, is_selected, ${QUOTE_COST_FIELDS.join(', ')}`).is('deleted_at', null).order('id')),
@@ -712,7 +749,12 @@ async function loadPipelineData() {
     // Who earns each option's commission (migration 061). Losing this shouldn't take the whole pipeline down.
     fetchAll(() => db.from('quote_option_commission').select('quote_option_id, assigned_to_email').order('quote_option_id'))
       .catch(e => { console.error('Failed to load commission people:', e); return []; }),
+    // Claims on these jobs (migration 084): the only thing that says commission is paid. null = not set up.
+    fetchAll(() => db.from('commission_claim_lines').select('id, prospect_id, amount, claim:commission_claims(status, email, doc_no, paid_on)').eq('live', true).order('id'))
+      .catch(e => { console.error('Failed to load commission claims:', e); return null; }),
   ]);
+  commissionClaimsOn = claimLines !== null;
+  const claimByLead = Object.fromEntries((claimLines || []).filter(x => x.claim).map(x => [x.prospect_id, { ...x.claim, amount: Number(x.amount) }]));
   const commissionToByOption = Object.fromEntries(commissions.map(c => [c.quote_option_id, c.assigned_to_email]));
   const enquiriesByLead = {};
   enquiries.forEach(e => { if (e.prospect_id) (enquiriesByLead[e.prospect_id] ||= []).push(e); });  // newest first
@@ -754,16 +796,23 @@ async function loadPipelineData() {
     const scheduledContact = cs.find(c => c.outcome === 'Scheduled for Install' && c.follow_up_date);
     const installDate = scheduledContact?.follow_up_date || p.install_scheduled_date || null;
     const completedAt = (cs.find(c => c.outcome === 'Completed') || cs.find(c => c.outcome === 'Job Closed'))?.contacted_at || null;
-    // "Paid, job closed": the job is complete and the invoice paid, which is when commission is paid.
+    // "Paid, job closed": the customer has paid. That's when commission is EARNED, not paid:
+    // it's paid only once a manager marks the person's claim paid (migration 084).
     const closedAt = cs.find(c => c.outcome === 'Job Closed')?.contacted_at || null;
-    const commission = Number(valueOption?.commission_cost) || 0;
-    const commissionTo = (valueOption && commissionToByOption[valueOption.id]) || null;
+    const earned = isCommissionEarned(cs);
+    const claim = claimByLead[p.id] || null;
+    // A claim's frozen figure and person win over whatever the quote says now.
+    const commissionOption = opts.find(o => o.is_selected) || valueOption;
+    const commission = claim ? claim.amount : Math.max(0, Number(commissionOption?.commission_cost) || 0);
+    const commissionTo = claim ? claim.email : (commissionOption && commissionToByOption[commissionOption.id]) || null;
+    const commissionState = claim ? claim.status : !commission ? null : !earned ? 'not_earned'
+      : commissionOption?.is_selected && commissionTo ? 'ready' : 'blocked';
     const checklist = checklistByLead[p.id] || null;
     // N/A tasks (migration 047) count as resolved, same as done — a job
     // with no scaffold needed shouldn't sit in "Needs attention" forever.
     const outstanding = installTasksFor(p.product).filter(t => !checklist?.[`${t.key}_done`] && !checklist?.[`${t.key}_na`]);
     const webEnquiries = enquiriesByLead[p.id] || [];
-    return { ...p, contacts: cs, latest, stage, value, valueOption, installDate, completedAt, closedAt, commission, commissionTo, checklist, outstanding, webEnquiries, wonAt: wonContact?.contacted_at || null };
+    return { ...p, contacts: cs, latest, stage, value, valueOption, installDate, completedAt, closedAt, earned, claim, commission, commissionTo, commissionState, checklist, outstanding, webEnquiries, wonAt: wonContact?.contacted_at || null };
   });
 }
 
@@ -986,46 +1035,49 @@ function installCell(l) {
   const lines = [];
   if (l.installDate) {
     const upcoming = new Date(l.installDate) >= today;
-    lines.push(`${fmtDate(l.installDate)}${upcoming && l.stage !== 'completed' ? '<div class="muted">Upcoming</div>' : ''}`);
-  } else if (l.stage !== 'completed') {
+    lines.push(`${fmtDate(l.installDate)}${upcoming && !isCompletedJob(l) ? '<div class="muted">Upcoming</div>' : ''}`);
+  } else if (!isCompletedJob(l)) {
     lines.push('<span class="muted">Not booked</span>');
   } else {
     lines.push('<span class="muted">—</span>');
   }
-  if (l.stage === 'completed' && l.completedAt) lines.push(`<div class="muted">Completed ${fmtDate(l.completedAt)}</div>`);
+  if (isCompletedJob(l) && l.completedAt) lines.push(`<div class="muted">Completed ${fmtDate(l.completedAt)}</div>`);
   return lines.join('');
 }
 
-/* Commission and profit (Greg, 2026-11-05). Commission is paid once the job is
-   complete and the invoice paid, which is the "Paid, job closed" outcome.
-   Payment isn't recorded: it's assumed to go out on time, so a closed job's
-   commission counts as paid on that date. Profit = quote price - all costs,
-   including commission; jobs with no costs entered are left out. */
-function isClosedJob(l) { return l.stage === 'completed' && !!l.closedAt; }
+/* Commission and profit (Greg, 2026-11-05, changed 2026-11-25). Commission is
+   earned once the customer has paid ("Paid, job closed", with no cancellation
+   since), and counts as paid only when a manager marks the claim paid on the
+   Commission page (migration 084). Profit = quote price - all costs, including
+   commission whether or not it has been paid yet; jobs with no costs entered
+   are left out. A later harmless log doesn't reopen a paid job. */
+let commissionClaimsOn = true;
+function isClosedJob(l) { return l.earned; }
+function isCompletedJob(l) { return l.stage === 'completed' || l.earned; }
 
 function wonMoneySummary(jobs) {
   const closed = jobs.filter(j => isClosedJob(j.l));
   const open = jobs.filter(j => !isClosedJob(j.l));
   const profit = list => list.reduce((t, j) => t + (j.costs != null && j.l.value != null ? j.l.value - j.costs : 0), 0);
-  const commission = list => list.reduce((t, j) => t + j.l.commission, 0);
-  const people = {};
+  // Commission by where it has got to, overall and per person: { n, total } each.
+  const commission = {}, people = {};
+  const add = (box, key, v) => { const b = (box[key] ||= { n: 0, total: 0 }); b.n++; b.total += v; };
   jobs.forEach(j => {
     if (!j.l.commission) return;
-    const p = (people[j.l.commissionTo || ''] ||= { paidJobs: 0, paid: 0, toComeJobs: 0, toCome: 0 });
-    if (isClosedJob(j.l)) { p.paidJobs++; p.paid += j.l.commission; } else { p.toComeJobs++; p.toCome += j.l.commission; }
+    add(commission, j.l.commissionState, j.l.commission);
+    add(people[j.l.commissionTo || ''] ||= {}, j.l.commissionState, j.l.commission);
   });
   // Installed jobs (Completed or Paid, job closed), whether or not the invoice is paid yet.
-  const completed = jobs.filter(j => j.l.stage === 'completed');
-  return { closed, open, people, completed,
+  const completed = jobs.filter(j => isCompletedJob(j.l));
+  return { closed, open, people, completed, commission,
     profitCompleted: profit(completed), profitMade: profit(closed), profitToCome: profit(open),
-    commissionPaid: commission(closed), commissionToCome: commission(open),
     unassigned: jobs.filter(j => j.l.commission && !j.l.commissionTo).length };
 }
 
 // Jobs won status: a completed job is split by whether we've been paid
-// ("Paid, job closed" logged = paid, as for commission).
+// ("Paid, job closed" logged = the customer has paid).
 function wonStatusTag(l) {
-  if (l.stage !== 'completed') return stageTag(l.stage);
+  if (!isCompletedJob(l)) return stageTag(l.stage);
   const paid = isClosedJob(l);
   return `<span class="stage-tag"><span class="dot" style="background:${paid ? '#16a34a' : '#d97706'}"></span>Completed, ${paid ? 'paid' : 'not paid'}</span>`;
 }
@@ -1033,8 +1085,10 @@ function wonStatusTag(l) {
 function commissionCell(l) {
   if (!l.commission) return '<span class="muted">—</span>';
   const who = l.commissionTo ? escapeHtml(repName(l.commissionTo)) : '<span class="to-assign">Nobody assigned</span>';
-  const when = isClosedJob(l) ? `Paid ${fmtDate(l.closedAt)}` : 'Due when invoice paid';
-  return `${money(l.commission)} · ${who}<div class="muted">${when}</div>`;
+  const s = COMMISSION_STATE[l.commissionState];
+  const when = l.commissionState === 'paid' ? `Paid ${fmtDate(l.claim.paid_on)}` : s.label;
+  const why = l.commissionState === 'blocked' ? `<div class="muted">${l.commissionTo ? 'No quote option selected' : 'Pick the person'}</div>` : '';
+  return `${money(l.commission)} · ${who}<div class="muted"><span class="dot-inline" style="background:${s.color}"></span>${when}${l.claim?.doc_no ? ` · ${escapeHtml(l.claim.doc_no)}` : ''}</div>${why}`;
 }
 
 function renderWon() {
@@ -1042,7 +1096,7 @@ function renderWon() {
   if (!el) return;
   const start = wonPeriodStart(wonPeriod);
   const jobs = pipelineLeads
-    .filter(l => WON_STAGES.has(l.stage) && (!start || (l.wonAt && new Date(l.wonAt) >= start)))
+    .filter(l => (WON_STAGES.has(l.stage) || l.earned) && (!start || (l.wonAt && new Date(l.wonAt) >= start)))
     .map(l => ({ l, costs: jobCosts(l.valueOption, l.lead_cost) }))
     .sort((a, b) => new Date(b.l.wonAt || 0) - new Date(a.l.wonAt || 0));
 
@@ -1056,6 +1110,11 @@ function renderWon() {
   const chips = Object.entries(WON_PERIODS).map(([k, label]) =>
     `<button class="chip ${k === wonPeriod ? 'active' : ''}" data-won-period="${k}">${label}</button>`).join('');
 
+  const commissionTile = (state, sub, also) => {
+    const b = ms.commission[state] || { n: 0, total: 0 }, x = also && ms.commission[also];
+    return `<div><div class="tile-label">Commission: ${COMMISSION_STATE[state].label.toLowerCase()}</div><div class="mini-value">${money(b.total)}</div>
+      <div class="tile-sub">${sub}${b.n ? ` · ${num(b.n)} job${b.n === 1 ? '' : 's'}` : ''}${x ? `<br><span class="to-assign">Plus ${money(x.total)} that can't be claimed yet</span>` : ''}</div></div>`;
+  };
   const stats = `<div class="mini-stats">
     <div><div class="tile-label">Jobs won</div><div class="mini-value">${num(jobs.length)}</div></div>
     <div><div class="tile-label">Total value</div><div class="mini-value">${money(total)}</div></div>
@@ -1063,10 +1122,13 @@ function renderWon() {
     <div><div class="tile-label">Total profit</div><div class="mini-value">${costed.length ? money(costedMargin) : '—'}</div>
       <div class="tile-sub">${costed.length ? `${pct(costedMargin, costedValue)} · from ${costed.length} of ${jobs.length} job${jobs.length === 1 ? '' : 's'} with costs entered` : 'No costs entered yet'}</div></div>
     <div><div class="tile-label">Profit on completed jobs</div><div class="mini-value">${money(ms.profitCompleted)}</div><div class="tile-sub">${num(ms.completed.length)} job${ms.completed.length === 1 ? '' : 's'} installed, paid or not</div></div>
-    <div><div class="tile-label">Profit made</div><div class="mini-value">${money(ms.profitMade)}</div><div class="tile-sub">${num(ms.closed.length)} job${ms.closed.length === 1 ? '' : 's'} paid and closed</div></div>
-    <div><div class="tile-label">Profit to come</div><div class="mini-value">${money(ms.profitToCome)}</div><div class="tile-sub">${num(ms.open.length)} job${ms.open.length === 1 ? '' : 's'} not yet paid</div></div>
-    <div><div class="tile-label">Commission paid</div><div class="mini-value">${money(ms.commissionPaid)}</div><div class="tile-sub">On closed jobs, assumed paid on time</div></div>
-    <div><div class="tile-label">Commission to come</div><div class="mini-value">${money(ms.commissionToCome)}</div><div class="tile-sub">Due as each invoice is paid</div></div>
+    <div><div class="tile-label">Profit made</div><div class="mini-value">${money(ms.profitMade)}</div><div class="tile-sub">${num(ms.closed.length)} job${ms.closed.length === 1 ? '' : 's'} the customer has paid for</div></div>
+    <div><div class="tile-label">Profit to come</div><div class="mini-value">${money(ms.profitToCome)}</div><div class="tile-sub">${num(ms.open.length)} job${ms.open.length === 1 ? '' : 's'} the customer hasn't paid for yet</div></div>
+    ${commissionTile('not_earned', 'Customer hasn\'t paid yet')}
+    ${commissionTile('ready', 'Customer has paid, not claimed yet', 'blocked')}
+    ${commissionTile('submitted', 'Claim sent in')}
+    ${commissionTile('approved', 'Invoice or payroll statement made')}
+    ${commissionTile('paid', 'Marked paid by a manager')}
   </div>`;
 
   // By job type
@@ -1110,15 +1172,16 @@ function renderWon() {
     ${undated ? `<div class="meter-note">${undated} job${undated === 1 ? ' has' : 's have'} no "Quote accepted" contact logged, so no won date.</div>` : ''}</div>`;
 
   const personKeys = [...REP_ORDER, ...Object.keys(ms.people).filter(k => k && !REP_ORDER.includes(k)), ''].filter(k => ms.people[k]);
-  const jobCount = n => n ? `<div class="muted">${n} job${n === 1 ? '' : 's'}</div>` : '';
+  const personStates = Object.keys(COMMISSION_STATE).filter(s => s !== 'blocked' || ms.commission.blocked);
+  const boxCell = b => `<td class="num">${b ? `${money(b.total)}<div class="muted">${b.n} job${b.n === 1 ? '' : 's'}</div>` : '<span class="muted">—</span>'}</td>`;
   const personRows = personKeys.map(k => { const p = ms.people[k]; return `
     <tr><td>${k ? escapeHtml(repName(k)) : '<span class="to-assign">Nobody assigned</span>'}</td>
-    <td class="num">${p.paid ? money(p.paid) : '<span class="muted">—</span>'}${jobCount(p.paidJobs)}</td>
-    <td class="num">${p.toCome ? money(p.toCome) : '<span class="muted">—</span>'}${jobCount(p.toComeJobs)}</td>
-    <td class="num">${money(p.paid + p.toCome)}</td></tr>`; }).join('');
+    ${personStates.map(s => boxCell(p[s])).join('')}
+    <td class="num"><strong>${money(Object.values(p).reduce((t, b) => t + b.total, 0))}</strong></td></tr>`; }).join('');
   const personCard = `<div class="sub-card"><h3>Commission by person</h3>
-    <table><thead><tr><th>Person</th><th class="num">Paid</th><th class="num">To come</th><th class="num">Total</th></tr></thead>
-    <tbody>${personRows || '<tr><td colspan="4" class="empty">No commission on these jobs.</td></tr>'}</tbody></table>
+    <div class="won-table" style="border-top:0"><table><thead><tr><th>Person</th>${personStates.map(s => `<th class="num">${COMMISSION_STATE[s].label}</th>`).join('')}<th class="num">Total</th></tr></thead>
+    <tbody>${personRows || `<tr><td colspan="${personStates.length + 2}" class="empty">No commission on these jobs.</td></tr>`}</tbody></table></div>
+    ${commissionClaimsOn ? '' : '<div class="meter-note">Claims aren\'t switched on yet (migration 084), so nothing can show as claimed or paid.</div>'}
     ${ms.unassigned ? `<div class="meter-note">${ms.unassigned} job${ms.unassigned === 1 ? ' has' : 's have'} a commission figure but nobody assigned. Pick the person on the CRM quote option.</div>` : ''}</div>`;
 
   const jobRows = jobs.map(({ l, costs }) => {
@@ -1139,10 +1202,10 @@ function renderWon() {
 
   el.innerHTML = `<div class="card">
     <div class="card-head"><h2>Jobs won</h2><div class="chips">${chips}</div></div>
-    <div class="card-body">${stats}<div class="grid-2 inner"><div>${typeCard}${personCard}</div>${monthCard}</div></div>
+    <div class="card-body">${stats}<div class="grid-2 inner"><div>${typeCard}</div>${monthCard}</div><div style="margin-top:24px">${personCard}</div></div>
     <div class="won-table"><table><thead><tr><th>Job</th><th>Status</th><th>Won on</th><th>Install date</th><th>Commission</th><th class="num">Value</th><th class="num">Costs</th><th class="num">Profit</th></tr></thead>
     <tbody>${jobRows || '<tr><td colspan="8" class="empty">No jobs won in this period.</td></tr>'}</tbody>
-    ${jobs.length ? `<tfoot><tr><td colspan="4"><strong>Total</strong></td><td><strong>${money(ms.commissionPaid + ms.commissionToCome)}</strong></td><td class="num"><strong>${money(total)}</strong></td><td></td>
+    ${jobs.length ? `<tfoot><tr><td colspan="4"><strong>Total</strong></td><td><strong>${money(jobs.reduce((t, j) => t + j.l.commission, 0))}</strong></td><td class="num"><strong>${money(total)}</strong></td><td></td>
       <td class="num">${costed.length ? `<strong>${money(costedMargin)}</strong>` : ''}</td></tr></tfoot>` : ''}</table></div>
   </div>`;
   el.querySelectorAll('[data-won-period]').forEach(b => b.addEventListener('click', () => { wonPeriod = b.dataset.wonPeriod; renderWon(); }));
@@ -1157,6 +1220,178 @@ function wireTooltips(root) {
     el.addEventListener('mousemove', e => { tip.style.left = (e.clientX + 14) + 'px'; tip.style.top = (e.clientY + 14) + 'px'; });
     el.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
   });
+}
+
+/* ════════════════════════════════════════════════════════════
+   COMMISSION (migration 084, Greg 2026-11-25)
+   Approve, send back, void and mark paid. The database refuses anyone
+   acting on their own, whatever this page shows.
+   ════════════════════════════════════════════════════════════ */
+let ccClaims = [], ccPeople = [], ccReview = {}, ccEvents = {};
+const money2 = v => '£' + Number(v || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const ccDate = d => d ? new Date(String(d).length === 10 ? d + 'T12:00:00' : d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Europe/London' }) : '';
+const ccToday = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/London' });
+const ccWho = email => REP[email]?.name || (n => n.charAt(0).toUpperCase() + n.slice(1))((email || '').split('@')[0]);
+const ccName = email => ccPeople.find(x => x.email === email)?.full_name || ccWho(email);
+const ccMine = email => !!email && email === (currentUser?.email || '').toLowerCase();
+const commissionNotSetUp = e => /schema cache|does not exist|PGRST20[25]|42P01|42883/.test(`${e?.code || ''} ${e?.message || ''}`);
+
+async function refreshCommissionBadge() {
+  const { count, error } = await db.from('commission_claims').select('id', { count: 'exact', head: true }).eq('status', 'submitted');
+  const badge = document.getElementById('cc-badge');
+  badge.textContent = error || !count ? '' : String(count);
+  badge.hidden = !!error || !count;
+}
+
+LOADERS.commission = async function () {
+  const body = document.getElementById('commission-body');
+  body.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    const [claims, people, review, events] = await Promise.all([
+      fetchAll(() => db.from('commission_claims').select('*, commission_claim_lines(*)').order('submitted_at', { ascending: false }).order('id')),
+      fetchAll(() => db.from('commission_people').select('email, pay_type, full_name, address').order('email')),
+      db.rpc('commission_review').then(({ data, error }) => { if (error) throw error; return data || []; }),
+      fetchAll(() => db.from('commission_events').select('id, at, by_email, email, claim_id, event, detail').order('id')),
+    ]);
+    ccClaims = claims; ccPeople = people;
+    ccReview = Object.fromEntries(review.map(r => [r.line_id, r]));
+    ccEvents = {};
+    events.forEach(e => { if (e.claim_id) (ccEvents[e.claim_id] ||= []).push(e); });
+    renderCommission();
+    stamp('commission-stamp');
+  } catch (e) {
+    console.error(e);
+    body.innerHTML = errorHtml(commissionNotSetUp(e)
+      ? 'Commission claims aren\'t set up yet: migration 084_commission_claims.sql needs running in Supabase.' : 'Couldn\'t load commission: ' + e.message);
+  }
+  refreshCommissionBadge();
+};
+
+// What a manager should know about one job before approving.
+function ccLineFlags(c, l) {
+  const r = ccReview[l.id], flags = [];
+  if (!r) return flags;
+  if (r.now_reason === 'cancelled') flags.push({ stop: true, text: 'The job has been closed or cancelled since the customer paid' });
+  else if (r.now_reason === 'not_paid') flags.push({ stop: true, text: '"Paid, job closed" is no longer logged' });
+  else if (r.now_reason === 'deleted') flags.push({ stop: true, text: 'The lead has been deleted' });
+  if (r.now_reason === 'no_option') flags.push({ changed: true, text: 'No quote option is selected on the lead now' });
+  else if (r.now_option !== l.quote_option_id) flags.push({ changed: true, text: 'A different quote option is selected now' });
+  if (r.now_reason !== 'no_option') {
+    if (Number(r.now_amount || 0) !== Number(l.amount)) flags.push({ changed: true, text: `The quote now says ${money2(r.now_amount)}. This claim is for ${money2(l.amount)}` });
+    if (r.now_person !== c.email) flags.push({ changed: true, text: r.now_person ? `The quote now gives the commission to ${ccWho(r.now_person)}` : 'Nobody is set to earn this commission on the quote now' });
+  }
+  return flags;
+}
+
+function ccPaidBy(c, l) {
+  const who = (l.paid_logged_by || '').includes('@') ? ccWho(l.paid_logged_by.toLowerCase()) : l.paid_logged_by || 'someone';
+  return (l.paid_logged_by || '').toLowerCase() === c.email
+    ? `<span class="to-assign">Customer payment logged by ${escapeHtml(who)}, who is making this claim</span>`
+    : `Logged by ${escapeHtml(who)}`;
+}
+
+const CC_EVENT = { submitted: 'Sent in', approved: 'Approved', paid: 'Marked paid', sent_back: 'Sent back', void: 'Voided' };
+function ccHistory(c) {
+  const rows = (ccEvents[c.id] || []).map(e => `<li>${fmtDateTime(e.at)}: ${escapeHtml(CC_EVENT[e.event] || e.event)} by ${escapeHtml(e.by_email ? ccWho(e.by_email) : 'the system')}${e.detail?.reason ? ` (${escapeHtml(e.detail.reason)})` : ''}</li>`).join('');
+  return rows ? `<details class="cc-history"><summary>History</summary><ul>${rows}</ul></details>` : '';
+}
+
+function ccOpenCard(c) {
+  const p = ccPeople.find(x => x.email === c.email) || {};
+  const mine = ccMine(c.email);
+  const lines = c.commission_claim_lines || [];
+  const flags = lines.flatMap(l => ccLineFlags(c, l));
+  const blocks = [];
+  if (mine) blocks.push('This is yours, so another manager has to deal with it');
+  if (c.status === 'submitted') {
+    if (!p.pay_type) blocks.push('Set them as self-employed or employed below first');
+    if (!p.full_name || !p.address) blocks.push('They need to fill in their name and address on My commission first');
+    if (flags.some(f => f.stop)) blocks.push('A job on this form no longer qualifies, so send it back');
+  }
+  const kind = c.doc_kind || (p.pay_type === 'employed' ? 'statement' : p.pay_type ? 'invoice' : null);
+  const rows = lines.map(l => `<tr>
+    <td><a href="crm.html?lead=${encodeURIComponent(l.prospect_id)}">${escapeHtml(l.customer_name)}</a>${l.outward_code ? `, ${escapeHtml(l.outward_code)}` : ''}<div class="muted">${escapeHtml(l.job_ref)} · ${escapeHtml(l.job_type || '')}</div>
+      ${ccLineFlags(c, l).map(f => `<div class="cc-flag ${f.stop ? 'stop' : ''}">${escapeHtml(f.text)}</div>`).join('')}</td>
+    <td>${ccDate(l.paid_logged_at)}<div class="muted">${ccPaidBy(c, l)}</div></td>
+    <td class="num">${money2(l.amount)}</td></tr>`).join('');
+  const off = blocks.length ? 'disabled' : '', offMine = mine ? 'disabled' : '';
+  const actions = c.status === 'submitted'
+    ? `<button class="cc-btn primary" data-cc="approve" data-id="${escapeHtml(c.id)}" ${off}>Approve${kind ? ` and make ${kind === 'invoice' ? 'invoice' : 'payroll statement'}` : ''}</button>
+       <button class="cc-btn danger" data-cc="void" data-id="${escapeHtml(c.id)}" ${offMine}>Send back</button>`
+    : `<label>Paid on <input type="date" id="cc-on-${escapeHtml(c.id)}" value="${ccToday()}" max="${ccToday()}" ${offMine}></label>
+       <label>Reference <input type="text" id="cc-ref-${escapeHtml(c.id)}" maxlength="100" placeholder="Optional" ${offMine}></label>
+       <button class="cc-btn primary" data-cc="paid" data-id="${escapeHtml(c.id)}" ${offMine}>Mark paid</button>
+       <button class="cc-btn danger" data-cc="void" data-id="${escapeHtml(c.id)}" ${offMine}>Void</button>
+       <a class="cc-btn" href="commission.html?doc=${encodeURIComponent(c.id)}">View ${c.doc_kind === 'statement' ? 'statement' : 'invoice'}</a>`;
+  return `<div class="card cc-claim"><div class="card-head"><h2>${escapeHtml(ccName(c.email))}${c.doc_no ? ` · ${escapeHtml(c.doc_no)}` : ''}</h2>
+      <span class="hint">Sent in ${ccDate(c.submitted_at)}${c.approved_by ? ` · approved ${ccDate(c.approved_at)} by ${escapeHtml(ccWho(c.approved_by))}` : ''} · <strong>${money2(c.total)}</strong></span></div>
+    <div class="won-table"><table><thead><tr><th>Job</th><th>Customer paid</th><th class="num">Commission</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="cc-foot">${blocks.map(b => `<div class="cc-flag">${escapeHtml(b)}</div>`).join('')}<div class="cc-actions">${actions}</div>${ccHistory(c)}</div></div>`;
+}
+
+function renderCommission() {
+  const by = s => ccClaims.filter(c => c.status === s);
+  const tot = list => list.reduce((t, c) => t + Number(c.total), 0);
+  const waiting = by('submitted'), topay = by('approved'), paidList = by('paid');
+  const tile = (label, list) => `<div class="tile"><div class="tile-label">${label}</div><div class="tile-value">${money2(tot(list))}</div><div class="tile-sub">${num(list.length)} claim${list.length === 1 ? '' : 's'}</div></div>`;
+  const tiles = `<div class="tiles">${tile('Waiting for approval', waiting)}${tile('Approved, to pay', topay)}${tile('Paid', paidList)}${tile('Sent back or void', [...by('sent_back'), ...by('void')])}</div>`;
+  const group = (title, list, empty) => `<h2 class="cc-group">${title}</h2>${list.length ? list.map(ccOpenCard).join('') : `<div class="card"><div class="empty">${empty}</div></div>`}`;
+
+  const done = ccClaims.filter(c => ['paid', 'sent_back', 'void'].includes(c.status)).map(c => { const s = COMMISSION_CLAIM_STATE[c.status]; return `<tr>
+    <td>${escapeHtml(c.doc_no || 'Not numbered')}<div class="muted">${escapeHtml(ccName(c.email))}</div></td>
+    <td>${(c.commission_claim_lines || []).map(l => `${escapeHtml(l.customer_name)} <span class="muted">${escapeHtml(l.job_ref)}</span>`).join('<br>')}</td>
+    <td><span class="stage-tag"><span class="dot" style="background:${s.color}"></span>${s.label}</span><div class="muted">${c.status === 'paid' ? `${ccDate(c.paid_on)}, recorded by ${escapeHtml(ccWho(c.paid_by))}${c.paid_ref ? ` · ${escapeHtml(c.paid_ref)}` : ''}` : `${ccDate(c.closed_at)} by ${escapeHtml(ccWho(c.closed_by))}: ${escapeHtml(c.closed_reason)}`}</div>${ccHistory(c)}</td>
+    <td class="num">${money2(c.total)}</td>
+    <td>${c.doc_no ? `<a href="commission.html?doc=${encodeURIComponent(c.id)}">View</a>` : ''}</td></tr>`; }).join('');
+
+  const emails = [...new Set([...REP_ORDER.filter(e => isAssignable(e) && e.endsWith('@turbineenergyuk.co.uk')), ...ccPeople.map(p => p.email)])];
+  const people = emails.map(e => { const p = ccPeople.find(x => x.email === e) || {}; const mine = ccMine(e); return `<tr>
+    <td>${escapeHtml(ccWho(e))}<div class="muted">${escapeHtml(e)}</div></td>
+    <td><select data-cc-type="${escapeHtml(e)}" aria-label="Type for ${escapeHtml(ccWho(e))}" ${mine ? 'disabled title="Another manager sets yours"' : ''}>
+      <option value="" ${p.pay_type ? '' : 'selected'}>Not set</option>${Object.entries(COMMISSION_TYPE).map(([k, l]) => `<option value="${k}" ${p.pay_type === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <div class="muted">${p.pay_type === 'self_employed' ? 'Invoice to Turbine' : p.pay_type === 'employed' ? 'Statement for payroll' : 'Approval is blocked until this is set'}</div></td>
+    <td>${p.full_name && p.address ? `${escapeHtml(p.full_name)}<div class="muted" style="white-space:pre-line">${escapeHtml(p.address)}</div>` : '<span class="to-assign">Name and address not filled in</span>'}</td></tr>`; }).join('');
+
+  const body = document.getElementById('commission-body');
+  body.innerHTML = tiles + group('Waiting for approval', waiting, 'Nothing waiting for approval.') + group('Approved, to pay', topay, 'Nothing approved and waiting to be paid.')
+    + `<div class="card"><div class="card-head"><h2>Paid, sent back and void</h2></div><div class="won-table"><table><thead><tr><th>Document</th><th>Jobs</th><th>Status</th><th class="num">Total</th><th></th></tr></thead><tbody>${done || '<tr><td colspan="5" class="empty">Nothing here yet.</td></tr>'}</tbody></table></div></div>`
+    + `<div class="card"><div class="card-head"><h2>People</h2><span class="hint">Check with the accountant if you're not sure. Nobody can set their own</span></div><div class="won-table"><table><thead><tr><th>Person</th><th>Type</th><th>Name and address</th></tr></thead><tbody>${people}</tbody></table></div></div>`;
+  body.querySelectorAll('[data-cc]').forEach(b => b.addEventListener('click', () => ccAct(b)));
+  body.querySelectorAll('[data-cc-type]').forEach(s => s.addEventListener('change', async () => {
+    const { error } = await db.rpc('commission_set_type', { p_email: s.dataset.ccType, p_type: s.value || null });
+    if (error) alert(error.message);
+    LOADERS.commission();
+  }));
+}
+
+async function ccAct(btn) {
+  const c = ccClaims.find(x => x.id === btn.dataset.id);
+  if (!c) return;
+  let call;
+  if (btn.dataset.cc === 'approve') {
+    const changed = (c.commission_claim_lines || []).flatMap(l => ccLineFlags(c, l).filter(f => f.changed).map(f => `${l.customer_name}: ${f.text}`));
+    if (!confirm(changed.length
+      ? `The quote has changed since this claim was sent in:\n\n${changed.join('\n')}\n\nApprove the claim as it was sent in, for ${money2(c.total)}?`
+      : `Approve ${ccName(c.email)}'s claim for ${money2(c.total)}? This gives it a number, and it can't be edited after.`)) return;
+    call = db.rpc('commission_approve', { p_claim: c.id, p_accept_changes: changed.length > 0 });
+  } else if (btn.dataset.cc === 'void') {
+    const reason = prompt(c.status === 'submitted' ? 'Why are you sending this back? They will see this.' : `Why are you voiding ${c.doc_no}? They will see this. Its jobs can then be claimed again.`);
+    if (reason == null) return;
+    if (reason.trim().length < 3) { alert('Give a reason.'); return; }
+    call = db.rpc('commission_void', { p_claim: c.id, p_reason: reason });
+  } else {
+    const on = document.getElementById('cc-on-' + c.id).value, ref = document.getElementById('cc-ref-' + c.id).value;
+    if (!on) { alert('Enter the date it was paid.'); return; }
+    const stop = (c.commission_claim_lines || []).flatMap(l => ccLineFlags(c, l).filter(f => f.stop).map(f => `${l.customer_name}: ${f.text}`));
+    if (!confirm(`${stop.length ? `Check first:\n${stop.join('\n')}\n\n` : ''}Mark ${c.doc_no} for ${money2(c.total)} as paid on ${ccDate(on)}? This can't be undone.`)) return;
+    call = db.rpc('commission_mark_paid', { p_claim: c.id, p_paid_on: on, p_reference: ref || null });
+  }
+  btn.disabled = true;
+  const { error } = await call;
+  if (error) alert(error.message);
+  await LOADERS.commission();
+  // Jobs won shows the same figures, so it reloads next time it's opened.
+  loaded.delete('pipeline');
 }
 
 /* ════════════════════════════════════════════════════════════

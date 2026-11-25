@@ -572,6 +572,7 @@ tbody tr:hover { background: var(--surface2); }
   <div><span class="nav-brand">Turbine Energy</span><span class="nav-brand-sub">CRM</span></div>
   <div class="nav-right">
     <a class="nav-link" href="index.html">Map</a>
+    <a class="nav-link" href="commission.html">My commission</a>
     <a class="nav-link" id="nav-prices-link" href="prices.html" style="display:none">Prices</a>
     <a class="nav-link" id="nav-home-link" href="home.html" style="display:none">Home</a>
     <button id="sign-out-btn">Sign out</button>
@@ -1053,6 +1054,7 @@ tbody tr:hover { background: var(--surface2); }
 <script src="shared/contact-outcome-config.js"></script>
 <script src="shared/customer-email-config.js"></script>
 <script src="shared/rep-config.js"></script>
+<script src="shared/commission-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
 
@@ -2047,6 +2049,8 @@ function populateLeadFields(lead) {
     row('Phone', escapeHtml(lead.contact_phone || '')),
     row('Email', escapeHtml(lead.contact_email || '')),
     row('Type', escapeHtml(leadJobLabel(lead))),
+    // The job's reference on commission claims and invoices: the start of the lead's own id.
+    row('Job ref', escapeHtml(commissionJobRef(lead.id))),
     row('Origin', escapeHtml(originLabel(originKey)) + cost),
     row('Assigned', escapeHtml(lead.assigned_to_email ? repName(lead.assigned_to_email) : '')),
     lead.vulnerable ? row('Vulnerable', `<span class="vuln-pill">Yes</span>${lead.vulnerable_notes ? ' ' + escapeHtml(lead.vulnerable_notes) : ''}`) : '',
@@ -3124,6 +3128,16 @@ function quoteOptionSummaryRowHtml(opt) {
     </tr>`;
 }
 
+// Where this option's commission claim has got to (migration 084), shown to
+// the person and managers only (the database returns nobody else's rows).
+// Paid means a manager marked it paid, never just that the job is closed.
+function commissionClaimHtml(opt) {
+  const c = opt.commission_claim;
+  if (!c) return '';
+  const s = COMMISSION_STATE[c.status];
+  return `<div class="field-help"><span class="tag-dot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${s.color}"></span> ${s.label}${c.paid_on ? ` ${formatShortDate(c.paid_on)}` : ''}${c.doc_no ? `, ${escapeHtml(c.doc_no)}` : ''}. Claimed at £${Number(c.amount).toLocaleString('en-GB')}${isAdmin(currentUser) ? '. Changing the figure here won\'t change the claim' : ''}.</div>`;
+}
+
 // Commission (Greg, 2026-11-05): one person and one figure per option. Managers
 // set both; a rep sees the figure only if it's theirs (migration 061).
 function commissionFieldHtml(opt) {
@@ -3133,6 +3147,7 @@ function commissionFieldHtml(opt) {
     return `
     <div class="quote-field"><label>${mine ? 'Your commission (£)' : 'Commission (£)'}</label>
       <div class="quote-fixed">${mine ? `£${(Number(opt.commission_cost) || 0).toLocaleString()}` : 'Set by a manager'}</div>
+      ${commissionClaimHtml(opt)}
     </div>`;
   }
   const people = REP_ORDER.filter(email => isAssignable(email) || email === opt.commission_to_email);
@@ -3144,6 +3159,7 @@ function commissionFieldHtml(opt) {
         <option value="">Nobody assigned</option>
         ${people.map(email => `<option value="${escapeHtml(email)}"${email === opt.commission_to_email ? ' selected' : ''}>${escapeHtml(repName(email))}</option>`).join('')}
       </select>
+      ${commissionClaimHtml(opt)}
     </div>`;
 }
 
@@ -3477,6 +3493,15 @@ async function loadQuoteOptions(prospectId) {
     if (commissionError) console.error('Failed to load commission people:', commissionError);
     const to = Object.fromEntries((commissions || []).map(c => [c.quote_option_id, c.assigned_to_email]));
     options.forEach(o => { o.commission_to_email = to[o.id] || null; });
+    // Nothing shows, and nothing else is affected, if migration 084 hasn't been run.
+    const { data: claims } = await db.from('commission_claim_lines')
+      .select('quote_option_id, amount, live, claim:commission_claims(status, doc_no, paid_on)')
+      .eq('prospect_id', prospectId).eq('live', true);
+    if (!currentLead || currentLead.id !== prospectId) return;
+    (claims || []).forEach(l => {
+      const o = options.find(x => x.id === l.quote_option_id);
+      if (o && l.claim) o.commission_claim = { ...l.claim, amount: l.amount };
+    });
   }
   currentQuoteOptions = options;
   options.forEach(o => { delete fuelDrafts[o.id]; fuelEditing.delete(o.id); });

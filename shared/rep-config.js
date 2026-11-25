@@ -11,13 +11,9 @@ const REP = {
   "tim@turbineenergyuk.co.uk":   { name: "Tim",   color: "#d97706" },
   "chris@turbineenergyuk.co.uk": { name: "Chris", color: "#7c3aed" },
   "jackie@turbineenergyuk.co.uk": { name: "Jackie", color: "#0891b2" },
-  // Not a @turbineenergyuk.co.uk address (external marketing contact) —
-  // fine for assignment itself (tag/filter only, no login involved), but
-  // she won't be able to sign into the CRM/map at all under the existing
-  // Azure AD + RLS domain restriction (see migrations 003/004) unless
-  // that's deliberately widened for her too.
-  "vickyturbinemarketingltd@aol.com": { name: "Vic", color: "#db2777" },
+  // Her Turbine account, not the old AOL address (Greg 2026-11-25, migration 085).
+  "vicky@turbineenergyuk.co.uk": { name: "Vic", color: "#db2777" },
 };
-const REP_ORDER = ["greg@turbineenergyuk.co.uk", "matty@turbineenergyuk.co.uk", "tim@turbineenergyuk.co.uk", "chris@turbineenergyuk.co.uk", "jackie@turbineenergyuk.co.uk", "vickyturbinemarketingltd@aol.com"];
+const REP_ORDER = ["greg@turbineenergyuk.co.uk", "matty@turbineenergyuk.co.uk", "tim@turbineenergyuk.co.uk", "chris@turbineenergyuk.co.uk", "jackie@turbineenergyuk.co.uk", "vicky@turbineenergyuk.co.uk"];
 function isAssignable(email) { return !email || !REP[email]?.left; }
 function repName(email) { return email ? (REP[email]?.name || email.split('@')[0]) : 'Unassigned'; }

@@ -45,7 +45,7 @@ crm.html lead page
 
 ## Vic
 
-Vic's address in `shared/rep-config.js` is `vickyturbinemarketingltd@aol.com`. That's not a Turbine Microsoft 365 account, so:
+(Superseded 2026-11-25: Vic now uses `vicky@turbineenergyuk.co.uk`, migration 085. That mailbox still needs adding to the Exchange group and mail_sync_mailboxes before it can sync.) Vic's address in `shared/rep-config.js` is `vickyturbinemarketingltd@aol.com`. That's not a Turbine Microsoft 365 account, so:
 
 - Vic can't sign in to the CRM at all, because sign-in is limited to the `@turbineenergyuk.co.uk` domain.
 - Vic's mailbox can't be synced.
