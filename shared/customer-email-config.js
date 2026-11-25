@@ -100,6 +100,7 @@ const CUSTOMER_EMAIL_TEMPLATES = {
 };
 
 function customerEmailLabel(type, sequenceNo) {
+  if (type === 'meeting_confirm') return 'Meeting confirmation (sent automatically)';   // pockla-mail, 081
   const label = CUSTOMER_EMAIL_TEMPLATES[type]?.label || type;
   return type === 'dno_keep_in_touch' ? `${label} (${sequenceNo} of ${KEEP_IN_TOUCH_MAX})` : label;
 }

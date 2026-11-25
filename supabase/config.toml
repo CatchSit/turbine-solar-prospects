@@ -47,3 +47,9 @@ verify_jwt = false
 
 [functions.road-distance]
 verify_jwt = true
+
+[functions.pockla-mail]
+# Run by pg_cron every 10 minutes (migration 082), which has no user
+# session. Authenticity comes from the x-sync-secret header instead
+# (MAIL_SYNC_SECRET).
+verify_jwt = false

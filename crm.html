@@ -220,6 +220,15 @@ tbody tr:hover { background: var(--surface2); }
 .timeline li { position: relative; padding: 0 0 16px 34px; }
 .timeline li:last-child { padding-bottom: 0; }
 /* Activity list scrolls inside the lead instead of growing forever (Greg 2026-11-23). */
+/* Order by + Pockla import warnings (Greg 2026-11-25) */
+.sort-by { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text2); white-space: nowrap; }
+.sort-by select { font: inherit; padding: 7px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); }
+.pockla-warn { margin: 10px 18px 0; padding: 9px 12px; border-radius: 8px; background: #fef3c7; color: #92400e; font-size: 13px; }
+.pockla-warn div + div { margin-top: 6px; }
+.pockla-warn a, .pockla-warn button { color: inherit; font: inherit; font-weight: 600; background: none; border: 0; padding: 0; margin-left: 8px; text-decoration: underline; cursor: pointer; }
+.cal-time { font-weight: 600; }
+#cm-time { width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface2); color: var(--text); font: inherit; }
+#cm-time-group { margin-top: 12px; }
 .timeline-scroll { max-height: 520px; overflow-y: auto; padding-right: 6px; overscroll-behavior: contain; }
 .tl-dot { position: absolute; left: 5px; top: 4px; width: 14px; height: 14px; border-radius: 50%; border: 3px solid var(--surface); background: var(--text3); }
 .tl-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
@@ -583,6 +592,16 @@ tbody tr:hover { background: var(--surface2); }
               <button type="button" data-view="board" aria-pressed="false">Stages</button>
               <button type="button" data-view="calendar" aria-pressed="false">Calendar</button>
             </div>
+            <label class="sort-by" id="sort-by-wrap">Order by
+              <select id="leads-sort">
+                <option value="activity">Latest activity</option>
+                <option value="newest">Newest added</option>
+                <option value="oldest">Oldest added</option>
+                <option value="due">Next step due</option>
+                <option value="name">Name A to Z</option>
+                <option value="quote">Highest quote</option>
+              </select>
+            </label>
             <input type="text" id="leads-search" placeholder="Search by name, address, phone, email…"/>
             <button class="btn-secondary" type="button" id="refresh-leads-btn" title="Reload the leads list">↻ Refresh</button>
             <button class="btn-secondary" type="button" id="show-deleted-leads-btn" style="display:none">Recently deleted</button>
@@ -591,12 +610,13 @@ tbody tr:hover { background: var(--surface2); }
             <button class="btn-primary" id="add-lead-btn">+ Add lead</button>
           </div>
         </div>
+        <div class="pockla-warn" id="pockla-warn" style="display:none"></div>
         <div class="board" id="leads-board" style="display:none"></div>
         <div id="leads-calendar" style="display:none"></div>
         <div class="table-scroll" id="leads-table-scroll">
           <table>
             <thead><tr>
-              <th>Customer</th><th>Type</th><th>Origin</th><th>Status</th><th>Quote</th><th>Contact</th><th>Address</th><th>Postcode</th><th>Install-hub</th><th>Assigned to</th><th>Added</th>
+              <th>Customer</th><th>Type</th><th>Origin</th><th>Status</th><th>Quote</th><th>Contact</th><th>Address</th><th>Postcode</th><th>Install-hub</th><th>Assigned to</th><th>Last activity</th><th>Added</th>
             </tr></thead>
             <tbody id="leads-body"></tbody>
           </table>
@@ -862,6 +882,7 @@ tbody tr:hover { background: var(--surface2); }
       <div id="cm-followup-date-group" style="display:none">
         <label><span id="cm-followup-date-label">Date</span> <span class="required">*</span></label>
         <input type="date" id="cm-followup-date"/>
+        <div id="cm-time-group" style="display:none"><label for="cm-time">Time (optional)</label><input type="time" id="cm-time"/></div>
       </div>
       <label class="cm-email-opt" id="cm-email-opt" style="display:none">
         <input type="checkbox" id="cm-email-open" checked/>
@@ -1053,7 +1074,8 @@ function statusBadgeHtml(outcome, dateLines = []) {
 function leadStatusDates(d) {
   const meeting = formatShortDate(d.meeting_date);
   const install = formatShortDate(d.install_date || d.install_scheduled_date);
-  return [meeting && `Meeting: ${meeting}`, install && `Install: ${install}`].filter(Boolean);
+  const time = shortTime(d.meeting_time);
+  return [meeting && `Meeting: ${meeting}${time ? ' ' + time : ''}`, install && `Install: ${install}`].filter(Boolean);
 }
 
 // One bulk query for every visible lead's latest outcome, rather than a
@@ -1067,12 +1089,20 @@ const LIST_DATE_OUTCOMES = { 'Meeting Booked': 'meeting_date', 'Scheduled for In
 function applyListDate(row, contact) {
   const field = LIST_DATE_OUTCOMES[contact?.outcome];
   if (field && contact.follow_up_date) row[field] = contact.follow_up_date;
+  if (field === 'meeting_date') row.meeting_time = contact.appointment_time || null;
+}
+// "13:30:00" from the database -> "1:30pm" (appointment_time, migration 081).
+function shortTime(t) {
+  const m = /^(\d{2}):(\d{2})/.exec(t || '');
+  if (!m) return '';
+  const h = Number(m[1]);
+  return `${h % 12 || 12}${m[2] === '00' ? '' : ':' + m[2]}${h < 12 ? 'am' : 'pm'}`;
 }
 
 async function fetchLatestOutcomes(prospectIds) {
   if (!prospectIds.length) return {};
   const { data, error } = await db.from('prospect_contacts')
-    .select('prospect_id, outcome, contacted_at, follow_up_date')
+    .select('prospect_id, outcome, contacted_at, follow_up_date, appointment_time')
     .in('prospect_id', prospectIds)
     .order('contacted_at', { ascending: false });
   if (error) { console.error('Failed to load contact outcomes:', error); return {}; }
@@ -1082,7 +1112,10 @@ async function fetchLatestOutcomes(prospectIds) {
   (data || []).forEach(row => {
     if (!(row.prospect_id in latest)) latest[row.prospect_id] = { ...row };
     const field = LIST_DATE_OUTCOMES[row.outcome];
-    if (field && row.follow_up_date && !latest[row.prospect_id][field]) latest[row.prospect_id][field] = row.follow_up_date;
+    if (field && row.follow_up_date && !latest[row.prospect_id][field]) {
+      latest[row.prospect_id][field] = row.follow_up_date;
+      if (field === 'meeting_date') latest[row.prospect_id].meeting_time = row.appointment_time || null;
+    }
   });
   return latest;
 }
@@ -1098,6 +1131,42 @@ async function fetchSelectedQuotePrices(prospectIds) {
     .in('prospect_id', prospectIds);
   if (error) { console.error('Failed to load selected quote prices:', error); return {}; }
   return Object.fromEntries(data.map(r => [r.prospect_id, r.quote_price]));
+}
+
+/* ── Order by (Greg, 2026-11-25). Latest activity = the newest logged
+   contact, email in or out, website enquiry, supplier delivery or customer
+   email (view lead_last_activity, 081). Emails count only for people who
+   can see them: managers, and the lead's own rep. ── */
+async function fetchLastActivity() {
+  const map = {};
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await db.from('lead_last_activity').select('prospect_id, last_activity_at').order('prospect_id').range(from, from + 999);
+    if (error) { console.error('Failed to load latest activity:', error); return map; }
+    (data || []).forEach(r => { map[r.prospect_id] = r.last_activity_at; });
+    if (!data || data.length < 1000) return map;
+  }
+}
+function bumpActivity(row, at) {
+  if (row && at && (!row.last_activity_at || new Date(at) > new Date(row.last_activity_at))) row.last_activity_at = at;
+}
+const lastActivityOf = d => d.last_activity_at || d.latest_contact?.contacted_at || d.created_at;
+const timeOf = v => (v ? new Date(v).getTime() : 0) || 0;
+const LEAD_SORTS = {
+  activity: (a, b) => timeOf(lastActivityOf(b)) - timeOf(lastActivityOf(a)),
+  newest: (a, b) => timeOf(b.created_at) - timeOf(a.created_at),
+  oldest: (a, b) => timeOf(a.created_at) - timeOf(b.created_at),
+  name: (a, b) => (a.customer_name || '\uffff').localeCompare(b.customer_name || '\uffff', 'en', { sensitivity: 'base' }),
+  quote: (a, b) => (b.selected_quote_price ?? -1) - (a.selected_quote_price ?? -1),
+};
+let leadsSort = 'activity';
+try { const v = localStorage.getItem('crm-leads-sort'); if (v === 'due' || LEAD_SORTS[v]) leadsSort = v; } catch (e) { /* storage blocked: default order */ }
+function sortLeads(leads) {
+  const newest = LEAD_SORTS.newest;
+  if (leadsSort === 'due') {
+    const due = new Map(leads.map(d => [d.id, boardDueInfo(d)?.dueDate || '9999-12-31']));
+    return [...leads].sort((a, b) => due.get(a.id).localeCompare(due.get(b.id)) || newest(a, b));
+  }
+  return [...leads].sort((a, b) => LEAD_SORTS[leadsSort](a, b) || newest(a, b));
 }
 
 let currentUser = null;
@@ -1315,16 +1384,18 @@ function renderLeadsTable() {
   const calendar = leadsView === 'calendar';
   document.getElementById('leads-board').style.display = board ? '' : 'none';
   document.getElementById('leads-calendar').style.display = calendar ? '' : 'none';
+  document.getElementById('sort-by-wrap').style.display = board || calendar ? 'none' : '';   // Stages and Calendar have their own order
   document.getElementById('leads-table-scroll').style.display = board || calendar ? 'none' : '';
   document.getElementById('wrap').classList.toggle('board-mode', board || calendar);
   if (calendar) { document.getElementById('empty-state').style.display = 'none'; renderLeadsCalendar(leads); return; }
   if (board) { renderLeadsBoard(leads); return; }
-  visibleLeadIds = leads.map(d => d.id);
+  const sorted = sortLeads(leads);
+  visibleLeadIds = sorted.map(d => d.id);
   if (currentLead) updatePrevNextButtons();
 
   const body = document.getElementById('leads-body');
   body.innerHTML = '';
-  leads.forEach(d => {
+  sorted.forEach(d => {
     const cfg = LEAD_TYPE[d.lead_type];
     const typeTag = cfg ? `<span class="tag"><span class="tag-dot" style="background:${cfg.color}"></span>${cfg.label}</span>` : '—';
     const contact = [
@@ -1351,6 +1422,7 @@ function renderLeadsTable() {
       <td>${escapeHtml(d.postcode || '') || '—'}</td>
       <td>${installHubCell}</td>
       <td>${assignedCell}</td>
+      <td>${formatShortDate(lastActivityOf(d)) || '—'}</td>
       <td>${formatShortDate(d.created_at) || '—'}</td>`;
     tr.addEventListener('click', () => openLeadDetail(d));
     body.appendChild(tr);
@@ -1358,6 +1430,47 @@ function renderLeadsTable() {
 }
 
 document.getElementById('leads-search').addEventListener('input', renderLeadsTable);
+document.getElementById('leads-sort').value = leadsSort;
+document.getElementById('leads-sort').addEventListener('change', e => {
+  leadsSort = e.target.value;
+  try { localStorage.setItem('crm-leads-sort', leadsSort); } catch (err) { /* not remembered, still sorts */ }
+  renderLeadsTable();
+});
+
+/* ── Pockla emails the CRM couldn't add by itself (pockla_imports, 081).
+   Managers only; Dismiss hides the line once it's dealt with. ── */
+async function loadPocklaWarnings() {
+  const el = document.getElementById('pockla-warn');
+  if (!isAdmin(currentUser)) { el.style.display = 'none'; return; }
+  const [{ data, error }, { data: state }] = await Promise.all([
+    db.from('pockla_imports').select('id, received_at, status, reference, error, email_status, web_link, prospect_id, dismissed_at')
+      .is('dismissed_at', null).order('received_at', { ascending: false }).limit(200),
+    db.from('pockla_import_state').select('last_error').eq('id', 1).maybeSingle(),
+  ]);
+  if (error) { console.error('Failed to load Pockla import warnings:', error); el.style.display = 'none'; return; }
+  const problems = (data || []).filter(r => ['failed', 'unverified', 'repeat'].includes(r.status) || (r.status === 'done' && r.error) || /^(failed|sending)/.test(r.email_status || ''));
+  const lines = problems.map(r => {
+    const what = r.status === 'done'
+      ? [r.error, /^(failed|sending)/.test(r.email_status || '') ? `Confirmation email not confirmed as sent (${r.email_status}).` : ''].filter(Boolean).join(' ')
+      : r.status === 'repeat' ? r.error : `Not added to the CRM: ${r.error || 'unknown reason'}. Add it by hand.`;
+    const lead = r.prospect_id ? `<button type="button" data-pockla-lead="${escapeHtml(r.prospect_id)}">Open lead</button>` : '';
+    const link = /^https:\/\//.test(r.web_link || '') ? `<a href="${escapeHtml(r.web_link)}" target="_blank" rel="noopener">Open email</a>` : '';
+    return `<div>Pockla ${escapeHtml(r.reference || 'email')}, ${escapeHtml(formatDateTime(r.received_at))}: ${escapeHtml(what)}${lead}${link}<button type="button" data-pockla-dismiss="${escapeHtml(r.id)}">Dismiss</button></div>`;
+  });
+  if (state?.last_error) lines.unshift(`<div>Pockla emails: the last check had a problem (${escapeHtml(state.last_error)}). It tries again every 10 minutes.</div>`);
+  el.innerHTML = lines.join('');
+  el.style.display = lines.length ? '' : 'none';
+}
+document.getElementById('pockla-warn').addEventListener('click', async e => {
+  const leadBtn = e.target.closest('[data-pockla-lead]');
+  if (leadBtn) { const lead = allLeads.find(l => l.id === leadBtn.dataset.pocklaLead); if (lead) openLeadDetail(lead); return; }
+  const btn = e.target.closest('[data-pockla-dismiss]');
+  if (!btn) return;
+  btn.disabled = true;
+  const { error } = await db.from('pockla_imports').update({ dismissed_at: new Date().toISOString() }).eq('id', btn.dataset.pocklaDismiss);
+  if (error) { alert('Couldn\'t dismiss it: ' + error.message); btn.disabled = false; return; }
+  loadPocklaWarnings();
+});
 
 /* ── Stages view (2026-10-15): the same filtered leads as the table, in
    one column per stage (Not contacted, the seven LEAD_STAGES, then every
@@ -1475,28 +1588,37 @@ function calMonday(d) {
 
 async function fetchCalendarData() {
   const ids = allLeads.map(l => l.id);
-  const dates = {}, surveys = {}, checklists = {};
+  const dates = {}, surveys = {}, meetings = {}, surveyTimes = {}, meetingTimes = {}, checklists = {};
   if (ids.length) {
-    const [logs, lists, surveyLogs] = await Promise.all([
+    const [logs, lists, surveyLogs, meetingLogs] = await Promise.all([
       db.from('prospect_contacts').select('prospect_id, follow_up_date, contacted_at')
         .eq('outcome', 'Scheduled for Install').in('prospect_id', ids)
         .order('contacted_at', { ascending: false }),
       db.from('install_checklists').select('*').in('prospect_id', ids),
       // Surveys on the calendar too (Greg 2026-11-20): the date given with
       // the latest "Survey booked" entry.
-      db.from('prospect_contacts').select('prospect_id, follow_up_date, contacted_at')
+      db.from('prospect_contacts').select('prospect_id, follow_up_date, appointment_time, contacted_at')
         .eq('outcome', 'Survey Booked').in('prospect_id', ids)
+        .order('contacted_at', { ascending: false }),
+      // Meetings (calls) too, with their time (Greg 2026-11-25).
+      db.from('prospect_contacts').select('prospect_id, follow_up_date, appointment_time, contacted_at')
+        .eq('outcome', 'Meeting Booked').in('prospect_id', ids)
         .order('contacted_at', { ascending: false }),
     ]);
     if (logs.error) console.error('Failed to load install dates:', logs.error);
     if (lists.error) console.error('Failed to load install checklists:', lists.error);
     if (surveyLogs.error) console.error('Failed to load survey dates:', surveyLogs.error);
     (logs.data || []).forEach(r => { if (r.follow_up_date && !(r.prospect_id in dates)) dates[r.prospect_id] = r.follow_up_date; });
-    (surveyLogs.data || []).forEach(r => { if (r.follow_up_date && !(r.prospect_id in surveys)) surveys[r.prospect_id] = r.follow_up_date; });
+    if (meetingLogs.error) console.error('Failed to load meeting dates:', meetingLogs.error);
+    const takeLatest = (res, days, times) => (res.data || []).forEach(r => {
+      if (r.follow_up_date && !(r.prospect_id in days)) { days[r.prospect_id] = r.follow_up_date; times[r.prospect_id] = r.appointment_time || ''; }
+    });
+    takeLatest(surveyLogs, surveys, surveyTimes);
+    takeLatest(meetingLogs, meetings, meetingTimes);
     (lists.data || []).forEach(r => { checklists[r.prospect_id] = r; });
   }
   allLeads.forEach(l => { if (!dates[l.id] && l.install_scheduled_date) dates[l.id] = l.install_scheduled_date; });
-  return { at: Date.now(), dates, surveys, checklists };
+  return { at: Date.now(), dates, surveys, meetings, surveyTimes, meetingTimes, checklists };
 }
 
 function calTasksHtml(checklist, product) {
@@ -1547,7 +1669,28 @@ function calSurveyCardHtml(d, dateKey, todayKey) {
   const meta = [d.postcode ? escapeHtml(d.postcode) : '', typeCfg ? escapeHtml(typeCfg.label) : '',
     d.assigned_to_email ? escapeHtml(repName(d.assigned_to_email)) : ''].filter(Boolean).map(m => `<span>${m}</span>`).join('');
   return `<button type="button" class="board-card cal-card" data-id="${escapeHtml(d.id)}" style="--card-color:${color}">
-    <div class="bc-outcome"><span class="tag-dot" style="background:${color}"></span>Survey</div>
+    <div class="bc-outcome"><span class="tag-dot" style="background:${color}"></span>Survey${calData.surveyTimes?.[d.id] ? ` <span class="cal-time">${shortTime(calData.surveyTimes[d.id])}</span>` : ''}</div>
+    <div class="bc-name">${escapeHtml(d.customer_name || 'Unnamed lead')}</div>
+    <div class="bc-meta">${meta}</div>
+    ${flag}
+  </button>`;
+}
+
+// A meeting (usually a Pockla call) on the calendar, in the "Meeting booked" blue.
+const CAL_MEETING_OFF = ['No Answer', 'Left Message', 'Follow Up'];   // logged after it was booked: back to chasing, so it isn't happening then
+function calMeetingCardHtml(d, dateKey, todayKey) {
+  const cfg = CONTACT_OUTCOME['Meeting Booked'];
+  const stillBooked = d.latest_outcome === 'Meeting Booked';
+  let flag = '';
+  if (dateKey < todayKey) {
+    flag = stillBooked ? '<div class="cal-flag late">Date passed, nothing logged since</div>'
+      : `<div class="cal-flag ok">Now: ${escapeHtml(CONTACT_OUTCOME[d.latest_outcome]?.label || d.latest_outcome || '')}</div>`;
+  }
+  const meta = [d.postcode ? escapeHtml(d.postcode) : '', d.assigned_to_email ? escapeHtml(repName(d.assigned_to_email)) : 'Unassigned',
+    originLabel(leadOriginKey(d)) ? escapeHtml(originLabel(leadOriginKey(d))) : ''].filter(Boolean).map(m => `<span>${m}</span>`).join('');
+  const time = shortTime(calData.meetingTimes?.[d.id]);
+  return `<button type="button" class="board-card cal-card" data-id="${escapeHtml(d.id)}" style="--card-color:${cfg.color}">
+    <div class="bc-outcome"><span class="tag-dot" style="background:${cfg.color}"></span>Meeting${time ? ` <span class="cal-time">${time}</span>` : ''}</div>
     <div class="bc-name">${escapeHtml(d.customer_name || 'Unnamed lead')}</div>
     <div class="bc-meta">${meta}</div>
     ${flag}
@@ -1596,6 +1739,8 @@ async function renderLeadsCalendar(leads) {
   leads.forEach(d => {
     const closed = typeof CONTACT_OUTCOME[d.latest_outcome]?.stage === 'string';   // cancelled / lost / not now
     if (closed) return;
+    const meetingDay = calData.meetings?.[d.id];
+    if (meetingDay && (meetingDay < todayKey || !CAL_MEETING_OFF.includes(d.latest_outcome))) put(meetingDay, d, 'meeting');
     put(calData.surveys?.[d.id], d, 'survey');
     put(calData.dates[d.id], d, 'install');
   });
@@ -1607,11 +1752,13 @@ async function renderLeadsCalendar(leads) {
     <div class="cal-week">
       <div class="cal-week-label">${weekNames ? weekNames[w] : 'Week of'}<small>${fmt(days[0].day, { day: 'numeric', month: 'short' })}</small></div>
       ${days.map(({ day, key }, i) => {
-        const items = byDay[key] || [];
+        // Timed meetings and surveys first, in time order.
+        const at = ({ d, kind }) => (kind === 'meeting' ? calData.meetingTimes?.[d.id] : kind === 'survey' ? calData.surveyTimes?.[d.id] : '') || '99';
+        const items = (byDay[key] || []).sort((a, b) => at(a).localeCompare(at(b)));
         items.forEach(({ d }) => { if (!shown.includes(d.id)) shown.push(d.id); });
         return `<div class="cal-day${i >= 5 ? ' weekend' : ''}${key === todayKey ? ' today' : ''}">
           <div class="cal-day-h">${fmt(day, { weekday: 'short', day: 'numeric' })}${key === todayKey ? ' · Today' : ''}</div>
-          ${items.map(({ d, kind }) => kind === 'survey' ? calSurveyCardHtml(d, key, todayKey) : calCardHtml(d, key, todayKey)).join('')}
+          ${items.map(({ d, kind }) => kind === 'meeting' ? calMeetingCardHtml(d, key, todayKey) : kind === 'survey' ? calSurveyCardHtml(d, key, todayKey) : calCardHtml(d, key, todayKey)).join('')}
         </div>`;
       }).join('')}
     </div>`).join('');
@@ -1624,13 +1771,13 @@ async function renderLeadsCalendar(leads) {
   el.innerHTML = `<div class="cal-wrap">
     <div>
       <div class="cal-nav">
-        <span class="cal-range">Installs and surveys · ${escapeHtml(rangeText)}</span>
+        <span class="cal-range">Meetings, surveys and installs · ${escapeHtml(rangeText)}</span>
         <button class="btn-secondary" type="button" data-cal-move="-1">‹ Earlier</button>
         <button class="btn-secondary" type="button" data-cal-move="0" ${calWeekOffset === 0 ? 'disabled' : ''}>Today</button>
         <button class="btn-secondary" type="button" data-cal-move="1">Later ›</button>
       </div>
       <div class="cal-scroll">${weeksHtml}</div>
-      ${shown.length ? '' : '<div class="board-empty">No installs or surveys booked in these four weeks.</div>'}
+      ${shown.length ? '' : '<div class="board-empty">Nothing booked in these four weeks.</div>'}
     </div>
     <section class="cal-side">
       <div class="board-col-h">Needs an install date<span class="board-col-count">${unscheduled.length}</span></div>
@@ -1936,7 +2083,7 @@ async function loadActivity(prospectId) {
   list.innerHTML = '<li class="doc-empty" style="padding-left:34px">Loading…</li>';
   const [contactsRes, enquiriesRes, auditRes, emailLogRes, leadEmailsRes, supplierRes] = await Promise.all([
     db.from('prospect_contacts')
-      .select('id, prospect_id, employee, outcome, notes, next_action, follow_up_date, contacted_at')
+      .select('id, prospect_id, employee, outcome, notes, next_action, follow_up_date, appointment_time, contacted_at')
       .eq('prospect_id', prospectId)
       .order('contacted_at', { ascending: false }),
     db.from('website_enquiries')
@@ -2085,7 +2232,7 @@ async function fetchOpenEmailSuggestionLeadIds() {
 
 function contactItemHtml(c) {
   const cfg = CONTACT_OUTCOME[c.outcome] || { color: '#999', label: c.outcome };
-  const date = c.follow_up_date ? `<div class="clog-next">${escapeHtml(cfg.dateLabel || 'Date')}: ${formatShortDate(c.follow_up_date)}</div>` : '';
+  const date = c.follow_up_date ? `<div class="clog-next">${escapeHtml(cfg.dateLabel || 'Date')}: ${formatShortDate(c.follow_up_date)}${c.appointment_time ? ' at ' + shortTime(c.appointment_time) : ''}</div>` : '';
   const notes = c.notes ? `<div class="clog-notes">${escapeHtml(c.notes)}</div>` : '';
   const nextAction = c.next_action ? `<div class="clog-notes">Next: ${escapeHtml(c.next_action)}</div>` : '';
   return `<li><span class="tl-dot" style="background:${cfg.color}"></span>
@@ -2281,7 +2428,7 @@ function subscribeToLead(leadId) {
       if (currentLead?.id !== leadId) return;
       currentLead.latest_outcome = c.outcome;
       const listRow = allLeads.find(l => l.id === leadId);
-      if (listRow) { listRow.latest_outcome = c.outcome; listRow.latest_contact = c; applyListDate(listRow, c); }
+      if (listRow) { listRow.latest_outcome = c.outcome; listRow.latest_contact = c; applyListDate(listRow, c); bumpActivity(listRow, c.contacted_at); }
       document.getElementById('lead-status-sub').innerHTML = statusBadgeHtml(c.outcome);
       renderInstallChecklist();
       loadLeadDocuments(leadId);   // MCS paperwork box appears once the job is Won
@@ -2344,13 +2491,18 @@ function subscribeToLeadsList() {
       row.latest_outcome = c.outcome;
       row.latest_contact = c;
       applyListDate(row, c);
+      bumpActivity(row, c.contacted_at);
+      if (c.outcome === 'Meeting Booked' || c.outcome === 'Survey Booked') calData = null;   // new date for the calendar
       renderSidebarFilters();
       renderLeadsTable();
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'lead_emails' }, ({ new: m }) => {
       if (!m?.prospect_id) return;
+      const emailRow = allLeads.find(l => l.id === m.prospect_id);
+      const before = emailRow?.last_activity_at;
+      bumpActivity(emailRow, m.sent_at);
       if (m.suggestion_status === 'open') openSuggestionLeadIds.add(m.prospect_id);
-      else if (currentLead?.id !== m.prospect_id) return;   // the lead page re-checks its own lead
+      else if (currentLead?.id !== m.prospect_id && emailRow?.last_activity_at === before) return;   // the lead page re-checks its own lead
       renderLeadsTable();
     })
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'prospects', filter: 'source=eq.manual' }, ({ new: p }) => {
@@ -4354,6 +4506,7 @@ async function openLeadDocument(linkEl) {
   });
 })();
 
+const TIMED_OUTCOMES = ['Meeting Booked', 'Survey Booked'];   // can carry a time (appointment_time, 081)
 document.getElementById('cm-outcome').addEventListener('change', e => {
   const group = document.getElementById('cm-followup-date-group');
   const cfg = CONTACT_OUTCOME[e.target.value];
@@ -4380,6 +4533,7 @@ document.getElementById('cm-outcome').addEventListener('change', e => {
   if (cfg && cfg.requiresDate) {
     group.style.display = 'block';
     document.getElementById('cm-followup-date-label').textContent = cfg.dateLabel || 'Date';
+    document.getElementById('cm-time-group').style.display = TIMED_OUTCOMES.includes(e.target.value) ? '' : 'none';
     const input = document.getElementById('cm-followup-date');
     input.min = localDateStr(new Date());
     // Pre-fill with this outcome's default, unless the rep already picked
@@ -4410,6 +4564,7 @@ function openContactModal(prospectId, prospectName) {
   document.getElementById('cm-outcome').value = '';
   document.getElementById('cm-followup-date-group').style.display = 'none';
   document.getElementById('cm-followup-date').value = '';
+  document.getElementById('cm-time').value = '';
   document.getElementById('cm-followup-date').dataset.auto = '';
   document.getElementById('cm-next-hint').style.display = 'none';
   document.getElementById('cm-email-opt').style.display = 'none';
@@ -4442,6 +4597,7 @@ document.getElementById('cm-submit').addEventListener('click', async () => {
   const employee = document.getElementById('cm-employee').value.trim();
   const outcome = document.getElementById('cm-outcome').value;
   const followUpDate = document.getElementById('cm-followup-date').value;
+  const appointmentTime = TIMED_OUTCOMES.includes(outcome) ? document.getElementById('cm-time').value : '';
   const notes = document.getElementById('cm-notes').value.trim();
   const nextAction = document.getElementById('cm-next-action').value.trim();
 
@@ -4476,7 +4632,8 @@ document.getElementById('cm-submit').addEventListener('click', async () => {
     notes: notes || null,
     next_action: nextAction || null,
     follow_up_date: CONTACT_OUTCOME[outcome].requiresDate ? (followUpDate || null) : null,
-  }]).select('id, outcome, contacted_at, follow_up_date').single();
+    appointment_time: appointmentTime || null,
+  }]).select('id, outcome, contacted_at, follow_up_date, appointment_time').single();
 
   btn.disabled = false; btn.textContent = 'Save log';
   if (error) { alert('Failed to save: ' + error.message); return; }
@@ -4494,7 +4651,7 @@ document.getElementById('cm-submit').addEventListener('click', async () => {
   // with contacted_at defaulting to now()), so its outcome becomes the new
   // status without waiting on a re-fetch.
   const row = allLeads.find(l => l.id === prospectId);
-  if (row) { row.latest_outcome = outcome; row.latest_contact = insertedContact || { outcome, contacted_at: new Date().toISOString(), follow_up_date: null }; applyListDate(row, row.latest_contact); }
+  if (row) { row.latest_outcome = outcome; row.latest_contact = insertedContact || { outcome, contacted_at: new Date().toISOString(), follow_up_date: null }; applyListDate(row, row.latest_contact); bumpActivity(row, row.latest_contact.contacted_at); if (appointmentTime || outcome === 'Meeting Booked' || outcome === 'Survey Booked') calData = null; }
   renderSidebarFilters();
   renderLeadsTable();
   if (currentLead && currentLead.id === prospectId) {
@@ -5067,12 +5224,14 @@ async function refreshLeadsList() {
   calData = null;   // the calendar refetches install dates/checklists too
   allLeads = await fetchLeads();
   const ids = allLeads.map(l => l.id);
-  const [outcomes, quotePrices, suggestionIds] = await Promise.all([fetchLatestOutcomes(ids), fetchSelectedQuotePrices(ids), fetchOpenEmailSuggestionLeadIds()]);
+  const [outcomes, quotePrices, suggestionIds, activity] = await Promise.all([fetchLatestOutcomes(ids), fetchSelectedQuotePrices(ids), fetchOpenEmailSuggestionLeadIds(), fetchLastActivity(), loadPocklaWarnings()]);
   openSuggestionLeadIds = suggestionIds;
   allLeads.forEach(l => {
     l.latest_outcome = outcomes[l.id]?.outcome || null;
     l.latest_contact = outcomes[l.id] || null;
     l.meeting_date = outcomes[l.id]?.meeting_date || null;
+    l.meeting_time = outcomes[l.id]?.meeting_time || null;
+    l.last_activity_at = activity[l.id] || null;
     l.install_date = outcomes[l.id]?.install_date || null;
     l.selected_quote_price = quotePrices[l.id] ?? null;
   });
