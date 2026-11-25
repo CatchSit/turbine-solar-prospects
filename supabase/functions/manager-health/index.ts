@@ -39,7 +39,7 @@ const SECRETS: Record<string, string[]> = {
 const FUNCTIONS = [
   'solar-enrichment', 'company-lookup', 'send-to-install-hub', 'notify-assignment',
   'sms-scheduler', 'sms-inbound', 'contact-enrichment', 'ingest-enquiry',
-  'supplier-lead', 'mail-sync', 'marketing-analytics', 'pockla-mail',
+  'supplier-lead', 'mail-sync', 'marketing-analytics', 'pockla-mail', 'pockla-confirm',
 ]
 
 const SITE = 'https://www.turbineenergyuk.co.uk'

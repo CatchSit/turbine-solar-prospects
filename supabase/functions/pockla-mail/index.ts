@@ -7,9 +7,9 @@
 // Greg's rules: only emails that arrive after switch-on; leads land
 // unassigned, from "Pockla - Solar"; logged as Meeting Booked with the date
 // and time; a lead already in the CRM is logged against, not created again;
-// the customer gets a confirmation from info@ (pockla_import_state.
-// email_enabled, off until he has approved the wording). Cancellations and
-// reschedules are done by hand.
+// the customer is NOT emailed here: the booking waits in the CRM until a
+// manager has checked we're free and presses Confirm call (pockla-confirm).
+// Cancellations and reschedules are done by hand.
 //
 // Body options: {"dry_run": true} checks the latest emails and saves
 // nothing (no customer details returned); {"preview_to":
@@ -19,6 +19,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { POCKLA_SENDER, POCKLA_SUBJECT, parseAppointment, senderVerified, confirmationEmail, londonNow, clock, type Appointment } from '../_shared/pockla-email.ts'
+import { sendFromInfo } from '../_shared/brevo.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -33,7 +34,6 @@ const MAILBOX = 'greg@turbineenergyuk.co.uk'
 const ORIGIN_NAME = 'Pockla - Solar'
 const EMPLOYEE = 'Pockla (automatic)'
 const MAX_PER_RUN = 20
-const MAX_EMAILS_PER_DAY = 20       // confirmations; a stop if something goes wrong
 const STUCK_AFTER_MINUTES = 15
 
 const json = (body: unknown, status = 200) =>
@@ -121,19 +121,6 @@ async function geocode(postcode: string) {
   } catch { return null }
 }
 
-// Returns null when sent, or what went wrong.
-async function sendBrevo(to: string, toName: string, mail: { subject: string; text: string; html: string }): Promise<string | null> {
-  const r = await fetch('https://api.brevo.com/v3/smtp/email', {
-    method: 'POST', headers: { 'api-key': BREVO_API_KEY!, 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({
-      sender: { email: 'info@turbineenergyuk.co.uk', name: 'Turbine Energy' }, replyTo: { email: 'info@turbineenergyuk.co.uk', name: 'Turbine Energy' },
-      to: [{ email: to, name: toName }], subject: mail.subject, textContent: mail.text, htmlContent: mail.html,
-    }),
-    signal: AbortSignal.timeout(20000),
-  })
-  return r.ok ? null : `Brevo ${r.status}`
-}
-
 // Outcomes a Pockla booking may move on to Meeting Booked. Anything further
 // along (quoted, won, closed) is left where it is.
 const EARLY = new Set(['No Answer', 'Left Message', 'Follow Up', 'Info Sent', 'Meeting Booked'])
@@ -165,7 +152,7 @@ async function claim(m: Msg): Promise<ImportRow | null> {
 }
 
 // Throws when it should be tried again on the next run.
-async function importOne(token: string, listed: Msg, originId: string, emailEnabled: boolean): Promise<string> {
+async function importOne(token: string, listed: Msg, originId: string): Promise<string> {
   const row = await claim(listed)
   if (!row) return 'already done'
   const m = await fullMessage(token, listed.id)
@@ -184,7 +171,7 @@ async function importOne(token: string, listed: Msg, originId: string, emailEnab
     await save(row.id, { status: 'failed', error: (e as Error).message.slice(0, 300), web_link: m.webLink })
     return 'failed'
   }
-  await save(row.id, { reference: a.reference, appointment_date: a.date, appointment_time: a.time, web_link: m.webLink })
+  await save(row.id, { reference: a.reference, appointment_date: a.date, appointment_time: a.time, outside_hours: a.outsideHours, web_link: m.webLink })
 
   // The same booking sent twice: keep the first.
   const { data: earlier, error: earlierErr } = await db.from('pockla_imports').select('id')
@@ -232,7 +219,7 @@ async function importOne(token: string, listed: Msg, originId: string, emailEnab
     const current = latest?.[0]?.outcome ?? null
     if (!current || EARLY.has(current)) {
       const notes = [
-        a.outsideHours ? 'OUTSIDE SURVEY HOURS: Pockla ask us to rebook this when we call. No confirmation email sent.' : '',
+        a.outsideHours ? 'OUTSIDE SURVEY HOURS: Pockla ask us to rebook this when we call.' : '',
         `Pockla appointment ${a.reference}, ${clock(a.time)}.`, about.join('. '),
       ].filter(Boolean).join('\n')
       const { data, error } = await db.from('prospect_contacts').insert({
@@ -246,35 +233,8 @@ async function importOne(token: string, listed: Msg, originId: string, emailEnab
   }
   const booked = !!contactId
 
-  // 4. The customer's confirmation. At most once: marked before sending, so
-  // a run cut off here never sends it again.
-  if (!row.email_status) {
-    const { count } = await db.from('pockla_imports').select('id', { count: 'exact', head: true })
-      .eq('email_status', 'sent').gte('updated_at', new Date(Date.now() - 86400000).toISOString())
-    let emailStatus = !emailEnabled ? 'off'
-      : !isNew || !booked ? 'not sent: already in the CRM'
-      : a.outsideHours ? 'not sent: outside survey hours'
-      : !a.email ? 'not sent: no email address'
-      : `${a.date}T${a.time}` <= londonNow() ? 'not sent: time already passed'
-      : !BREVO_API_KEY ? 'failed: BREVO_API_KEY not set'
-      : (count ?? MAX_EMAILS_PER_DAY) >= MAX_EMAILS_PER_DAY ? 'failed: daily limit reached'
-      : 'sending'
-    await save(row.id, { email_status: emailStatus })
-    if (emailStatus === 'sending') {
-      const mail = confirmationEmail(a)
-      let problem: string | null
-      try { problem = await sendBrevo(a.email!, a.name, mail) } catch { problem = 'no answer from Brevo, check before resending' }
-      emailStatus = problem ? `failed: ${problem}` : 'sent'
-      await save(row.id, { email_status: emailStatus })
-      if (!problem) {
-        const { error } = await db.from('email_log').insert({
-          prospect_id: prospectId, related_contact_id: contactId, email_type: 'meeting_confirm', sequence_no: 1,
-          status: 'sent', to_email: a.email, subject: mail.subject, created_by_email: 'info@turbineenergyuk.co.uk',
-        })
-        if (error) console.error('pockla-mail: email_log', error.message)
-      }
-    }
-  }
+  // 4. Wait for a manager to confirm it (pockla-confirm sends the email)
+  if (!row.email_status) await save(row.id, { email_status: booked ? 'awaiting' : 'not sent: already past the meeting stage' })
   await save(row.id, { status: 'done', error: booked ? null : 'This lead is past the meeting stage, so its stage was left alone. Check the appointment.' })
   return isNew ? 'created' : 'matched'
 }
@@ -289,7 +249,7 @@ Deno.serve(async (req) => {
     if (!/^[a-z0-9._-]+@turbineenergyuk\.co\.uk$/i.test(body.preview_to)) return json({ error: 'Previews only go to Turbine addresses' }, 400)
     if (!BREVO_API_KEY) return json({ error: 'BREVO_API_KEY not set' }, 503)
     const soon = londonNow(new Date(Date.now() + 2 * 86400000)).slice(0, 10)
-    const problem = await sendBrevo(body.preview_to, 'Preview', confirmationEmail({ name: 'Jane Example', phone: '07700 900123', date: soon, time: '13:30' }))
+    const problem = await sendFromInfo(body.preview_to, 'Preview', confirmationEmail({ name: 'Jane Example', phone: '07700 900123', date: soon, time: '13:30' }))
     return json(problem ? { error: problem } : { ok: true, sent: 'preview' }, problem ? 502 : 200)
   }
 
@@ -319,7 +279,7 @@ Deno.serve(async (req) => {
     let through: string = state.synced_through, lastError: string | null = null
     for (const m of listed) {
       try {
-        results.push(await importOne(token, m, origin.id, state.email_enabled))
+        results.push(await importOne(token, m, origin.id))
       } catch (e) {
         lastError = (e as Error).message.slice(0, 300)
         console.error('pockla-mail', lastError)

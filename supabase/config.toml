@@ -53,3 +53,6 @@ verify_jwt = true
 # session. Authenticity comes from the x-sync-secret header instead
 # (MAIL_SYNC_SECRET).
 verify_jwt = false
+
+[functions.pockla-confirm]
+verify_jwt = true

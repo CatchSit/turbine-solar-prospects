@@ -108,27 +108,49 @@ export function londonNow(now = new Date()): string {
 
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string))
 
+// Branded like the website's own confirmation email (te-estimate-handler.php),
+// but on a white header: the logo's lettering is dark and vanishes on dark green.
+// Tables and inline styles only, so it holds up in Outlook. The plain text
+// version says the same thing. Wording approved by Greg 2026-11-25.
+const LOGO = 'https://www.turbineenergyuk.co.uk/wordpress/wp-content/uploads/2023/06/Turbine-Energy-logo-resized2.png'
+const FONT = 'font-family:Arial,Helvetica,sans-serif;'
+
 export function confirmationEmail(a: Pick<Appointment, 'name' | 'phone' | 'date' | 'time'>) {
   const when = `${longDate(a.date)} at ${clock(a.time)}`
   const onNumber = a.phone ? `We'll call you on ${a.phone}.` : `We'll call you at that time.`
-  const before = [
-    `Hi ${firstName(a.name)},`,
-    `Thank you for booking a call with us about solar for your home. Your call is confirmed for:`,
-  ]
-  const after = [
-    `${onNumber} We'll talk about your home and how you use electricity, and what a system could look like for you. There's no obligation.`,
-    `If you can, please have a recent electricity bill to hand. Knowing how much you use in a year (in kWh) helps us give you a more accurate estimate.`,
-    `If the time no longer suits, just reply to this email or call us on 01302 898508 (Monday to Friday, 8:30am to 5:30pm) and we'll rearrange.`,
-    `We look forward to speaking to you.`,
-  ]
+  const hi = `Hi ${firstName(a.name)},`
+  const intro = `Thank you for booking a call with us about solar for your home. Your call is confirmed for:`
+  const talk = `${onNumber} We'll talk about your home and how you use electricity, and what a system could look like for you. There's no obligation.`
+  const bill = `If you can, please have a recent electricity bill to hand. Knowing how much you use in a year (in kWh) helps us give you a more accurate estimate.`
+  const change = `If the time no longer suits, just reply to this email or call us on 01302 898508 (Monday to Friday, 8:30am to 5:30pm) and we'll rearrange.`
+  const bye = `We look forward to speaking to you.`
   const sign = ['Kind regards,', 'Turbine Energy', '01302 898508', 'www.turbineenergyuk.co.uk']
-  const p = (s: string) => `<p style="margin:0 0 16px">${esc(s)}</p>`
+  const company = ['Turbine Marketing Ltd T/A Turbine Energy, Company No. 08530306', 'Wader Lodge, Back Lane, Cusworth, Doncaster, England DN5 7TR']
+
+  const p = (html: string, gap = 16) => `<p style="${FONT}font-size:15px;line-height:1.6;color:#374151;margin:0 0 ${gap}px">${html}</p>`
+  const tel = '<a href="tel:01302898508" style="color:#1F8A52;font-weight:bold;text-decoration:none;white-space:nowrap">01302 898508</a>'
+  const table = 'role="presentation" cellpadding="0" cellspacing="0" border="0"'
+  const html = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(when)}</title></head>` +
+    `<body style="margin:0;padding:0;background:#f4f6f3">` +
+    `<div style="display:none;max-height:0;overflow:hidden">Your call is confirmed for ${esc(when)}.</div>` +
+    `<table ${table} width="100%" style="background:#f4f6f3"><tr><td align="center" style="padding:28px 12px">` +
+    `<table ${table} width="560" style="width:100%;max-width:560px;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">` +
+    `<tr><td align="center" style="background:#ffffff;border-bottom:4px solid #2BA45E;padding:22px 24px 18px"><img src="${LOGO}" alt="Turbine Energy" width="140" height="80" style="display:block;width:140px;height:80px;border:0;${FONT}font-size:20px;font-weight:bold;color:#0C2A1E"></td></tr>` +
+    `<tr><td style="padding:32px 28px 28px">` +
+    `<p style="${FONT}font-size:12px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;color:#1F8A52;margin:0 0 12px">Call confirmed</p>` +
+    p(esc(hi)) + p(esc(intro)) +
+    `<table ${table} width="100%" style="margin:0 0 22px"><tr><td style="background:#EBF7F0;border-left:4px solid #2BA45E;border-radius:6px;padding:18px 20px">` +
+    `<p style="${FONT}font-size:20px;line-height:1.35;font-weight:bold;color:#111827;margin:0">${esc(longDate(a.date))}</p>` +
+    `<p style="${FONT}font-size:20px;line-height:1.35;font-weight:bold;color:#1F8A52;margin:2px 0 0">${esc(clock(a.time))}</p></td></tr></table>` +
+    p(esc(talk)) + p(esc(bill)) + p(esc(change).replace('01302 898508', tel)) + p(esc(bye)) +
+    p(`${sign[0]}<br><strong style="color:#111827">${sign[1]}</strong><br>${tel}<br><a href="https://www.turbineenergyuk.co.uk/" style="color:#1F8A52;text-decoration:none">${sign[3]}</a>`, 0) +
+    `</td></tr><tr><td style="background:#f4f6f3;border-top:1px solid #e5e7eb;padding:20px 28px">` +
+    `<p style="${FONT}font-size:12px;line-height:1.6;color:#6B7280;margin:0">${company.map(esc).join('<br>')}</p>` +
+    `</td></tr></table></td></tr></table></body></html>`
+
   return {
     subject: `Your call with Turbine Energy: ${when}`,
-    text: [...before, when, ...after, sign.join('\n')].join('\n\n'),
-    html: `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#1f2937;max-width:560px">` +
-      before.map(p).join('') +
-      `<p style="margin:0 0 16px;padding:14px 16px;background:#eef7f1;border-left:4px solid #2ba45e;font-size:17px;font-weight:bold">${esc(when)}</p>` +
-      after.map(p).join('') + `<p style="margin:0">${sign.map(esc).join('<br>')}</p></div>`,
+    text: [hi, intro, when, talk, bill, change, bye, sign.join('\n'), company.join('\n')].join('\n\n'),
+    html,
   }
 }

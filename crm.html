@@ -227,6 +227,19 @@ tbody tr:hover { background: var(--surface2); }
 .pockla-warn div + div { margin-top: 6px; }
 .pockla-warn a, .pockla-warn button { color: inherit; font: inherit; font-weight: 600; background: none; border: 0; padding: 0; margin-left: 8px; text-decoration: underline; cursor: pointer; }
 .cal-time { font-weight: 600; }
+/* Calls waiting to be confirmed (Greg 2026-11-25) */
+.pk-wait { margin: 10px 18px 0; border: 1px solid #bcd3f0; border-radius: 10px; background: #f3f8fe; }
+.pk-wait h3 { margin: 0; padding: 11px 14px 0; font-size: 14px; }
+.pk-wait .pk-sub { padding: 2px 14px 10px; font-size: 12.5px; color: var(--text2); }
+.pk-row { display: grid; grid-template-columns: minmax(150px, 1.1fr) auto minmax(170px, 1.4fr) auto; gap: 12px; align-items: center; padding: 10px 14px; border-top: 1px solid #d8e5f5; font-size: 13px; }
+.pk-who button { font: inherit; font-weight: 600; background: none; border: 0; padding: 0; color: var(--text); text-decoration: underline; cursor: pointer; text-align: left; }
+.pk-who small { display: block; color: var(--text2); }
+.pk-when { display: flex; gap: 6px; }
+.pk-when input { font: inherit; padding: 7px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); }
+.pk-note { font-size: 12.5px; color: var(--accentDk); }
+.pk-note.warn { color: #b45309; font-weight: 600; }
+.pk-acts { display: flex; gap: 8px; justify-content: flex-end; }
+@media (max-width: 1000px) { .pk-row { grid-template-columns: 1fr; } .pk-acts { justify-content: flex-start; } .pk-when { flex-wrap: wrap; } }
 #cm-time { width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface2); color: var(--text); font: inherit; }
 #cm-time-group { margin-top: 12px; }
 .timeline-scroll { max-height: 520px; overflow-y: auto; padding-right: 6px; overscroll-behavior: contain; }
@@ -610,6 +623,7 @@ tbody tr:hover { background: var(--surface2); }
             <button class="btn-primary" id="add-lead-btn">+ Add lead</button>
           </div>
         </div>
+        <div class="pk-wait" id="pockla-wait" style="display:none"></div>
         <div class="pockla-warn" id="pockla-warn" style="display:none"></div>
         <div class="board" id="leads-board" style="display:none"></div>
         <div id="leads-calendar" style="display:none"></div>
@@ -1461,6 +1475,130 @@ async function loadPocklaWarnings() {
   el.innerHTML = lines.join('');
   el.style.display = lines.length ? '' : 'none';
 }
+/* ── Calls waiting to be confirmed (083, pockla-confirm). Greg 2026-11-25:
+   check we're free before the customer is told it's confirmed. Managers
+   only. Confirm call emails the customer; a changed time is saved first.
+   The clash note looks at the CRM's own meetings and surveys, not Outlook. ── */
+const CALL_MINUTES = 30, SURVEY_MINUTES = 60;
+let pocklaWaiting = [], pocklaEmailsOn = false, pocklaBookings = [];
+const dayMinutes = t => { const m = /^(\d{2}):(\d{2})/.exec(t || ''); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+const callDay = iso => new Date(iso + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+
+async function loadPocklaWaiting() {
+  const el = document.getElementById('pockla-wait');
+  if (!isAdmin(currentUser)) { el.style.display = 'none'; return; }
+  const [{ data, error }, { data: state }] = await Promise.all([
+    db.from('pockla_imports').select('id, received_at, reference, appointment_date, appointment_time, prospect_id, is_new_lead, outside_hours, email_status')
+      .eq('email_status', 'awaiting').order('appointment_date').order('appointment_time').limit(100),
+    db.from('pockla_import_state').select('email_enabled').eq('id', 1).maybeSingle(),
+  ]);
+  if (error) { console.error('Failed to load calls to confirm:', error); el.style.display = 'none'; return; }
+  pocklaWaiting = data || [];
+  pocklaEmailsOn = !!state?.email_enabled;
+  if (!pocklaWaiting.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const days = [...new Set(allLeads.map(l => l.id))];
+  const { data: booked, error: bookedErr } = await db.from('prospect_contacts').select('prospect_id, outcome, follow_up_date, appointment_time, contacted_at')
+    .in('outcome', ['Meeting Booked', 'Survey Booked', 'Scheduled for Install']).in('prospect_id', days).order('contacted_at', { ascending: false });
+  if (bookedErr) console.error('Failed to load bookings for the clash check:', bookedErr);
+  const seen = new Set();
+  pocklaBookings = bookedErr ? null : (booked || []).filter(r => { const k = r.prospect_id + r.outcome; if (seen.has(k) || !r.follow_up_date) return false; seen.add(k); return true; });
+  renderPocklaWaiting();
+}
+
+// What else the CRM has that day, and whether it overlaps the call.
+function pocklaClash(prospectId, date, time) {
+  if (!pocklaBookings) return { warn: true, text: "Couldn't check the CRM for clashes. Check your calendar yourself." };
+  const start = dayMinutes(time);
+  const clashes = [], untimed = [];
+  pocklaBookings.forEach(r => {
+    if (r.prospect_id === prospectId || r.follow_up_date !== date) return;
+    const lead = allLeads.find(l => l.id === r.prospect_id);
+    if (!lead || typeof CONTACT_OUTCOME[lead.latest_outcome]?.stage === 'string') return;
+    if (r.outcome === 'Meeting Booked' && CAL_MEETING_OFF.includes(lead.latest_outcome)) return;
+    const kind = r.outcome === 'Survey Booked' ? 'survey' : r.outcome === 'Meeting Booked' ? 'meeting' : 'install';
+    const who = `${lead.customer_name || 'a lead'}${lead.assigned_to_email ? `, ${repName(lead.assigned_to_email)}` : ', unassigned'}`;
+    const at = dayMinutes(r.appointment_time);
+    if (kind === 'install') return;
+    if (at === null) { untimed.push(`${kind} (${who})`); return; }
+    if (start !== null && start < at + (kind === 'survey' ? SURVEY_MINUTES : CALL_MINUTES) && at < start + CALL_MINUTES) clashes.push(`${shortTime(r.appointment_time)} ${kind} (${who})`);
+  });
+  if (clashes.length) return { warn: true, text: `Clashes with ${clashes.join('; ')}.` };
+  if (untimed.length) return { warn: true, text: `Same day, no time set: ${untimed.join('; ')}.` };
+  return { warn: false, text: 'No other CRM meeting or survey near then. Check Outlook too.' };
+}
+function pocklaRowNote(r, date, time) {
+  if (!date || !time) return { warn: true, text: 'Pick a date and time.' };
+  const when = new Date(`${date}T${time}`);
+  if (when < new Date()) return { warn: true, text: 'This time has passed. Agree a new one with the customer.' };
+  if (r.outside_hours && date === r.appointment_date && time === (r.appointment_time || '').slice(0, 5)) return { warn: true, text: 'Outside your survey hours. Agree a new time with the customer, then change it here.' };
+  const clash = pocklaClash(r.prospect_id, date, time);
+  const mins = dayMinutes(time), day = when.getDay();
+  const ooh = day === 0 || day === 6 || mins < 510 || mins > 1050 ? ' Outside office hours.' : '';
+  return { warn: clash.warn || !!ooh, text: clash.text + ooh };
+}
+function pocklaLeadMeeting(r) {
+  // A person may have rebooked it since: the newest meeting on the lead wins.
+  const b = (pocklaBookings || []).find(x => x.prospect_id === r.prospect_id && x.outcome === 'Meeting Booked');
+  return { date: b?.follow_up_date || r.appointment_date || '', time: (b ? b.appointment_time || '' : r.appointment_time || '').slice(0, 5) };
+}
+function renderPocklaWaiting() {
+  const el = document.getElementById('pockla-wait');
+  el.innerHTML = `<h3>Calls waiting to be confirmed (${pocklaWaiting.length})</h3>
+    <div class="pk-sub">${pocklaEmailsOn ? "Check you're free, change the time if you've agreed a new one, then press Confirm call. The customer isn't emailed until you do." : 'Confirmation emails are switched off, so calls can\'t be confirmed from here yet.'}</div>` +
+    pocklaWaiting.map(r => {
+      const lead = allLeads.find(l => l.id === r.prospect_id);
+      const m = pocklaLeadMeeting(r);
+      const note = pocklaRowNote(r, m.date, m.time);
+      const closed = lead && typeof CONTACT_OUTCOME[lead.latest_outcome]?.stage === 'string';
+      const problem = !lead ? 'This lead has been deleted.' : closed ? 'This lead is closed.' : !lead.contact_email ? 'No email address. Ring them instead.' : '';
+      return `<div class="pk-row" data-pk="${escapeHtml(r.id)}">
+        <div class="pk-who">${lead ? `<button type="button" data-pk-act="open">${escapeHtml(lead.customer_name || 'Unnamed lead')}</button>` : '<b>Deleted lead</b>'}
+          <small>${escapeHtml([lead?.postcode, lead?.contact_phone, r.reference].filter(Boolean).join(' · '))}${r.is_new_lead === false ? ' · already in the CRM' : ''}</small></div>
+        <div class="pk-when"><input type="date" aria-label="Call date" value="${escapeHtml(m.date)}"><input type="time" aria-label="Call time" value="${escapeHtml(m.time)}"></div>
+        <div class="pk-note${problem || note.warn ? ' warn' : ''}">${escapeHtml(problem || note.text)}</div>
+        <div class="pk-acts"><button class="btn-primary" type="button" data-pk-act="confirm" ${pocklaEmailsOn && !problem ? '' : 'disabled'}>Confirm call</button><button class="btn-secondary" type="button" data-pk-act="skip">No email</button></div>
+      </div>`;
+    }).join('');
+  el.style.display = '';
+}
+document.getElementById('pockla-wait').addEventListener('input', e => {
+  const row = e.target.closest('[data-pk]');
+  const r = row && pocklaWaiting.find(x => x.id === row.dataset.pk);
+  if (!r) return;
+  const lead = allLeads.find(l => l.id === r.prospect_id);
+  if (!lead || !lead.contact_email) return;
+  const note = pocklaRowNote(r, row.querySelector('[type=date]').value, row.querySelector('[type=time]').value);
+  const noteEl = row.querySelector('.pk-note');
+  noteEl.textContent = note.text;
+  noteEl.classList.toggle('warn', note.warn);
+});
+document.getElementById('pockla-wait').addEventListener('click', async e => {
+  const btn = e.target.closest('[data-pk-act]');
+  const row = btn?.closest('[data-pk]');
+  const r = row && pocklaWaiting.find(x => x.id === row.dataset.pk);
+  if (!r) return;
+  const lead = allLeads.find(l => l.id === r.prospect_id);
+  if (btn.dataset.pkAct === 'open') { if (lead) openLeadDetail(lead); return; }
+  const action = btn.dataset.pkAct;
+  const date = row.querySelector('[type=date]').value, time = row.querySelector('[type=time]').value;
+  if (action === 'confirm') {
+    if (!date || !time) { alert('Pick a date and time first.'); return; }
+    const note = pocklaRowNote(r, date, time);
+    if (!confirm(`Email ${lead.customer_name || 'the customer'} at ${lead.contact_email} to confirm the call on ${callDay(date)} at ${shortTime(time)}?${note.warn ? '\n\nNote: ' + note.text : ''}`)) return;
+  } else if (!confirm(`Take ${lead?.customer_name || 'this booking'} off this list without emailing them?`)) return;
+  row.querySelectorAll('button, input').forEach(x => { x.disabled = true; });
+  btn.textContent = action === 'confirm' ? 'Sending…' : 'Saving…';
+  const { data, error } = await db.functions.invoke('pockla-confirm', { body: { import_id: r.id, action, date, time } });
+  if (error || data?.error) {
+    let reason = data?.error || '';
+    if (!reason && error?.context?.json) { try { reason = (await error.context.json()).error; } catch (x) { /* no readable reason */ } }
+    alert(reason || "Couldn't reach the CRM, so check the lead's Activity before trying again.");
+  } else {
+    showToast(action === 'confirm' ? `Confirmation emailed to ${lead.customer_name || 'the customer'}.` : 'Taken off the list. No email was sent.');
+  }
+  await refreshLeadsList();
+});
+
 document.getElementById('pockla-warn').addEventListener('click', async e => {
   const leadBtn = e.target.closest('[data-pockla-lead]');
   if (leadBtn) { const lead = allLeads.find(l => l.id === leadBtn.dataset.pocklaLead); if (lead) openLeadDetail(lead); return; }
@@ -2482,6 +2620,7 @@ function subscribeToLead(leadId) {
 // Leads list: keep everyone's Stage column current and pick up leads
 // other people add, without a page refresh.
 let listChannel = null;
+let pocklaWaitTimer = null;
 function subscribeToLeadsList() {
   if (!db.channel || listChannel) return;
   listChannel = db.channel('leads-list')
@@ -2492,7 +2631,11 @@ function subscribeToLeadsList() {
       row.latest_contact = c;
       applyListDate(row, c);
       bumpActivity(row, c.contacted_at);
-      if (c.outcome === 'Meeting Booked' || c.outcome === 'Survey Booked') calData = null;   // new date for the calendar
+      if (c.outcome === 'Meeting Booked' || c.outcome === 'Survey Booked') {
+        calData = null;   // new date for the calendar
+        clearTimeout(pocklaWaitTimer);
+        pocklaWaitTimer = setTimeout(() => { if (!document.activeElement?.closest?.('#pockla-wait')) loadPocklaWaiting(); }, 4000);
+      }
       renderSidebarFilters();
       renderLeadsTable();
     })
@@ -5237,6 +5380,7 @@ async function refreshLeadsList() {
   });
   renderSidebarFilters();
   renderLeadsTable();
+  loadPocklaWaiting();
 }
 
 // Manual reload for the list page - Realtime covers new leads and contact
