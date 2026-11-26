@@ -2398,7 +2398,11 @@ function waMeetingText(lead, c) {
     `Kind regards,\nTurbine Energy`,
   ].join('\n\n');
 }
+// Hidden 2026-11-26 (Greg): wa.me can't guarantee the office number sends it.
+// Back on (true) once sending goes through a Meta partner from 01302 898508.
+const WA_BUTTON_ON = false;
 function waMeetingButton(c) {
+  if (!WA_BUTTON_ON) return '';
   if (c.outcome !== 'Meeting Booked' || !c.follow_up_date || !currentLead) return '';
   if (c.follow_up_date < new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' })) return '';
   const to = waMobile(currentLead.contact_phone);
