@@ -400,6 +400,10 @@ tbody tr:hover { background: var(--surface2); }
 .clog-meta { color: var(--text3); font-size: 11px; }
 .clog-notes { color: var(--text2); font-size: 12.5px; margin-top: 5px; white-space: pre-wrap; }
 .clog-next { color: var(--text3); font-size: 11.5px; margin-top: 3px; }
+.wa-btn { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; padding: 4px 10px; border-radius: 999px;
+  background: #25D366; color: #fff; font-size: 12px; font-weight: 600; text-decoration: none; }
+.wa-btn:hover { background: #1da851; }
+.wa-btn svg { width: 13px; height: 13px; }
 .outcome-tag { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px 3px 6px; border-radius: 100px; font-size: 11px; }
 .outcome-tag .dot { width: 6px; height: 6px; border-radius: 50%; }
 .doc-upload { display: flex; gap: 8px; align-items: center; padding-top: 10px; border-top: 1px solid var(--border); margin-top: 8px; }
@@ -2364,6 +2368,47 @@ async function fetchOpenEmailSuggestionLeadIds() {
   return new Set((data || []).map(r => r.prospect_id));
 }
 
+// "Send on WhatsApp" on an upcoming Meeting Booked (Greg 2026-11-26, option A):
+// opens WhatsApp with the call confirmation typed out; the person chooses when
+// to send it. Nothing is sent or logged by the CRM. UK mobiles only.
+function waMobile(phone) {
+  let d = String(phone || '').replace(/[^\d+]/g, '');
+  if (d.startsWith('+')) d = d.slice(1);
+  if (d.startsWith('00')) d = d.slice(2);
+  if (/^07\d{9}$/.test(d)) return '44' + d.slice(1);
+  if (/^447\d{9}$/.test(d)) return d;
+  return null;
+}
+function waFirstName(name) {
+  const w = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!w.length) return '';
+  const cap = x => x.charAt(0).toUpperCase() + x.slice(1);
+  if (/^(mr|mrs|ms|miss|dr)\.?$/i.test(w[0]) && w.length > 1) return `${cap(w[0])} ${cap(w[w.length - 1])}`;
+  return cap(w[0]);
+}
+function waMeetingText(lead, c) {
+  const day = new Date(c.follow_up_date + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
+  const when = c.appointment_time ? `${day} at ${shortTime(c.appointment_time)}` : day;
+  const first = waFirstName(lead.customer_name);
+  return [
+    `Hi${first ? ' ' + first : ''}, this is Turbine Energy. Thank you for booking a call with us about ${lead.product === 'ashp' ? 'a heat pump' : 'solar'} for your home.`,
+    `Your call is confirmed for ${when}. We'll call you on ${lead.contact_phone}.`,
+    `If you can, please have a recent electricity bill to hand. Knowing how much you use in a year (in kWh) helps us give you a more accurate estimate.`,
+    `If the time no longer suits, just reply here or call us on 01302 898508 (Monday to Friday, 8:30am to 5:30pm) and we'll rearrange.`,
+    `Kind regards,\nTurbine Energy`,
+  ].join('\n\n');
+}
+function waMeetingButton(c) {
+  if (c.outcome !== 'Meeting Booked' || !c.follow_up_date || !currentLead) return '';
+  if (c.follow_up_date < new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' })) return '';
+  const to = waMobile(currentLead.contact_phone);
+  if (!to) return '';
+  const href = `https://wa.me/${to}?text=${encodeURIComponent(waMeetingText(currentLead, c))}`;
+  return `<a class="wa-btn" href="${escapeHtml(href)}" target="_blank" rel="noopener" title="Opens WhatsApp with the call confirmation typed out. You choose when to send it.">` +
+    '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm5.3 14.2c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.4-.7-2.8-1.1-4.6-4-4.8-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2.1 1-2.4c.3-.3.6-.3.8-.3h.6c.2 0 .4 0 .6.5l.8 2c.1.2.1.4 0 .5l-.4.6-.4.4c-.1.1-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.3 2.4 1.5.3.1.5.1.6-.1l.9-1c.2-.3.4-.2.6-.1l1.9.9c.3.1.5.2.5.3.1.2.1.7-.1 1.4z"/></svg>' +
+    'Send on WhatsApp</a>';
+}
+
 function contactItemHtml(c) {
   const cfg = CONTACT_OUTCOME[c.outcome] || { color: '#999', label: c.outcome };
   const date = c.follow_up_date ? `<div class="clog-next">${escapeHtml(cfg.dateLabel || 'Date')}: ${formatShortDate(c.follow_up_date)}${c.appointment_time ? ' at ' + shortTime(c.appointment_time) : ''}</div>` : '';
@@ -2373,7 +2418,7 @@ function contactItemHtml(c) {
     <div class="tl-top">
       <span class="outcome-tag" style="background:${cfg.color}22;color:${cfg.color}"><span class="dot" style="background:${cfg.color}"></span>${escapeHtml(cfg.label)}</span>
       <span class="clog-meta">${escapeHtml(c.employee || '')} · ${formatDateTime(c.contacted_at)}</span>
-    </div>${notes}${nextAction}${date}</li>`;
+    </div>${notes}${nextAction}${date}${waMeetingButton(c)}</li>`;
 }
 
 function enquiryItemHtml(r) {
