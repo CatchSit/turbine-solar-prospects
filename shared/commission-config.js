@@ -37,11 +37,17 @@ const COMMISSION_TYPE = { self_employed: "Self-employed", employed: "Employed" }
 function commissionJobRef(id) { return id ? 'TE-' + String(id).slice(0, 8).toUpperCase() : ''; }
 
 // Earned = the customer has paid ("Paid, job closed") and nothing has closed
-// the lead since. Any other later log changes nothing. Any order of contacts.
+// the lead since. Any order of contacts.
+// Greg 2026-11-27: "Paid, job closed" logged by mistake is put right by logging
+// an earlier won/install stage after it (e.g. "Installed"): the job is then not
+// paid. Matches commission_job_state in migration 089. Other later logs (a
+// call back, info sent, ...) change nothing.
+const COMMISSION_UNPAID_AGAIN = ['Converted', 'Contract Signed', 'DNO Submitted', 'DNO Approved', 'Scheduled for Install', 'Completed'];
 function isCommissionEarned(contacts) {
   const at = c => new Date(c.contacted_at).getTime();
   const now = Date.now() + 60000;
   const paid = Math.max(-1, ...contacts.filter(c => c.outcome === 'Job Closed' && at(c) <= now).map(at));
   if (paid < 0) return false;
-  return !contacts.some(c => ['lost', 'bad'].includes(CONTACT_OUTCOME[c.outcome]?.stage) && at(c) >= paid);
+  return !contacts.some(c => (['lost', 'bad'].includes(CONTACT_OUTCOME[c.outcome]?.stage)
+    || COMMISSION_UNPAID_AGAIN.includes(c.outcome)) && at(c) >= paid);
 }
