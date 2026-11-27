@@ -742,7 +742,7 @@ const QUOTE_COST_FIELDS = ['kit_price', 'scaffold_price', 'electrical_cost', 'ro
 async function loadPipelineData() {
   const [manual, contacts, options, checklists, enquiries, commissions, claimLines] = await Promise.all([
     fetchAll(() => db.from('prospects').select(LEAD_COLUMNS).eq('source', 'manual').is('deleted_at', null).order('id')),
-    fetchAll(() => db.from('prospect_contacts').select('prospect_id, outcome, contacted_at, follow_up_date').is('deleted_at', null).order('contacted_at', { ascending: false })),
+    fetchAll(() => db.from('prospect_contacts').select('prospect_id, outcome, contacted_at, follow_up_date, install_end_date').is('deleted_at', null).order('contacted_at', { ascending: false })),
     fetchAll(() => db.from('quote_options').select(`id, prospect_id, label, quote_price, is_selected, ${QUOTE_COST_FIELDS.join(', ')}`).is('deleted_at', null).order('id')),
     fetchAll(() => db.from('install_checklists').select('*').order('prospect_id')),
     fetchAll(() => db.from('website_enquiries').select('prospect_id, received_at, form, channel, is_new_lead, utm_campaign, gclid').order('received_at', { ascending: false })),
@@ -795,6 +795,7 @@ async function loadPipelineData() {
     // else the date mirrored from install-hub when the job was sent there.
     const scheduledContact = cs.find(c => c.outcome === 'Scheduled for Install' && c.follow_up_date);
     const installDate = scheduledContact?.follow_up_date || p.install_scheduled_date || null;
+    const installEnd = scheduledContact?.install_end_date || null;   // last day of a multi-day install (088)
     const completedAt = (cs.find(c => c.outcome === 'Completed') || cs.find(c => c.outcome === 'Job Closed'))?.contacted_at || null;
     // "Paid, job closed": the customer has paid. That's when commission is EARNED, not paid:
     // it's paid only once a manager marks the person's claim paid (migration 084).
@@ -812,7 +813,7 @@ async function loadPipelineData() {
     // with no scaffold needed shouldn't sit in "Needs attention" forever.
     const outstanding = installTasksFor(p.product).filter(t => !checklist?.[`${t.key}_done`] && !checklist?.[`${t.key}_na`]);
     const webEnquiries = enquiriesByLead[p.id] || [];
-    return { ...p, contacts: cs, latest, stage, value, valueOption, installDate, completedAt, closedAt, earned, claim, commission, commissionTo, commissionState, checklist, outstanding, webEnquiries, wonAt: wonContact?.contacted_at || null };
+    return { ...p, contacts: cs, latest, stage, value, valueOption, installDate, installEnd, completedAt, closedAt, earned, claim, commission, commissionTo, commissionState, checklist, outstanding, webEnquiries, wonAt: wonContact?.contacted_at || null };
   });
 }
 
@@ -976,7 +977,7 @@ function installPrepCard(leads) {
     const daysTo = l.installDate ? Math.round((new Date(l.installDate) - today) / 86400000) : null;
     const soon = daysTo != null && daysTo <= 7;
     const when = daysTo == null ? '<span class="muted">No install date</span>'
-      : `${fmtDate(l.installDate)}<div class="muted">${daysTo < 0 ? `${-daysTo} day${daysTo === -1 ? '' : 's'} ago` : daysTo === 0 ? 'Today' : `In ${daysTo} day${daysTo === 1 ? '' : 's'}`}</div>`;
+      : `${fmtDate(l.installDate)}${l.installEnd ? ` to ${fmtDate(l.installEnd)}` : ''}<div class="muted">${daysTo < 0 ? `${-daysTo} day${daysTo === -1 ? '' : 's'} ago` : daysTo === 0 ? 'Today' : `In ${daysTo} day${daysTo === 1 ? '' : 's'}`}</div>`;
     const needed = installTasksFor(l.product).length;
     const resolved = needed - l.outstanding.length; // done + N/A
     return `<tr><td><a href="${leadLink(l)}">${escapeHtml(leadName(l))}</a><div class="muted">${l.product === 'ashp' ? 'Heat pump' : 'Solar'}</div></td>
@@ -1035,7 +1036,7 @@ function installCell(l) {
   const lines = [];
   if (l.installDate) {
     const upcoming = new Date(l.installDate) >= today;
-    lines.push(`${fmtDate(l.installDate)}${upcoming && !isCompletedJob(l) ? '<div class="muted">Upcoming</div>' : ''}`);
+    lines.push(`${fmtDate(l.installDate)}${l.installEnd ? ` to ${fmtDate(l.installEnd)}` : ''}${upcoming && !isCompletedJob(l) ? '<div class="muted">Upcoming</div>' : ''}`);
   } else if (!isCompletedJob(l)) {
     lines.push('<span class="muted">Not booked</span>');
   } else {

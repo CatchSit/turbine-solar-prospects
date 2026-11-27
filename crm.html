@@ -250,6 +250,9 @@ tbody tr:hover { background: var(--surface2); }
 @media (max-width: 1000px) { .pk-row { grid-template-columns: 1fr; } .pk-acts { justify-content: flex-start; } .pk-when { flex-wrap: wrap; } }
 #cm-time { width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface2); color: var(--text); font: inherit; }
 #cm-time-group { margin-top: 12px; }
+#cm-end-date { width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface2); color: var(--text); font: inherit; }
+#cm-end-group { margin-top: 12px; }
+#cm-end-group small { display: block; color: var(--text3); font-size: 11.5px; margin-top: 4px; }
 .timeline-scroll { max-height: 520px; overflow-y: auto; padding-right: 6px; overscroll-behavior: contain; }
 .tl-dot { position: absolute; left: 5px; top: 4px; width: 14px; height: 14px; border-radius: 50%; border: 3px solid var(--surface); background: var(--text3); }
 .tl-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
@@ -906,6 +909,7 @@ tbody tr:hover { background: var(--surface2); }
         <label><span id="cm-followup-date-label">Date</span> <span class="required">*</span></label>
         <input type="date" id="cm-followup-date"/>
         <div id="cm-time-group" style="display:none"><label for="cm-time">Time (optional)</label><input type="time" id="cm-time"/></div>
+        <div id="cm-end-group" style="display:none"><label for="cm-end-date">Last day (optional)</label><input type="date" id="cm-end-date"/><small>For an install over more than one day. Leave blank for one day. Weekends are skipped on the calendar.</small></div>
       </div>
       <label class="cm-email-opt" id="cm-email-opt" style="display:none">
         <input type="checkbox" id="cm-email-open" checked/>
@@ -1097,7 +1101,7 @@ function statusBadgeHtml(outcome, dateLines = []) {
 // The dates shown inside the List view's status bubble (Greg, 2026-11-05).
 function leadStatusDates(d) {
   const meeting = formatShortDate(d.meeting_date);
-  const install = formatShortDate(d.install_date || d.install_scheduled_date);
+  const install = d.install_date ? installRangeText(d.install_date, d.install_end_date) : formatShortDate(d.install_scheduled_date);
   const time = shortTime(d.meeting_time);
   return [meeting && `Meeting: ${meeting}${time ? ' ' + time : ''}`, install && `Install: ${install}`].filter(Boolean);
 }
@@ -1114,7 +1118,27 @@ function applyListDate(row, contact) {
   const field = LIST_DATE_OUTCOMES[contact?.outcome];
   if (field && contact.follow_up_date) row[field] = contact.follow_up_date;
   if (field === 'meeting_date') row.meeting_time = contact.appointment_time || null;
+  if (field === 'install_date') row.install_end_date = contact.install_end_date || null;
 }
+// Installs over more than one day (Greg 2026-11-27, migration 088): the
+// first day is follow_up_date, the last day install_end_date. The working
+// days in between, Saturdays and Sundays skipped.
+function installDays(first, last) {
+  if (!first) return [];
+  const out = [];
+  const d = new Date(first + 'T12:00:00Z');
+  const end = new Date((last && last > first ? last : first) + 'T12:00:00Z');
+  for (let i = 0; d <= end && i < 120; i++, d.setUTCDate(d.getUTCDate() + 1)) {
+    const wd = d.getUTCDay();
+    if (wd !== 0 && wd !== 6) out.push(d.toISOString().slice(0, 10));
+  }
+  return out.length ? out : [first];   // a weekend-only booking still shows on its day
+}
+function installRangeText(first, last) {
+  const a = formatShortDate(first);
+  return last && last > first ? `${a} to ${formatShortDate(last)}` : a;
+}
+
 // "13:30:00" from the database -> "1:30pm" (appointment_time, migration 081).
 function shortTime(t) {
   const m = /^(\d{2}):(\d{2})/.exec(t || '');
@@ -1126,7 +1150,7 @@ function shortTime(t) {
 async function fetchLatestOutcomes(prospectIds) {
   if (!prospectIds.length) return {};
   const { data, error } = await db.from('prospect_contacts')
-    .select('prospect_id, outcome, contacted_at, follow_up_date, appointment_time')
+    .select('prospect_id, outcome, contacted_at, follow_up_date, appointment_time, install_end_date')
     .in('prospect_id', prospectIds)
     .order('contacted_at', { ascending: false });
   if (error) { console.error('Failed to load contact outcomes:', error); return {}; }
@@ -1139,6 +1163,7 @@ async function fetchLatestOutcomes(prospectIds) {
     if (field && row.follow_up_date && !latest[row.prospect_id][field]) {
       latest[row.prospect_id][field] = row.follow_up_date;
       if (field === 'meeting_date') latest[row.prospect_id].meeting_time = row.appointment_time || null;
+      if (field === 'install_date') latest[row.prospect_id].install_end_date = row.install_end_date || null;
     }
   });
   return latest;
@@ -1736,10 +1761,10 @@ function calMonday(d) {
 
 async function fetchCalendarData() {
   const ids = allLeads.map(l => l.id);
-  const dates = {}, surveys = {}, meetings = {}, surveyTimes = {}, meetingTimes = {}, checklists = {};
+  const dates = {}, endDates = {}, surveys = {}, meetings = {}, surveyTimes = {}, meetingTimes = {}, checklists = {};
   if (ids.length) {
     const [logs, lists, surveyLogs, meetingLogs] = await Promise.all([
-      db.from('prospect_contacts').select('prospect_id, follow_up_date, contacted_at')
+      db.from('prospect_contacts').select('prospect_id, follow_up_date, install_end_date, contacted_at')
         .eq('outcome', 'Scheduled for Install').in('prospect_id', ids)
         .order('contacted_at', { ascending: false }),
       db.from('install_checklists').select('*').in('prospect_id', ids),
@@ -1756,7 +1781,9 @@ async function fetchCalendarData() {
     if (logs.error) console.error('Failed to load install dates:', logs.error);
     if (lists.error) console.error('Failed to load install checklists:', lists.error);
     if (surveyLogs.error) console.error('Failed to load survey dates:', surveyLogs.error);
-    (logs.data || []).forEach(r => { if (r.follow_up_date && !(r.prospect_id in dates)) dates[r.prospect_id] = r.follow_up_date; });
+    (logs.data || []).forEach(r => {
+      if (r.follow_up_date && !(r.prospect_id in dates)) { dates[r.prospect_id] = r.follow_up_date; endDates[r.prospect_id] = r.install_end_date || null; }
+    });
     if (meetingLogs.error) console.error('Failed to load meeting dates:', meetingLogs.error);
     const takeLatest = (res, days, times) => (res.data || []).forEach(r => {
       if (r.follow_up_date && !(r.prospect_id in days)) { days[r.prospect_id] = r.follow_up_date; times[r.prospect_id] = r.appointment_time || ''; }
@@ -1766,7 +1793,7 @@ async function fetchCalendarData() {
     (lists.data || []).forEach(r => { checklists[r.prospect_id] = r; });
   }
   allLeads.forEach(l => { if (!dates[l.id] && l.install_scheduled_date) dates[l.id] = l.install_scheduled_date; });
-  return { at: Date.now(), dates, surveys, meetings, surveyTimes, meetingTimes, checklists };
+  return { at: Date.now(), dates, endDates, surveys, meetings, surveyTimes, meetingTimes, checklists };
 }
 
 function calTasksHtml(checklist, product) {
@@ -1784,19 +1811,20 @@ function calOutstandingCount(checklist, product) {
   return installTasksFor(product).filter(t => !checklist?.[`${t.key}_na`] && !checklist?.[`${t.key}_done`]).length;
 }
 
-function calCardHtml(d, dateKey, todayKey) {
+function calCardHtml(d, dateKey, todayKey, part) {
   const checklist = calData.checklists[d.id];
   const installed = CAL_INSTALLED.includes(d.latest_outcome);
   const outstanding = calOutstandingCount(checklist, d.product);
   let flag = '';
   if (installed) flag = '<div class="cal-flag ok">✔ Installed</div>';
-  else if (dateKey < todayKey) flag = '<div class="cal-flag late">Date passed, not marked installed</div>';
+  else if ((part ? part.last : dateKey) < todayKey) flag = '<div class="cal-flag late">Date passed, not marked installed</div>';
   else if (!outstanding) flag = '<div class="cal-flag ok">Everything booked</div>';
   const typeCfg = LEAD_TYPE[d.lead_type];
   const meta = [d.postcode ? escapeHtml(d.postcode) : '', typeCfg ? escapeHtml(typeCfg.label) : '',
     d.assigned_to_email ? escapeHtml(repName(d.assigned_to_email)) : ''].filter(Boolean).map(m => `<span>${m}</span>`).join('');
   const color = !installed && outstanding ? 'var(--alert)' : 'var(--accent)';
   return `<button type="button" class="board-card cal-card" data-id="${escapeHtml(d.id)}" style="--card-color:${color}">
+    ${part ? `<div class="bc-outcome"><span class="cal-time">Install day ${part.n} of ${part.of}</span></div>` : ''}
     <div class="bc-name">${escapeHtml(d.customer_name || 'Unnamed lead')}</div>
     <div class="bc-meta">${meta}</div>
     ${installed ? '' : calTasksHtml(checklist, d.product)}
@@ -1879,10 +1907,10 @@ async function renderLeadsCalendar(leads) {
   }));
   const firstKey = weeks[0][0].key, lastKey = weeks[3][6].key;
 
-  const byDay = {};   // key -> [{ d, kind: 'install' | 'survey' }]
-  const put = (key, d, kind) => {
+  const byDay = {};   // key -> [{ d, kind: 'install' | 'survey', part }]
+  const put = (key, d, kind, part) => {
     if (!key || key < firstKey || key > lastKey) return;
-    (byDay[key] = byDay[key] || []).push({ d, kind });
+    (byDay[key] = byDay[key] || []).push({ d, kind, part });
   };
   leads.forEach(d => {
     const closed = typeof CONTACT_OUTCOME[d.latest_outcome]?.stage === 'string';   // cancelled / lost / not now
@@ -1890,7 +1918,8 @@ async function renderLeadsCalendar(leads) {
     const meetingDay = calData.meetings?.[d.id];
     if (meetingDay && (meetingDay < todayKey || !CAL_MEETING_OFF.includes(d.latest_outcome))) put(meetingDay, d, 'meeting');
     put(calData.surveys?.[d.id], d, 'survey');
-    put(calData.dates[d.id], d, 'install');
+    const days = installDays(calData.dates[d.id], calData.endDates?.[d.id]);
+    days.forEach((key, i) => put(key, d, 'install', days.length > 1 ? { n: i + 1, of: days.length, last: days[days.length - 1] } : null));
   });
   const shown = [];
   const weekNames = calWeekOffset === 0 ? ['Last week', 'This week', 'Next week', 'Week after'] : null;
@@ -1906,7 +1935,7 @@ async function renderLeadsCalendar(leads) {
         items.forEach(({ d }) => { if (!shown.includes(d.id)) shown.push(d.id); });
         return `<div class="cal-day${i >= 5 ? ' weekend' : ''}${key === todayKey ? ' today' : ''}">
           <div class="cal-day-h">${fmt(day, { weekday: 'short', day: 'numeric' })}${key === todayKey ? ' · Today' : ''}</div>
-          ${items.map(({ d, kind }) => kind === 'meeting' ? calMeetingCardHtml(d, key, todayKey) : kind === 'survey' ? calSurveyCardHtml(d, key, todayKey) : calCardHtml(d, key, todayKey)).join('')}
+          ${items.map(({ d, kind, part }) => kind === 'meeting' ? calMeetingCardHtml(d, key, todayKey) : kind === 'survey' ? calSurveyCardHtml(d, key, todayKey) : calCardHtml(d, key, todayKey, part)).join('')}
         </div>`;
       }).join('')}
     </div>`).join('');
@@ -2221,7 +2250,7 @@ async function loadActivity(prospectId) {
   list.innerHTML = '<li class="doc-empty" style="padding-left:34px">Loading…</li>';
   const [contactsRes, enquiriesRes, auditRes, emailLogRes, leadEmailsRes, supplierRes] = await Promise.all([
     db.from('prospect_contacts')
-      .select('id, prospect_id, employee, outcome, notes, next_action, follow_up_date, appointment_time, contacted_at')
+      .select('id, prospect_id, employee, outcome, notes, next_action, follow_up_date, appointment_time, install_end_date, contacted_at')
       .eq('prospect_id', prospectId)
       .order('contacted_at', { ascending: false }),
     db.from('website_enquiries')
@@ -2398,9 +2427,10 @@ function waMeetingText(lead, c) {
     `Kind regards,\nTurbine Energy`,
   ].join('\n\n');
 }
-// Hidden 2026-11-26 (Greg): wa.me can't guarantee the office number sends it.
-// Back on (true) once sending goes through a Meta partner from 01302 898508.
-const WA_BUTTON_ON = false;
+// wa.me can't choose the sending number: it opens whichever WhatsApp is signed
+// in on that device. Greg 2026-11-26: on, and the team keeps only the office
+// WhatsApp Business (01302 898508) signed in on CRM devices.
+const WA_BUTTON_ON = true;
 function waMeetingButton(c) {
   if (!WA_BUTTON_ON) return '';
   if (c.outcome !== 'Meeting Booked' || !c.follow_up_date || !currentLead) return '';
@@ -2408,14 +2438,14 @@ function waMeetingButton(c) {
   const to = waMobile(currentLead.contact_phone);
   if (!to) return '';
   const href = `https://wa.me/${to}?text=${encodeURIComponent(waMeetingText(currentLead, c))}`;
-  return `<a class="wa-btn" href="${escapeHtml(href)}" target="_blank" rel="noopener" title="Opens WhatsApp with the call confirmation typed out. You choose when to send it.">` +
+  return `<a class="wa-btn" href="${escapeHtml(href)}" target="_blank" rel="noopener" title="Opens WhatsApp with the call confirmation typed out. Check it is the office WhatsApp (01302 898508) before you press send.">` +
     '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm5.3 14.2c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.4-.7-2.8-1.1-4.6-4-4.8-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2.1 1-2.4c.3-.3.6-.3.8-.3h.6c.2 0 .4 0 .6.5l.8 2c.1.2.1.4 0 .5l-.4.6-.4.4c-.1.1-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.3 2.4 1.5.3.1.5.1.6-.1l.9-1c.2-.3.4-.2.6-.1l1.9.9c.3.1.5.2.5.3.1.2.1.7-.1 1.4z"/></svg>' +
-    'Send on WhatsApp</a>';
+    'Send from office WhatsApp</a>';
 }
 
 function contactItemHtml(c) {
   const cfg = CONTACT_OUTCOME[c.outcome] || { color: '#999', label: c.outcome };
-  const date = c.follow_up_date ? `<div class="clog-next">${escapeHtml(cfg.dateLabel || 'Date')}: ${formatShortDate(c.follow_up_date)}${c.appointment_time ? ' at ' + shortTime(c.appointment_time) : ''}</div>` : '';
+  const date = c.follow_up_date ? `<div class="clog-next">${escapeHtml(cfg.dateLabel || 'Date')}: ${installRangeText(c.follow_up_date, c.install_end_date)}${c.appointment_time ? ' at ' + shortTime(c.appointment_time) : ''}</div>` : '';
   const notes = c.notes ? `<div class="clog-notes">${escapeHtml(c.notes)}</div>` : '';
   const nextAction = c.next_action ? `<div class="clog-notes">Next: ${escapeHtml(c.next_action)}</div>` : '';
   return `<li><span class="tl-dot" style="background:${cfg.color}"></span>
@@ -4744,6 +4774,7 @@ document.getElementById('cm-outcome').addEventListener('change', e => {
     group.style.display = 'block';
     document.getElementById('cm-followup-date-label').textContent = cfg.dateLabel || 'Date';
     document.getElementById('cm-time-group').style.display = TIMED_OUTCOMES.includes(e.target.value) ? '' : 'none';
+    document.getElementById('cm-end-group').style.display = e.target.value === 'Scheduled for Install' ? '' : 'none';
     const input = document.getElementById('cm-followup-date');
     input.min = localDateStr(new Date());
     // Pre-fill with this outcome's default, unless the rep already picked
@@ -4775,6 +4806,8 @@ function openContactModal(prospectId, prospectName) {
   document.getElementById('cm-followup-date-group').style.display = 'none';
   document.getElementById('cm-followup-date').value = '';
   document.getElementById('cm-time').value = '';
+  document.getElementById('cm-end-date').value = '';
+  document.getElementById('cm-end-group').style.display = 'none';
   document.getElementById('cm-followup-date').dataset.auto = '';
   document.getElementById('cm-next-hint').style.display = 'none';
   document.getElementById('cm-email-opt').style.display = 'none';
@@ -4808,12 +4841,14 @@ document.getElementById('cm-submit').addEventListener('click', async () => {
   const outcome = document.getElementById('cm-outcome').value;
   const followUpDate = document.getElementById('cm-followup-date').value;
   const appointmentTime = TIMED_OUTCOMES.includes(outcome) ? document.getElementById('cm-time').value : '';
+  const installEnd = outcome === 'Scheduled for Install' ? document.getElementById('cm-end-date').value : '';
   const notes = document.getElementById('cm-notes').value.trim();
   const nextAction = document.getElementById('cm-next-action').value.trim();
 
   if (!employee) { alert('Please enter your name.'); return; }
   if (!outcome) { alert('Please pick an outcome.'); return; }
   if (CONTACT_OUTCOME[outcome].requiresDate && !followUpDate) { alert('Please set a date.'); return; }
+  if (installEnd && installEnd < followUpDate) { alert('The last day is before the first day. Please check the dates.'); return; }
 
   const btn = document.getElementById('cm-submit');
   btn.disabled = true; btn.textContent = 'Saving…';
@@ -4843,7 +4878,8 @@ document.getElementById('cm-submit').addEventListener('click', async () => {
     next_action: nextAction || null,
     follow_up_date: CONTACT_OUTCOME[outcome].requiresDate ? (followUpDate || null) : null,
     appointment_time: appointmentTime || null,
-  }]).select('id, outcome, contacted_at, follow_up_date, appointment_time').single();
+    install_end_date: installEnd && installEnd > followUpDate ? installEnd : null,
+  }]).select('id, outcome, contacted_at, follow_up_date, appointment_time, install_end_date').single();
 
   btn.disabled = false; btn.textContent = 'Save log';
   if (error) { alert('Failed to save: ' + error.message); return; }
@@ -4861,7 +4897,7 @@ document.getElementById('cm-submit').addEventListener('click', async () => {
   // with contacted_at defaulting to now()), so its outcome becomes the new
   // status without waiting on a re-fetch.
   const row = allLeads.find(l => l.id === prospectId);
-  if (row) { row.latest_outcome = outcome; row.latest_contact = insertedContact || { outcome, contacted_at: new Date().toISOString(), follow_up_date: null }; applyListDate(row, row.latest_contact); bumpActivity(row, row.latest_contact.contacted_at); if (appointmentTime || outcome === 'Meeting Booked' || outcome === 'Survey Booked') calData = null; }
+  if (row) { row.latest_outcome = outcome; row.latest_contact = insertedContact || { outcome, contacted_at: new Date().toISOString(), follow_up_date: null }; applyListDate(row, row.latest_contact); bumpActivity(row, row.latest_contact.contacted_at); if (appointmentTime || outcome === 'Meeting Booked' || outcome === 'Survey Booked' || outcome === 'Scheduled for Install') calData = null; }
   renderSidebarFilters();
   renderLeadsTable();
   if (currentLead && currentLead.id === prospectId) {
@@ -5443,6 +5479,7 @@ async function refreshLeadsList() {
     l.meeting_time = outcomes[l.id]?.meeting_time || null;
     l.last_activity_at = activity[l.id] || null;
     l.install_date = outcomes[l.id]?.install_date || null;
+    l.install_end_date = outcomes[l.id]?.install_end_date || null;
     l.selected_quote_price = quotePrices[l.id] ?? null;
   });
   renderSidebarFilters();
